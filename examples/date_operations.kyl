@@ -1,0 +1,41 @@
+// Date Operations Example - Working Functions Only
+// Demonstrates date/time functions that are confirmed working
+
+print("=== Date and Time Operations Demo ===")
+
+// Current date and time - WORKING
+print("Current Date and Time:")
+let current_date = date_now()
+print("Current timestamp: " + to_string(current_date))
+
+let formatted_date = date_current()
+print("Formatted date: " + formatted_date)
+
+// Unix timestamp operations - WORKING
+print("")
+print("=== Unix Timestamp Operations ===")
+let unix_time = date_unix()
+print("Unix timestamp: " + to_string(unix_time))
+
+// Convert from unix timestamp - WORKING  
+let from_unix = date_from_unix(1609459200)  // 2021-01-01 00:00:00
+print("From unix (1609459200): " + from_unix)
+
+// ISO format - WORKING
+print("")
+print("=== ISO Date Format ===")
+let iso_date = date_iso()
+print("ISO format: " + iso_date)
+
+// Datetime functions - Let's test these
+print("")
+print("=== DateTime Functions ===")
+let datetime_stamp = datetime_now()
+print("DateTime now: " + to_string(datetime_stamp))
+
+let datetime_formatted = datetime_current()
+print("DateTime current: " + datetime_formatted)
+
+print("")
+print("Date operations demo completed!")
+print("Note: Some advanced date arithmetic functions may not be fully implemented yet.")

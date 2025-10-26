@@ -1,0 +1,77 @@
+// ******** arithmetic <start> *****
+let j = 100
+let t = 10
+let a = j + 10 - t * 5
+print(a)
+// ******** arithmetic <end> *****
+
+// ******** if <start> *****
+if (a == 60) {
+    print("calculated correctly")
+} else {
+    print("calculated wrongly")
+}
+// ******** if <end> *****
+
+// ******** while loop <start> *****
+
+let i = 0
+
+while (i != 1) {
+    print("hi", i)
+    i = 1;
+    print("hi2", i)
+}
+
+// ******** while loop </end> *****
+
+// ******** for loop <start> *****
+for (let j = 0; j != 2; j = j + 1) {
+    print("For loop j:", j);
+}
+// ******** for loop <end> *****
+// ******** Function <start> *****
+
+fn test() {
+    print("Hello from function")
+}
+
+test()
+fn func2_sum(a, b) {
+    return a+b
+}
+//let sum = func2_sum("10", "34")
+//print(sum)
+// ******** Function <end> *****
+
+// ******** Anonymous Function <start> *****
+fn() {
+    print("Hello Anonymous function1")
+}()
+
+let anon2 = fn() {
+    print("Hello Anonymous function2")
+}
+
+anon2()
+// ******** Anonymous Function <end> *****
+
+// Test math library functionsf
+print("Testing Math Library:")
+print("math_abs(-5) =", math_abs(-5))
+print("math_sqrt(16) =", math_sqrt(16))
+print("math_pow(2, 3) =", math_pow(2, 3))
+
+// Test string library functions  
+print("Testing String Library:")
+let str1 = "Hello World"
+print("str_length('Hello World') =", str_length(str1))
+print("str_upper('Hello World') =", str_upper(str1))
+print("str_contains('Hello World', 'World') =", str_contains(str1, "World"))
+
+// Test date/time library functions
+print("Testing DateTime Library:")
+print("Current date:", date_now())
+print("Current timestamp:", date_unix())
+
+print("All modular library tests completed!")

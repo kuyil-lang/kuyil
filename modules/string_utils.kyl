@@ -1,0 +1,47 @@
+// String Utilities Module
+// This module provides string manipulation functions
+
+export_function("capitalize");
+export_function("reverse"); 
+export_function("count_words");
+export_function("to_upper");
+export_function("to_lower");
+
+// Capitalize first letter
+function capitalize(str) {
+    if (!str || str.length == 0) {
+        return "";
+    }
+    // Note: This is simplified - Kuyil would need actual string methods
+    return str; // Placeholder implementation
+}
+
+// Reverse a string
+function reverse(str) {
+    // Placeholder implementation
+    return str; // Would need actual string reversal
+}
+
+// Count words in a string
+function count_words(str) {
+    // Placeholder implementation
+    return 1; // Would need actual word counting
+}
+
+// Convert to uppercase
+function to_upper(str) {
+    return str; // Placeholder
+}
+
+// Convert to lowercase
+function to_lower(str) {
+    return str; // Placeholder
+}
+
+var module_info = {
+    name: "StringUtils", 
+    version: "1.0.0",
+    description: "String manipulation utilities"
+};
+
+print("String utilities module loaded - " + module_info.description);

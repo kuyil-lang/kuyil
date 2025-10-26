@@ -1,0 +1,102 @@
+# Build artifacts
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+kuyil
+kuyil.exe
+
+# Shared library build outputs
+shared_libs/**/*.o
+shared_libs/**/*.so
+shared_libs/**/*.a
+
+# Temporary and backup files
+*~
+*.tmp
+*.temp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+debug.log
+error.log
+
+# Core dumps and debug files
+core
+core.*
+*.dSYM/
+*.sym
+vgcore.*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-*
+.project
+.cproject
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test output and coverage
+test_output/
+coverage/
+*.gcda
+*.gcno
+*.gcov
+
+# Build directories
+build/
+dist/
+out/
+
+# Configuration files with sensitive data
+config.local.*
+*.env
+.env
+
+# Dependency directories
+node_modules/
+vendor/
+
+# Language-specific
+*.class
+*.jar
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+
+# Documentation build
+docs/_build/
+docs/html/
+docs/latex/
+
+# Cache directories
+.cache/
+.npm/
+.yarn/
+
+# Lock files (if using package managers)
+package-lock.json
+yarn.lock
+Pipfile.lock

@@ -1,0 +1,123 @@
+// Green Threads Concept Demo for Kuyil
+// Demonstrates concurrent programming concepts using available functions
+
+print("=== Kuyil Green Threads Concept Demo ===")
+print("")
+
+// Note: Green threads functions are implemented but not yet registered
+// This demo shows the patterns that would be used
+
+print("1. Task Management Concepts:")
+print("")
+
+print("[CONCEPT] Green threads provide lightweight concurrency")
+print("[CONCEPT] Tasks can run in background without blocking main thread")
+print("[CONCEPT] Coordination through handles and message passing")
+
+print("")
+
+// 2. Basic Task Simulation
+print("2. Task Execution Simulation:")
+print("")
+
+print("[TASK-1] Starting CPU computation task")
+let cpu_result = 100 + 50
+print("[TASK-1] Computation completed: " + to_string(cpu_result))
+
+print("[TASK-2] Starting I/O simulation task")  
+let io_result = 200 + 75
+print("[TASK-2] I/O operation completed: " + to_string(io_result))
+
+print("[TASK-3] Starting data processing task")
+let data_result = 300 + 25
+print("[TASK-3] Data processing completed: " + to_string(data_result))
+
+print("")
+
+// 3. Task States and Lifecycle
+print("3. Task State Management:")
+print("")
+
+let task_id = 1001
+print("[STATE] Task " + to_string(task_id) + " created")
+print("[STATE] Task " + to_string(task_id) + " started")
+print("[STATE] Task " + to_string(task_id) + " running")
+print("[STATE] Task " + to_string(task_id) + " completed")
+
+print("")
+
+// 4. Error Handling
+print("4. Task Error Handling:")
+print("")
+
+let error_task = 2001  
+print("[ERROR] Task " + to_string(error_task) + " encountered error")
+print("[RETRY] Implementing retry mechanism")
+print("[SUCCESS] Task " + to_string(error_task) + " completed on retry")
+
+print("")
+
+// 5. Resource Management
+print("5. Resource Management:")
+print("")
+
+let active_tasks = 3
+let max_tasks = 10
+let available_slots = max_tasks - active_tasks
+
+print("[RESOURCES] Active tasks: " + to_string(active_tasks))
+print("[RESOURCES] Maximum tasks: " + to_string(max_tasks))  
+print("[RESOURCES] Available slots: " + to_string(available_slots))
+
+print("")
+
+// 6. Future API Reference
+print("6. Green Threads API Reference:")
+print("")
+
+print("[API] start_bg(function_name, arg1, arg2, ...) -> task_handle")
+print("[API] wait_bg(task_handle) -> result")
+print("[API] kill_bg(task_handle) -> success")
+print("[API] list_bg() -> [active_handles]")
+print("[API] task_status(handle) -> 'running'|'completed'|'failed'")
+
+print("")
+
+// 7. Usage Patterns
+print("7. Common Usage Patterns:")
+print("")
+
+print("[PATTERN] Producer-Consumer:")
+print("  producer = start_bg('generate_data', 1000)")
+print("  consumer = start_bg('process_data', queue)")
+print("  wait_bg(consumer)")
+
+print("")
+print("[PATTERN] Worker Pool:")
+print("  workers = []")
+print("  for i in 1..5:")
+print("    workers.push(start_bg('worker_task', i))")
+print("  results = workers.map(wait_bg)")
+
+print("")
+print("[PATTERN] Timeout Handling:")
+print("  task = start_bg('long_operation')")
+print("  if !wait_bg_timeout(task, 5000):")
+print("    kill_bg(task)")
+
+print("")
+print("=== Green Threads Demo Complete ===")
+print("")
+print("🔄 Concepts Demonstrated:")
+print("✓ Lightweight concurrency model")
+print("✓ Non-blocking task execution")  
+print("✓ Task lifecycle management")
+print("✓ Error handling and recovery")
+print("✓ Resource management")
+print("✓ Common concurrency patterns")
+print("")
+print("💡 Status:")
+print("   - Green threads implementation exists in VM source")
+print("   - Functions not yet registered for script access")
+print("   - This demo shows the intended API and usage patterns")
+print("   - Ready for integration when functions are exposed")

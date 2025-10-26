@@ -1,0 +1,103 @@
+function test_basic_arithmetic() {
+    print("Testing basic arithmetic...")
+    
+    if (2 + 2 == 4) {
+        print("PASS: Addition test")
+    } else {
+        print("FAIL: Addition test")
+    }
+    
+    if (10 - 3 == 7) {
+        print("PASS: Subtraction test")
+    } else {
+        print("FAIL: Subtraction test")
+    }
+    
+    if (5 * 6 == 30) {
+        print("PASS: Multiplication test")
+    } else {
+        print("FAIL: Multiplication test")
+    }
+    
+    if (15 / 3 == 5) {
+        print("PASS: Division test")
+    } else {
+        print("FAIL: Division test")
+    }
+}
+
+function test_boolean_operations() {
+    print("Testing boolean operations...")
+    
+    if (5 > 3) {
+        print("PASS: Greater than test")
+    } else {
+        print("FAIL: Greater than test")
+    }
+    
+    if (!(2 > 5)) {
+        print("PASS: False comparison test")
+    } else {
+        print("FAIL: False comparison test")
+    }
+}
+
+function test_string_operations() {
+    print("Testing string operations...")
+    
+    if ("Hello" + " World" == "Hello World") {
+        print("PASS: String concatenation")
+    } else {
+        print("FAIL: String concatenation")
+    }
+    
+    if (str_upper("hello") == "HELLO") {
+        print("PASS: String uppercase")
+    } else {
+        print("FAIL: String uppercase")
+    }
+    
+    if (str_lower("HELLO") == "hello") {
+        print("PASS: String lowercase")
+    } else {
+        print("FAIL: String lowercase")
+    }
+}
+
+function test_math_functions() {
+    print("Testing math functions...")
+    
+    if (math_abs(-5) == 5) {
+        print("PASS: Absolute value")
+    } else {
+        print("FAIL: Absolute value")
+    }
+    
+    if (math_sqrt(16) == 4) {
+        print("PASS: Square root")
+    } else {
+        print("FAIL: Square root")
+    }
+    
+    if (math_pow(2, 3) == 8) {
+        print("PASS: Power function")
+    } else {
+        print("FAIL: Power function")
+    }
+}
+
+print("Kuyil Unit Test Framework - Super Simple Version")
+print("================================================")
+
+test_basic_arithmetic()
+print("")
+test_boolean_operations()
+print("")
+test_string_operations()
+print("")
+test_math_functions()
+
+print("")
+print("================================================")
+print("All tests completed!")
+print("================================================")

@@ -1,0 +1,58 @@
+// Math Utilities Module
+// This module provides common mathematical functions
+// Functions marked for export can be imported by other modules
+
+export_function("add");
+export_function("multiply");
+export_function("factorial");
+export_function("fibonacci");
+export_function("is_prime");
+
+// Addition function
+function add(a, b) {
+    return a + b;
+}
+
+// Multiplication function  
+function multiply(a, b) {
+    return a * b;
+}
+
+// Factorial function
+function factorial(n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+// Fibonacci sequence
+function fibonacci(n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+// Prime number check
+function is_prime(n) {
+    if (n < 2) {
+        return false;
+    }
+    for (var i = 2; i * i <= n; i = i + 1) {
+        if (n % i == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Module metadata (not exported)
+var module_info = {
+    name: "MathUtils",
+    version: "1.0.0",
+    author: "Kuyil Team",
+    description: "Common mathematical utility functions"
+};
+
+print("Math utilities module loaded - " + module_info.description);

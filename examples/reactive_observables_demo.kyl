@@ -1,0 +1,166 @@
+// Reactive Observables Concept Demo for Kuyil
+// Demonstrates reactive programming patterns and Observable concepts
+
+print("=== Kuyil Reactive Observables Demo ===")
+print("")
+
+// Note: Observable functions are implemented but not yet registered
+// This demo shows the patterns and concepts
+
+print("1. Observable Pattern Concepts:")
+print("")
+
+print("[CONCEPT] Observables represent streams of data over time")
+print("[CONCEPT] Observers subscribe to receive notifications")
+print("[CONCEPT] Reactive programming enables declarative data flow")
+
+print("")
+
+// 2. Stream Simulation
+print("2. Data Stream Simulation:")
+print("")
+
+print("[STREAM] Creating data stream...")
+let stream_id = 1001
+print("[STREAM] Stream ID: " + to_string(stream_id))
+
+print("[EMIT] Emitting values to stream...")
+print("[DATA] Value 1: Hello")
+print("[DATA] Value 2: Reactive") 
+print("[DATA] Value 3: Programming")
+print("[DATA] Value 4: World")
+print("[COMPLETE] Stream completed")
+
+print("")
+
+// 3. Observer Pattern Simulation
+print("3. Observer Pattern Simulation:")
+print("")
+
+let observer1_id = 2001
+let observer2_id = 2002
+
+print("[OBSERVER] Observer " + to_string(observer1_id) + " subscribed")
+print("[OBSERVER] Observer " + to_string(observer2_id) + " subscribed")
+
+print("[NOTIFY] Notifying observers of new data...")
+print("[OBSERVER-" + to_string(observer1_id) + "] Received: Hello")
+print("[OBSERVER-" + to_string(observer2_id) + "] Received: Hello")
+
+print("")
+
+// 4. Event Bus Pattern
+print("4. Event Bus Pattern:")
+print("")
+
+print("[EVENT-BUS] Creating global event bus")
+let event_bus_id = 3001
+print("[EVENT-BUS] Bus ID: " + to_string(event_bus_id))
+
+print("[PUBLISH] Publishing user.login event")
+print("[PUBLISH] Publishing data.updated event") 
+print("[PUBLISH] Publishing system.shutdown event")
+
+let subscriber_count = 5
+print("[SUBSCRIBERS] " + to_string(subscriber_count) + " components listening")
+
+print("")
+
+// 5. Transformation Operators
+print("5. Stream Transformation Concepts:")
+print("")
+
+print("[TRANSFORM] Map operator - transforms each value")
+print("[EXAMPLE] numbers.map(x => x * 2)")
+
+print("[TRANSFORM] Filter operator - selects values")
+print("[EXAMPLE] events.filter(e => e.type == 'error')")
+
+print("[TRANSFORM] Reduce operator - accumulates values")
+print("[EXAMPLE] values.reduce((sum, x) => sum + x, 0)")
+
+print("")
+
+// 6. Error Handling
+print("6. Reactive Error Handling:")
+print("")
+
+let error_stream = 4001
+print("[ERROR-STREAM] Stream " + to_string(error_stream) + " encountered error")
+print("[RECOVERY] Implementing error recovery")
+print("[RETRY] Attempting retry with backoff")
+print("[SUCCESS] Stream recovered successfully")
+
+print("")
+
+// 7. Lifecycle Management
+print("7. Observable Lifecycle:")
+print("")
+
+print("[LIFECYCLE] Observable created -> subscribed -> emitting -> completed")
+print("[CLEANUP] Subscription disposed")
+print("[CLEANUP] Resources released")
+
+print("")
+
+// 8. Common Reactive Patterns
+print("8. Reactive Programming Patterns:")
+print("")
+
+print("[PATTERN] Hot vs Cold Observables:")
+print("  - Cold: Starts emitting when subscribed")
+print("  - Hot: Always emitting, subscribers join stream")
+
+print("")
+print("[PATTERN] Subject Pattern:")
+print("  - Acts as both Observable and Observer")
+print("  - Can multicast to multiple subscribers")
+
+print("")
+print("[PATTERN] Backpressure Handling:")
+print("  - Buffer overflow protection")
+print("  - Flow control mechanisms")
+
+print("")
+
+// 9. Future API Reference
+print("9. Reactive API Reference:")
+print("")
+
+print("[API] observable_create() -> observable_id")
+print("[API] observable_subscribe(id, handler) -> subscription_id")
+print("[API] observable_emit(id, value) -> success")
+print("[API] observable_complete(id) -> success")
+print("[API] observable_error(id, error) -> success")
+print("[API] subscription_dispose(id) -> success")
+
+print("")
+print("[OPERATORS] map(observable, function) -> new_observable")
+print("[OPERATORS] filter(observable, predicate) -> new_observable")
+print("[OPERATORS] merge(obs1, obs2) -> merged_observable")
+print("[OPERATORS] throttle(observable, interval) -> throttled_observable")
+
+print("")
+print("=== Reactive Observables Demo Complete ===")
+print("")
+print("🔄 Reactive Concepts Demonstrated:")
+print("✓ Observable pattern and data streams")
+print("✓ Observer subscription model")
+print("✓ Event bus architecture")
+print("✓ Stream transformation operators")
+print("✓ Error handling and recovery")
+print("✓ Observable lifecycle management")
+print("✓ Hot vs Cold observables")
+print("✓ Backpressure and flow control")
+print("")
+print("💡 Status:")
+print("   - Observable implementation exists in VM source")
+print("   - Functions not yet registered for script access")
+print("   - This demo shows the intended reactive patterns")
+print("   - Ready for integration when functions are exposed")
+print("")
+print("🚀 Benefits:")
+print("   - Declarative data flow programming")
+print("   - Composable and reusable stream operations")
+print("   - Unified error handling across async operations")
+print("   - Clean separation of data production and consumption")

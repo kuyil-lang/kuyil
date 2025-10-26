@@ -1,0 +1,216 @@
+// Kuyil Application Configuration Manager
+// YAML-based configuration with multi-environment support
+
+log_info("Kuyil Configuration Manager")
+log_info("============================")
+
+// Configuration Manager Class
+let ConfigManager = {
+    "config_data": {},
+    "environments": {},
+    "loaded_files": [],
+    "current_site": nil,
+    "current_region": nil,
+    
+    // Initialize configuration manager
+    "init": fn(site, region) {
+        log_info("Initializing ConfigManager...")
+        log_info("Site: " + (site ? site : "default"))
+        log_info("Region: " + (region ? region : "default"))
+        
+        ConfigManager.current_site = site || "default"
+        ConfigManager.current_region = region || "default"
+        
+        // Load base configuration
+        ConfigManager.load_base_config()
+        
+        // Load environment-specific configurations
+        ConfigManager.load_environment_configs()
+        
+        log_info("Configuration initialized successfully")
+        return ConfigManager
+    },
+    
+    // Load base configuration files
+    "load_base_config": fn() {
+        log_info("Loading base configuration...")
+        
+        let base_files = [
+            "config/application.yml",
+            "config/database.yml", 
+            "config/logging.yml",
+            "config/features.yml"
+        ]
+        
+        for file in base_files {
+            ConfigManager.load_config_file(file)
+        }
+    },
+    
+    // Load environment-specific configurations
+    "load_environment_configs": fn() {
+        log_info("Loading environment-specific configurations...")
+        
+        // Load site-specific config
+        if ConfigManager.current_site != "default" {
+            let site_file = "config/sites/" + ConfigManager.current_site + ".yml"
+            ConfigManager.load_config_file(site_file)
+        }
+        
+        // Load region-specific config
+        if ConfigManager.current_region != "default" {
+            let region_file = "config/regions/" + ConfigManager.current_region + ".yml"
+            ConfigManager.load_config_file(region_file)
+        }
+        
+        // Load combined environment config
+        if ConfigManager.current_site != "default" && ConfigManager.current_region != "default" {
+            let env_file = "config/environments/" + ConfigManager.current_site + "_" + ConfigManager.current_region + ".yml"
+            ConfigManager.load_config_file(env_file)
+        }
+        
+        // Load local overrides
+        ConfigManager.load_config_file("config/local.yml")
+        ConfigManager.load_config_file(".env.yml")
+    },
+    
+    // Load individual config file
+    "load_config_file": fn(filepath) {
+        log_debug("Attempting to load config: " + filepath)
+        
+        // Check if already loaded
+        if ConfigManager.is_file_loaded(filepath) {
+            log_debug("Config file already loaded: " + filepath)
+            return
+        }
+        
+        // Load YAML content
+        let yaml_content = load_yaml(filepath)
+        if yaml_content {
+            log_info("Loaded config: " + filepath)
+            ConfigManager.loaded_files.push(filepath)
+            
+            // Merge into main configuration
+            ConfigManager.merge_yaml_content(yaml_content)
+        } else {
+            log_debug("Config file not found or empty: " + filepath)
+        }
+    },
+    
+    // Check if file already loaded
+    "is_file_loaded": fn(filepath) {
+        for loaded in ConfigManager.loaded_files {
+            if loaded == filepath {
+                return true
+            }
+        }
+        return false
+    },
+    
+    // Merge YAML content into config
+    "merge_yaml_content": fn(content) {
+        log_debug("Merging configuration content...")
+        
+        // Use the built-in merge function
+        ConfigManager.config_data = merge_config(ConfigManager.config_data, content)
+        
+        log_debug("Configuration merged successfully")
+    },
+    
+    // Get configuration value with path notation
+    "get": fn(key_path, default_value) {
+        log_debug("Getting config: " + key_path)
+        
+        let keys = key_path.split(".")
+        let current = ConfigManager.config_data
+        
+        for key in keys {
+            if current && current[key] {
+                current = current[key]
+            } else {
+                log_debug("Config key not found: " + key_path)
+                return default_value
+            }
+        }
+        
+        return current
+    },
+    
+    // Set configuration value
+    "set": fn(key_path, value) {
+        log_debug("Setting config: " + key_path + " = " + value)
+        
+        let keys = key_path.split(".")
+        let current = ConfigManager.config_data
+        
+        // Navigate to parent object
+        for i in 0..(keys.length - 2) {
+            let key = keys[i]
+            if !current[key] {
+                current[key] = {}
+            }
+            current = current[key]
+        }
+        
+        // Set the final value
+        let final_key = keys[keys.length - 1]
+        current[final_key] = value
+        
+        log_debug("Config value set successfully")
+    },
+    
+    // Get all configuration
+    "get_all": fn() {
+        return ConfigManager.config_data
+    },
+    
+    // Get environment info
+    "get_environment": fn() {
+        return {
+            "site": ConfigManager.current_site,
+            "region": ConfigManager.current_region,
+            "loaded_files": ConfigManager.loaded_files
+        }
+    },
+    
+    // Reload configuration
+    "reload": fn() {
+        log_info("Reloading configuration...")
+        
+        ConfigManager.config_data = {}
+        ConfigManager.loaded_files = []
+        
+        ConfigManager.load_base_config()
+        ConfigManager.load_environment_configs()
+        
+        log_info("Configuration reloaded successfully")
+    }
+}
+
+// Global configuration functions
+fn init_config(site, region) {
+    return ConfigManager.init(site, region)
+}
+
+fn get_config(key_path, default_value) {
+    return ConfigManager.get(key_path, default_value)
+}
+
+fn set_config(key_path, value) {
+    return ConfigManager.set(key_path, value)
+}
+
+fn reload_config() {
+    return ConfigManager.reload()
+}
+
+fn get_environment_info() {
+    return ConfigManager.get_environment()
+}
+
+// Export the configuration manager
+log_info("Configuration Manager ready for use")
+log_info("Usage:")
+log_info("  config = init_config('us', 'useast1')")
+log_info("  value = get_config('database.host', 'localhost')")
+log_info("  set_config('server.port', 8080)")

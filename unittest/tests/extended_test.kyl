@@ -1,0 +1,67 @@
+function test_file_operations() {
+    print("Testing file operations...")
+    
+    if (file_exists("unittest/simple_test.kyl")) {
+        print("PASS: File exists check")
+    } else {
+        print("FAIL: File exists check")
+    }
+}
+
+function test_string_functions() {
+    print("Testing string functions...")
+    
+    if (str_length("test") == 4) {
+        print("PASS: String length")
+    } else {
+        print("FAIL: String length")
+    }
+    
+    if (str_contains("hello world", "world")) {
+        print("PASS: String contains")
+    } else {
+        print("FAIL: String contains")
+    }
+    
+    if (str_trim("  hello  ") == "hello") {
+        print("PASS: String trim")
+    } else {
+        print("FAIL: String trim")
+    }
+}
+
+function test_advanced_math() {
+    print("Testing advanced math...")
+    
+    if (math_floor(3.7) == 3) {
+        print("PASS: Math floor")
+    } else {
+        print("FAIL: Math floor")
+    }
+    
+    if (math_ceil(3.2) == 4) {
+        print("PASS: Math ceil")
+    } else {
+        print("FAIL: Math ceil")
+    }
+    
+    if (math_round(3.6) == 4) {
+        print("PASS: Math round")
+    } else {
+        print("FAIL: Math round")
+    }
+}
+
+print("Kuyil Unit Test Framework - Extended Tests")
+print("==========================================")
+
+test_string_functions()
+print("")
+test_advanced_math()
+print("")
+test_file_operations()
+
+print("")
+print("==========================================")
+print("Extended tests completed!")
+print("==========================================")

@@ -1,0 +1,49 @@
+{
+  "company": "Tech Innovations Inc",
+  "founded": 2015,
+  "headquarters": "San Francisco, CA",
+  "employees": [
+    {
+      "id": 1,
+      "name": "Alice Johnson",
+      "position": "CEO",
+      "email": "alice@techinnovations.com",
+      "skills": ["leadership", "strategy", "business development"]
+    },
+    {
+      "id": 2,
+      "name": "Bob Chen",
+      "position": "CTO",
+      "email": "bob@techinnovations.com",
+      "skills": ["architecture", "cloud computing", "machine learning"]
+    },
+    {
+      "id": 3,
+      "name": "Carol Williams",
+      "position": "Lead Developer",
+      "email": "carol@techinnovations.com",
+      "skills": ["javascript", "python", "react", "node.js"]
+    }
+  ],
+  "products": [
+    {
+      "name": "CloudSync",
+      "version": "2.1.0",
+      "description": "Real-time data synchronization platform",
+      "price": 99.99,
+      "active": true
+    },
+    {
+      "name": "DataViz Pro",
+      "version": "1.5.2",
+      "description": "Advanced data visualization toolkit",
+      "price": 149.99,
+      "active": true
+    }
+  ],
+  "metadata": {
+    "last_updated": "2025-10-25T23:30:00Z",
+    "version": "1.0",
+    "format": "JSON"
+  }
+}

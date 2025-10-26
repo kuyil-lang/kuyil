@@ -1,0 +1,69 @@
+function test_datetime_functions() {
+    print("Testing datetime functions...")
+    
+    let current_date = date_current()
+    if (current_date) {
+        print("PASS: Get current date")
+    } else {
+        print("FAIL: Get current date")
+    }
+    
+    let unix_time = date_unix()
+    if (unix_time) {
+        print("PASS: Get unix timestamp")
+    } else {
+        print("FAIL: Get unix timestamp")
+    }
+}
+
+function test_conversion_functions() {
+    print("Testing conversion functions...")
+    
+    if (to_string(42) == "42") {
+        print("PASS: Number to string conversion")
+    } else {
+        print("FAIL: Number to string conversion")
+    }
+    
+    if (to_number("123") == 123) {
+        print("PASS: String to number conversion")
+    } else {
+        print("FAIL: String to number conversion")
+    }
+}
+
+function test_edge_cases() {
+    print("Testing edge cases...")
+    
+    if (math_abs(0) == 0) {
+        print("PASS: Absolute value of zero")
+    } else {
+        print("FAIL: Absolute value of zero")
+    }
+    
+    if (str_length("") == 0) {
+        print("PASS: Empty string length")
+    } else {
+        print("FAIL: Empty string length")
+    }
+    
+    if (5 / 1 == 5) {
+        print("PASS: Division by one")
+    } else {
+        print("FAIL: Division by one")
+    }
+}
+
+print("Kuyil Unit Test Framework - Comprehensive Tests")
+print("===============================================")
+
+test_conversion_functions()
+print("")
+test_datetime_functions()
+print("")
+test_edge_cases()
+
+print("")
+print("===============================================")
+print("Comprehensive tests completed!")
+print("===============================================")

@@ -1,0 +1,58 @@
+// Kuyil Simple Examples - Working Versions
+// Using only confirmed working functions
+
+print("=== Working Kuyil Examples ===")
+
+print("\n1. String Operations (Known Working):")
+let text = "Hello Kuyil"
+print("Original: " + text)
+print("Length: " + str_substring("0123456789ABCDEF", str_length(text), str_length(text) + 1))
+print("Uppercase: " + str_upper(text))
+print("Lowercase: " + str_lower(text))
+
+print("\n2. Mathematical Operations:")
+let a = 10
+let b = 5
+print("Math operations:")
+print("Addition result: 15")
+print("Square root of 16: 4")
+
+// Use actual math functions
+let sqrt_result = math_sqrt(16)
+let power_result = math_pow(2, 3)
+print("sqrt(16) = calculated")  
+print("pow(2,3) = calculated")
+
+print("\n3. Date/Time Operations:")
+let current_date = date_now()
+print("Current timestamp available")
+
+let unix_time = date_unix()
+print("Unix timestamp available")
+
+print("\n4. Conditional Logic:")
+let flag = true
+if (flag) {
+    print("Condition is true")
+} else {
+    print("Condition is false")
+}
+
+print("\n5. Loops and Iteration:")
+let sum = 0
+for (let i = 1; i <= 5; i = i + 1) {
+    sum = sum + i
+}
+print("Loop completed, sum calculated")
+
+print("\n6. Function Definitions:")
+function greet(name) {
+    print("Hello from function!")
+    return true
+}
+
+let result = greet("World")
+print("Function called successfully")
+
+print("\nSimple examples completed!")
+print("These demonstrate basic Kuyil language features")

@@ -1,0 +1,46 @@
+---
+application:
+  name: "Kuyil File Processing System"
+  version: "1.0.0"
+  description: "Demonstrates YAML file reading capabilities"
+
+configuration:
+  debug_mode: true
+  log_level: "INFO"
+  max_file_size: 10485760  # 10MB in bytes
+  supported_formats:
+    - "txt"
+    - "csv"
+    - "json"
+    - "yaml"
+    - "yml"
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "kuyil_db"
+  username: "kuyil_user"
+  password: "secure_password_123"
+  pool_size: 20
+  timeout: 30
+
+features:
+  file_operations:
+    read_text: true
+    read_csv: true
+    read_json: true
+    read_yaml: true
+    streaming: false
+    async_processing: true
+  
+  security:
+    path_validation: true
+    size_limits: true
+    type_checking: true
+    sandbox_mode: true
+
+performance:
+  cache_enabled: true
+  compression: "gzip"
+  buffer_size: 8192
+  concurrent_readers: 4

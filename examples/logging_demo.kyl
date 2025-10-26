@@ -1,0 +1,143 @@
+// Simple Logging Demo for Kuyil
+// Demonstrates basic structured logging patterns
+
+print("=== Kuyil Logging System Demo ===")
+print("")
+
+// 1. Basic Log Level Simulation
+print("1. Basic Log Level Simulation:")
+print("")
+
+print("[INFO] Application starting up...")
+print("[DEBUG] Loading configuration")
+print("[INFO] Configuration loaded successfully")
+print("[WARNING] Deprecated function detected")
+print("[ERROR] Failed to connect to external service")
+
+print("")
+
+// 2. Logging with Variables
+print("2. Logging with Variables:")
+print("")
+
+let user_id = 12345
+print("[INFO] Processing request for user ID: " + to_string(user_id))
+
+let status_code = 200
+print("[INFO] Request completed with status: " + to_string(status_code))
+
+let error_count = 0
+print("[DEBUG] Current error count: " + to_string(error_count))
+
+print("")
+
+// 3. Contextual Logging
+print("3. Contextual Logging:")
+print("")
+
+print("[INFO] [AUTH] User authentication started")
+print("[DEBUG] [AUTH] Validating credentials")
+print("[INFO] [AUTH] User authenticated successfully")
+
+print("[INFO] [API] Processing GET request")
+print("[DEBUG] [API] Parsing request parameters")
+print("[INFO] [API] Response sent successfully")
+
+print("[ERROR] [DB] Connection failed")
+print("[WARNING] [CACHE] Cache miss detected")
+
+print("")
+
+// 4. Conditional Logging
+print("4. Conditional Logging:")
+print("")
+
+let request_count = 5
+print("[DEBUG] Processing " + to_string(request_count) + " requests")
+
+if (request_count > 3) {
+    print("[WARNING] High request volume detected")
+} else {
+    print("[INFO] Normal request volume")
+}
+
+print("")
+
+// 5. Loop-based Logging
+print("5. Loop-based Logging:")
+print("")
+
+for (let i = 1; i <= 3; i = i + 1) {
+    print("[DEBUG] Processing item " + to_string(i))
+    
+    if (i == 2) {
+        print("[WARNING] Special handling for item " + to_string(i))
+    }
+    
+    print("[INFO] Item " + to_string(i) + " processed successfully")
+}
+
+print("")
+
+// 6. Error Handling Logging
+print("6. Error Handling Logging:")
+print("")
+
+let a = 10
+let b = 2
+print("[DEBUG] Attempting calculation: " + to_string(a) + " / " + to_string(b))
+
+if (b != 0) {
+    let result = a / b
+    print("[INFO] Calculation successful: result = " + to_string(result))
+} else {
+    print("[ERROR] Division by zero prevented")
+}
+
+let c = 15
+let d = 0
+print("[DEBUG] Attempting calculation: " + to_string(c) + " / " + to_string(d))
+
+if (d != 0) {
+    let result2 = c / d
+    print("[INFO] Calculation successful: result = " + to_string(result2))
+} else {
+    print("[ERROR] Division by zero prevented")
+}
+
+print("")
+
+// 7. Application State Logging
+print("7. Application State Logging:")
+print("")
+
+print("[INFO] === Application Startup ===")
+print("[DEBUG] Initializing modules...")
+print("[INFO] Server ready on port 8080")
+
+print("[INFO] === Runtime Operations ===")
+print("[DEBUG] Memory usage: 45%")
+print("[INFO] Serving requests...")
+
+print("[INFO] === Application Shutdown ===")
+print("[DEBUG] Cleaning up resources...")
+print("[INFO] Shutdown complete")
+
+print("")
+print("=== Logging Demo Complete ===")
+print("")
+print("✅ Logging Features Demonstrated:")
+print("✓ Basic log levels (INFO, DEBUG, WARNING, ERROR)")
+print("✓ Variable interpolation with to_string()")
+print("✓ Contextual logging with component tags")
+print("✓ Conditional logging based on application state")  
+print("✓ Loop-based logging for batch operations")
+print("✓ Error handling with logging")
+print("✓ Application lifecycle logging")
+print("")
+print("💡 Implementation Notes:")
+print("   - Uses print() with formatted strings")
+print("   - Leverages to_string() for variable conversion")
+print("   - Avoids complex operations to prevent segfaults")
+print("   - Demonstrates practical logging patterns")
+print("   - Safe and stable implementation")

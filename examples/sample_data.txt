@@ -1,0 +1,12 @@
+Hello, this is a sample text file for Kuyil file operations demo.
+
+This file contains multiple lines of text that can be read and processed
+by the Kuyil file loading system.
+
+Line 4: Numbers and special characters: 12345 !@#$%
+Line 5: Mixed content with "quoted strings" and data
+Line 6: JSON-like data: {"key": "value", "number": 42}
+Line 7: CSV-like data: name,age,city
+Line 8: More CSV data: John,25,New York
+Line 9: Unicode and international characters: café, naïve, résumé
+Line 10: Final line with timestamp: 2025-10-25T23:30:00Z

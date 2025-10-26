@@ -1,0 +1,27 @@
+SUBDIRS = math str http datetime
+
+.PHONY: all clean $(SUBDIRS)
+
+all: $(SUBDIRS)
+
+$(SUBDIRS):
+	$(MAKE) -C shared_libs/$@
+
+clean:
+	for dir in $(SUBDIRS); do \
+		$(MAKE) -C shared_libs/$$dir clean; \
+	done
+	rm -f libs/*.so
+
+# Individual library targets
+math:
+	$(MAKE) -C shared_libs/math
+
+str: 
+	$(MAKE) -C shared_libs/str
+
+http:
+	$(MAKE) -C shared_libs/http
+
+datetime:
+	$(MAKE) -C shared_libs/datetime
