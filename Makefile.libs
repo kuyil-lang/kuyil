@@ -1,4 +1,4 @@
-SUBDIRS = math str http datetime
+SUBDIRS = math str http datetime fileio
 
 .PHONY: all clean $(SUBDIRS)
 
@@ -25,3 +25,6 @@ http:
 
 datetime:
 	$(MAKE) -C shared_libs/datetime
+
+fileio:
+	$(MAKE) -C shared_libs/fileio

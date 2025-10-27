@@ -416,7 +416,13 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         CallFrame* frame = &vm->frames[vm->frame_count++];
         frame->function = function;
         frame->ip = function->chunk.code;
-        frame->slots = vm->stack_top - arg_count - 1; // Function and args
+        // Stack layout before: [... arg0] [arg1] ... [argN] [function] <- stack_top
+        // Set slots to point to arg0 (or to function position if no args)
+        frame->slots = vm->stack_top - arg_count - 1;
+        // Adjust stack_top to point after the arguments, so local variables can be pushed
+        // For arg_count args, we want stack_top to point to where slot[arg_count] is
+        // which is frame->slots + arg_count
+        vm->stack_top = frame->slots + arg_count;
         
         return true;
     }
@@ -424,7 +430,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
     if (callee.type == VALUE_STRING) {
         // Check dynamic functions loaded by modular library system FIRST
         if (is_dynamic_function(callee.as.string)) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count -1;
             Value result = call_dynamic_function(callee.as.string, arg_count, args);
             vm->stack_top -= arg_count + 1;
             vm_push(vm, result);
@@ -433,7 +439,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         
         // Built-in function call by name
         if (strcmp(callee.as.string, "print") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count -1;
             Value result = native_print(arg_count, args);
             vm->stack_top -= arg_count + 1; // Pop args and function
             vm_push(vm, result);
@@ -1923,7 +1929,7 @@ InterpretResult vm_run(VM* vm) {
             }
             case OP_CALL: {
                 int arg_count = READ_BYTE();
-                if (!call_value(vm, vm_peek(vm, arg_count), arg_count)) {
+                if (!call_value(vm, vm_peek(vm, 0), arg_count)) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 // frame = &vm->frames[vm->frame_count - 1];

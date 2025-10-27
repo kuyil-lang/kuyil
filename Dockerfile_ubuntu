@@ -1,0 +1,26 @@
+# Stage 1: Build on Ubuntu
+FROM ubuntu:22.04 AS builder-ubuntu
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y build-essential git libcurl4 libcurl4-openssl-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+RUN make clean && make kuyil && make -f Makefile.libs all
+
+# Stage 2: Final runtime (Ubuntu)
+FROM ubuntu:22.04 AS runtime-ubuntu
+WORKDIR /app
+COPY --from=builder-ubuntu /src/kuyil ./kuyil
+COPY --from=builder-ubuntu /src/libs ./libs
+COPY --from=builder-ubuntu /usr/lib/x86_64-linux-gnu/libcurl.so.4 /usr/lib/x86_64-linux-gnu/libcurl.so.4
+COPY examples/ ./examples/
+COPY unittest/ ./unittest/
+COPY run_tests.sh ./run_tests.sh
+RUN chmod +x ./kuyil ./run_tests.sh
+CMD ["./kuyil", "examples/simple_working.kyl"]

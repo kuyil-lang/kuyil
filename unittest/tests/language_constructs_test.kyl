@@ -1,0 +1,76 @@
+function testTrue(testName, boolVal) {
+    if (boolVal) {
+        print(`PASS: ${testName}`)
+    } else {
+        print(`Fail: ${testName}`)
+    }
+}
+
+let cnt2 = 5; 
+cnt2 = cnt2 + 2;
+testTrue("global increment value value by 2", cnt2 == 7)
+
+testTrue("addition operator", 1 + 2 == 3)
+testTrue("subtraction operator", 5 - 2 == 3)
+testTrue("multiplication operator", 2 * 3 == 6)
+testTrue("division operator", 8 / 2 == 4)
+testTrue("modulo operator", 7 % 3 == 1)
+testTrue("comparison operator", 4 > 2 && 2 < 4 && 4 == 4 && 3 != 4)
+
+fn() {
+    let cnt = 0; 
+    for (let i = 1; i <= 15; i = i + 1) {
+        cnt = i;
+    };
+    if (cnt == 15) {
+            print(`PASS: "for loop"`)
+    } else {
+            print(`FAIL: "for loop"`)
+    }
+}()
+
+fn() {
+    let cnt = 5; 
+    while (cnt != 10) {
+        cnt = 10;
+    };
+    if (cnt == 10) {
+            print(`PASS: "while loop"`)
+    } else {
+            print(`FAIL: "while loop"`)
+    }
+}()
+
+fn() {
+    let cnt2 = 5; 
+    cnt2 = cnt2 + 1;
+    if (cnt2 == 6) {
+            print(`PASS: "while loop 2"`)
+    } else {
+            print(`FAIL: "while loop 2"`)
+    }
+    while (cnt2 != 10) {
+        cnt2 = cnt2 + 1;
+    };
+    if (cnt2 == 10) {
+            print(`PASS: "while loop 3"`)
+    } else {
+            print(`FAIL: "while loop 3"`)
+    }
+}()
+
+
+let add = fn(a, b) { return a + b }; 
+let sum = add(2, 3)
+testTrue("function definition and call", sum == 5)
+
+fn() {
+    let add = fn(a, b) { return a + b }; 
+    let sum = add(2, 3)
+    testTrue("function definition and call", sum == 5)
+}()
+
+fn() {
+    let sum = (fn(x) {return x * x })(4)
+    testTrue("anonymous function call", sum == 16)
+}()

@@ -1,0 +1,17 @@
+# Stage 1: Build on Alpine
+FROM alpine:3.18 AS builder-alpine
+RUN apk add --no-cache build-base git curl curl-dev
+WORKDIR /src
+COPY . .
+RUN make clean && make kuyil && make -f Makefile.libs all
+
+# Stage 2: Final runtime (Alpine)
+FROM alpine:3.18 AS runtime-alpine
+WORKDIR /app
+COPY --from=builder-alpine /src/kuyil ./kuyil
+COPY --from=builder-alpine /src/libs ./libs
+COPY examples/ ./examples/
+COPY unittest/ ./unittest/
+COPY run_tests.sh ./run_tests.sh
+RUN chmod +x ./kuyil ./run_tests.sh
+CMD ["./kuyil", "examples/simple_working.kyl"]

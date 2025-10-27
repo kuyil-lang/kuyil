@@ -303,15 +303,15 @@ static void compile_call(ASTNode* node) {
             return;
         }
     }
-    
-    // Compile function expression
-    compile_expression(node->as.call.function);
-    
+
     // Compile arguments
     for (int i = 0; i < node->as.call.arg_count; i++) {
         compile_expression(node->as.call.args[i]);
     }
-    
+
+    // Compile function expression
+    compile_expression(node->as.call.function);
+
     emit_bytes(OP_CALL, node->as.call.arg_count);
 }
 
