@@ -1,0 +1,52 @@
+// Arrays test
+print("=== Array Tests ===")
+
+// Test 1: Array literal
+let arr1 = [1, 2, 3, 4, 5]
+print("Test 1 - Array literal: ", arr1)
+
+// Test 2: Array access
+let first = arr1[0]
+let last = arr1[4]
+print("Test 2 - Array access: first=", first, " last=", last)
+
+// Test 3: Array assignment
+arr1[2] = 99
+print("Test 3 - Array assignment: ", arr1)
+
+// Test 4: Empty array
+let empty = []
+print("Test 4 - Empty array: ", empty)
+
+// Test 5: Array with expressions
+let x = 10
+let y = 20
+let arr2 = [x, y, x + y]
+print("Test 5 - Array with expressions: ", arr2)
+
+// Test 6: Array with mixed types
+let mixed = [1, "hello", true, nil]
+print("Test 6 - Mixed types: ", mixed)
+
+// Test 7: Nested arrays
+let nested = [[1, 2], [3, 4], [5, 6]]
+print("Test 7 - Nested arrays: ", nested)
+
+// Test 8: Array in loop
+let sum = 0
+let nums = [10, 20, 30, 40, 50]
+for (let i = 0; i < 5; i = i + 1) {
+    sum = sum + nums[i]
+}
+print("Test 8 - Array in loop, sum: ", sum)
+
+// Test 9: Array with variable index
+let idx = 2
+let value = nums[idx]
+print("Test 9 - Variable index: nums[", idx, "] = ", value)
+
+// Test 10: Array assignment with expression
+nums[1] = nums[1] + 5
+print("Test 10 - Array assignment with expression: ", nums)
+
+print("=== All Array Tests Complete ===")

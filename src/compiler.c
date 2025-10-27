@@ -328,9 +328,35 @@ static void compile_assignment(ASTNode* node) {
             uint8_t name_constant = identifier_constant(name);
             emit_bytes(OP_SET_GLOBAL, name_constant);
         }
+    } else if (node->as.assignment.target->type == AST_ARRAY_ACCESS) {
+        // For array[index] = value, we need: array, index, value
+        compile_expression(node->as.assignment.target->as.array_access.array);
+        compile_expression(node->as.assignment.target->as.array_access.index);
+        emit_byte(OP_ARRAY_SET);
     } else {
         error_at_node(node, "Invalid assignment target.");
     }
+}
+
+static void compile_array_literal(ASTNode* node) {
+    // Compile each element and push onto stack
+    for (int i = 0; i < node->as.array_literal.count; i++) {
+        compile_expression(node->as.array_literal.elements[i]);
+    }
+    
+    // Emit OP_ARRAY with element count
+    emit_bytes(OP_ARRAY, (uint8_t)node->as.array_literal.count);
+}
+
+static void compile_array_access(ASTNode* node) {
+    // Compile array expression
+    compile_expression(node->as.array_access.array);
+    
+    // Compile index expression
+    compile_expression(node->as.array_access.index);
+    
+    // Emit OP_ARRAY_GET
+    emit_byte(OP_ARRAY_GET);
 }
 
 static void compile_expression(ASTNode* node) {
@@ -360,6 +386,12 @@ static void compile_expression(ASTNode* node) {
             break;
         case AST_ANONYMOUS_FUNCTION:
             compile_anonymous_function(node);
+            break;
+        case AST_ARRAY_LITERAL:
+            compile_array_literal(node);
+            break;
+        case AST_ARRAY_ACCESS:
+            compile_array_access(node);
             break;
         default:
             error_at_node(node, "Unknown expression type.");
@@ -413,7 +445,7 @@ static void compile_anonymous_function(ASTNode* node) {
 static void compile_var_decl(ASTNode* node) {
     if (current->scope_depth > 0) {
         // Local variable
-        int local = add_local(node->as.var_decl.name);
+        add_local(node->as.var_decl.name);
         if (node->as.var_decl.value) {
             compile_expression(node->as.var_decl.value);
         } else {

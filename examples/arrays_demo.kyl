@@ -1,0 +1,122 @@
+// Comprehensive Array Example for Kuyil Language
+
+print("=== Kuyil Array Examples ===\n")
+
+// Example 1: Simple shopping list
+print("1. Shopping List:")
+let shopping = ["apples", "bananas", "milk", "bread", "eggs"]
+print("   Items:", shopping)
+print("   First item:", shopping[0])
+print("   Last item:", shopping[4])
+print()
+
+// Example 2: Temperature readings
+print("2. Temperature Readings (Celsius):")
+let temps = [22, 24, 23, 25, 26, 24, 23]
+print("   Week temperatures:", temps)
+
+let sum = 0
+for (let i = 0; i < 7; i = i + 1) {
+    sum = sum + temps[i]
+}
+let avg = sum / 7
+print("   Average temperature:", avg)
+print()
+
+// Example 3: Student scores
+print("3. Student Scores:")
+let scores = [85, 92, 78, 95, 88]
+print("   All scores:", scores)
+
+// Find highest score
+let highest = scores[0]
+for (let i = 1; i < 5; i = i + 1) {
+    if (scores[i] > highest) {
+        highest = scores[i]
+    }
+}
+print("   Highest score:", highest)
+print()
+
+// Example 4: Modifying array values
+print("4. Price Updates:")
+let prices = [10, 20, 30, 40, 50]
+print("   Original prices:", prices)
+
+// Apply 10% discount
+for (let i = 0; i < 5; i = i + 1) {
+    prices[i] = prices[i] * 0.9
+}
+print("   After 10% discount:", prices)
+print()
+
+// Example 5: 2D Array (Matrix)
+print("5. Tic-Tac-Toe Board:")
+let board = [["X", "O", "X"], ["O", "X", "O"], ["O", "X", "X"]]
+print("   Row 1:", board[0])
+print("   Row 2:", board[1])
+print("   Row 3:", board[2])
+print("   Center square:", board[1][1])
+print()
+
+// Example 6: Mixed data types
+print("6. User Profile:")
+let user = ["John Doe", 30, true, "john@example.com"]
+print("   Name:", user[0])
+print("   Age:", user[1])
+print("   Active:", user[2])
+print("   Email:", user[3])
+print()
+
+// Example 7: RGB Colors:
+print("7. RGB Colors:")
+let colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]]
+print("   Red:", colors[0])
+print("   Green:", colors[1])
+print("   Blue:", colors[2])
+print("   Yellow:", colors[3])
+print()
+
+// Example 8: Building array dynamically
+print("8. Dynamic Array Construction:")
+let fibonacci = [0, 1]
+print("   Initial:", fibonacci)
+// Note: Currently arrays are fixed size, so we can't grow them
+// This will be supported in future versions with push() method
+print()
+
+// Example 9: Array comparison
+print("9. Finding element:")
+let needles = [10, 20, 30, 40, 50]
+let target = 30
+let found = false
+let foundIndex = -1
+
+for (let i = 0; i < 5; i = i + 1) {
+    if (needles[i] == target) {
+        found = true
+        foundIndex = i
+    }
+}
+
+print("   Array:", needles)
+print("   Looking for:", target)
+if (found) {
+    print("   Found at index:", foundIndex)
+}
+print()
+
+// Example 10: Copy and modify
+print("10. Array Operations:")
+let original = [1, 2, 3, 4, 5]
+print("   Original:", original)
+
+// Multiply each element by 2
+let doubled = [0, 0, 0, 0, 0]
+for (let i = 0; i < 5; i = i + 1) {
+    doubled[i] = original[i] * 2
+}
+print("   Doubled:", doubled)
+print()
+
+print("=== All Examples Complete ===")

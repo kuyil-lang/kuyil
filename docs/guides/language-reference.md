@@ -4,11 +4,12 @@
 1. [Basic Syntax](#basic-syntax)
 2. [Data Types](#data-types)
 3. [Variables](#variables)
-4. [Functions](#functions)
-5. [Control Flow](#control-flow)
-6. [Built-in Functions](#built-in-functions)
-7. [HTTP Support](#http-support)
-8. [Error Handling](#error-handling)
+4. [Arrays](#arrays)
+5. [Functions](#functions)
+6. [Control Flow](#control-flow)
+7. [Built-in Functions](#built-in-functions)
+8. [HTTP Support](#http-support)
+9. [Error Handling](#error-handling)
 
 ## Basic Syntax
 
@@ -47,9 +48,15 @@ let pi = 3.14159
 let message = "Hello, World!"
 ```
 
-### Collections (Future)
-- **array**: Ordered collection of values
-- **object**: Key-value pairs (dictionary/map)
+### Collections
+- **array**: Ordered collection of values (supported)
+- **object**: Key-value pairs (future support)
+
+```kuyil
+let numbers = [1, 2, 3, 4, 5]
+let mixed = [1, "text", true, nil]
+let nested = [[1, 2], [3, 4]]
+```
 
 ## Variables
 
@@ -75,6 +82,164 @@ x -= 3              // x = x - 3
 x *= 2              // x = x * 2
 x /= 4              // x = x / 4
 ```
+
+## Arrays
+
+Kuyil supports arrays as ordered collections of values with zero-based indexing.
+
+### Array Literals
+
+Create arrays using square brackets:
+
+```kuyil
+let numbers = [1, 2, 3, 4, 5]
+let strings = ["hello", "world"]
+let mixed = [1, "text", true, nil]
+let empty = []
+let nested = [[1, 2], [3, 4]]
+```
+
+### Array Access
+
+Access array elements using square bracket notation with zero-based indexing:
+
+```kuyil
+let arr = [10, 20, 30, 40, 50]
+let first = arr[0]   // 10
+let third = arr[2]   // 30
+let last = arr[4]    // 50
+
+// Nested array access
+let matrix = [[1, 2, 3], [4, 5, 6]]
+print(matrix[1][2])  // 6
+```
+
+### Array Assignment
+
+Modify array elements by assigning to an index:
+
+```kuyil
+let arr = [1, 2, 3]
+arr[1] = 99
+print(arr)  // [1, 99, 3]
+
+// Array assignment with expressions
+let nums = [10, 20, 30]
+nums[1] = nums[1] + 5
+print(nums)  // [10, 25, 30]
+```
+
+### Arrays with Expressions
+
+Array elements can be any expression:
+
+```kuyil
+let x = 10
+let y = 20
+let arr = [x, y, x + y, x * y]
+print(arr)  // [10, 20, 30, 200]
+```
+
+### Arrays in Loops
+
+Use arrays with loops to iterate over elements:
+
+```kuyil
+let numbers = [10, 20, 30, 40, 50]
+let sum = 0
+
+for (let i = 0; i < 5; i = i + 1) {
+    sum = sum + numbers[i]
+}
+
+print(sum)  // 150
+
+// Find maximum value
+let values = [15, 42, 8, 23, 16]
+let max = values[0]
+for (let i = 1; i < 5; i = i + 1) {
+    if (values[i] > max) {
+        max = values[i]
+    }
+}
+print(max)  // 42
+```
+
+### Nested Arrays
+
+Arrays can contain other arrays for multi-dimensional data:
+
+```kuyil
+// 2D array (matrix)
+let matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+print(matrix[0])     // [1, 2, 3]
+print(matrix[1][1])  // 5
+
+// Array of user records
+let users = [
+    ["Alice", 30, "alice@example.com"],
+    ["Bob", 25, "bob@example.com"],
+    ["Charlie", 35, "charlie@example.com"]
+]
+print(users[0][0])  // Alice
+print(users[1][1])  // 25
+```
+
+### Array Examples
+
+#### Shopping List
+```kuyil
+let shopping = ["apples", "bananas", "milk", "bread", "eggs"]
+print("First item:", shopping[0])
+print("Total items:", 5)
+
+// Mark item as purchased
+shopping[2] = "✓ milk"
+print(shopping)
+```
+
+#### Temperature Analysis
+```kuyil
+let temps = [22, 24, 23, 25, 26, 24, 23]
+let sum = 0
+for (let i = 0; i < 7; i = i + 1) {
+    sum = sum + temps[i]
+}
+let avg = sum / 7
+print("Average temperature:", avg)
+```
+
+#### Student Scores
+```kuyil
+let scores = [85, 92, 78, 95, 88]
+
+// Find highest score
+let highest = scores[0]
+for (let i = 1; i < 5; i = i + 1) {
+    if (scores[i] > highest) {
+        highest = scores[i]
+    }
+}
+print("Highest score:", highest)  // 95
+```
+
+### Current Limitations
+
+- Arrays have fixed size (set at creation)
+- No built-in array methods yet
+- Memory management is basic
+
+### Future Array Features
+
+Planned features include:
+- `array.length` property
+- `array.push(value)` method  
+- `array.pop()` method
+- `array.slice(start, end)` method
+- `array.map(fn)` method
+- `array.filter(fn)` method
+- `array.reduce(fn, initial)` method
+- Dynamic array resizing
 
 ## Functions
 

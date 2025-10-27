@@ -328,7 +328,8 @@ bool is_dynamic_function(const char* name) {
 // Create a function value for a dynamic function (placeholder)
 Value create_dynamic_function_value(const char* name) {
     // For now, we'll create a special marker value that the VM can recognize
-    Value result = {VALUE_STRING};
+    Value result;
+    result.type = VALUE_STRING;
     result.as.string = strdup(name); // This will be freed properly in vm_free
     return result;
 }
@@ -675,7 +676,8 @@ Value vm_add_library(int arg_count, Value* args) {
     // Add library to registry
     if (g_library_registry.library_count >= MAX_LIBRARIES) {
         LOG_WARNING("Maximum libraries reached, cannot add: %s", name);
-        Value result = {VALUE_BOOL};
+        Value result;
+        result.type = VALUE_BOOL;
         result.as.boolean = false;
         return result;
     }
@@ -694,7 +696,8 @@ Value vm_add_library(int arg_count, Value* args) {
     
     LOG_INFO("Added library configuration: %s -> %s", name, path);
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    result.type = VALUE_BOOL;
     result.as.boolean = true;
     return result;
 }
@@ -715,18 +718,21 @@ Value vm_load_library_inline(int arg_count, Value* args) {
             if (!lib->is_loaded) {
                 if (load_library(lib->name)) {
                     LOG_INFO("Successfully loaded library: %s", name);
-                    Value result = {VALUE_BOOL};
+                    Value result;
+                    result.type = VALUE_BOOL;
                     result.as.boolean = true;
                     return result;
                 } else {
                     LOG_WARNING("Failed to load library: %s", name);
-                    Value result = {VALUE_BOOL};
+                    Value result;
+                    result.type = VALUE_BOOL;
                     result.as.boolean = false;
                     return result;
                 }
             } else {
                 LOG_INFO("Library already loaded: %s", name);
-                Value result = {VALUE_BOOL};
+                Value result;
+                result.type = VALUE_BOOL;
                 result.as.boolean = true;
                 return result;
             }
@@ -734,7 +740,8 @@ Value vm_load_library_inline(int arg_count, Value* args) {
     }
     
     LOG_WARNING("Library not found in registry: %s", name);
-    Value result = {VALUE_BOOL};
+    Value result;
+    result.type = VALUE_BOOL;
     result.as.boolean = false;
     return result;
 }
@@ -759,7 +766,8 @@ Value vm_clear_libraries(int arg_count, Value* args) {
     
     LOG_INFO("Cleared all library configurations");
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    result.type = VALUE_BOOL;
     result.as.boolean = true;
     return result;
 }
@@ -778,7 +786,8 @@ static int g_imported_module_count = 0;
 // Import functions from another Kuyil module: import("path/to/module.kyl")
 Value vm_import_module(int arg_count, Value* args) {
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+        result.type = VALUE_NIL;
         return result;
     }
     
@@ -788,7 +797,8 @@ Value vm_import_module(int arg_count, Value* args) {
     for (int i = 0; i < g_imported_module_count; i++) {
         if (strcmp(g_imported_modules[i].path, module_path) == 0) {
             LOG_INFO("Module already imported: %s", module_path);
-            Value result = {VALUE_BOOL};
+            Value result;
+            result.type = VALUE_BOOL;
             result.as.boolean = true;
             return result;
         }
@@ -798,7 +808,8 @@ Value vm_import_module(int arg_count, Value* args) {
     FILE* file = fopen(module_path, "r");
     if (!file) {
         LOG_ERROR("Cannot open module file: %s", module_path);
-        Value result = {VALUE_BOOL};
+        Value result;
+        result.type = VALUE_BOOL;
         result.as.boolean = false;
         return result;
     }
@@ -812,7 +823,8 @@ Value vm_import_module(int arg_count, Value* args) {
     char* source = malloc(file_size + 1);
     if (!source) {
         fclose(file);
-        Value result = {VALUE_BOOL};
+        Value result;
+        result.type = VALUE_BOOL;
         result.as.boolean = false;
         return result;
     }
@@ -850,7 +862,8 @@ Value vm_import_module(int arg_count, Value* args) {
     // For now, we simulate successful import
     free(source);
     
-    Value result = {VALUE_STRING};
+    Value result;
+    result.type = VALUE_STRING;
     result.as.string = strdup(clean_name);
     return result;
 }
@@ -858,7 +871,8 @@ Value vm_import_module(int arg_count, Value* args) {
 // Export a function from current module: export_function("function_name")
 Value vm_export_function(int arg_count, Value* args) {
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+        result.type = VALUE_NIL;
         return result;
     }
     
@@ -868,7 +882,8 @@ Value vm_export_function(int arg_count, Value* args) {
     // For now, we just log the export
     LOG_INFO("Function exported: %s", function_name);
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    result.type = VALUE_BOOL;
     result.as.boolean = true;
     return result;
 }

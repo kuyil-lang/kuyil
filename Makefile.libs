@@ -12,19 +12,3 @@ clean:
 		$(MAKE) -C shared_libs/$$dir clean; \
 	done
 	rm -f libs/*.so
-
-# Individual library targets
-math:
-	$(MAKE) -C shared_libs/math
-
-str: 
-	$(MAKE) -C shared_libs/str
-
-http:
-	$(MAKE) -C shared_libs/http
-
-datetime:
-	$(MAKE) -C shared_libs/datetime
-
-fileio:
-	$(MAKE) -C shared_libs/fileio

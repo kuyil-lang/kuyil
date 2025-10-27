@@ -187,6 +187,16 @@ void ast_node_free(ASTNode* node) {
             free(node->as.anonymous_function.params);
             ast_node_free(node->as.anonymous_function.body);
             break;
+        case AST_ARRAY_LITERAL:
+            for (int i = 0; i < node->as.array_literal.count; i++) {
+                ast_node_free(node->as.array_literal.elements[i]);
+            }
+            free(node->as.array_literal.elements);
+            break;
+        case AST_ARRAY_ACCESS:
+            ast_node_free(node->as.array_access.array);
+            ast_node_free(node->as.array_access.index);
+            break;
         // Add other cases as needed
         default:
             break;
@@ -200,6 +210,37 @@ static ASTNode* expression(Parser* parser);
 static ASTNode* statement(Parser* parser);
 static ASTNode* declaration(Parser* parser);
 static ASTNode* parse_anonymous_function(Parser* parser, bool is_arrow);
+static ASTNode* parse_array_literal(Parser* parser);
+
+// Parse array literal [1, 2, 3]
+static ASTNode* parse_array_literal(Parser* parser) {
+    ASTNode* node = ast_node_new(AST_ARRAY_LITERAL);
+    node->as.array_literal.count = 0;
+    node->as.array_literal.capacity = 8;
+    node->as.array_literal.elements = malloc(sizeof(ASTNode*) * node->as.array_literal.capacity);
+    
+    // Empty array []
+    if (check(parser, TOKEN_RIGHT_BRACKET)) {
+        parser_advance(parser);
+        return node;
+    }
+    
+    // Parse array elements
+    do {
+        if (node->as.array_literal.count >= node->as.array_literal.capacity) {
+            node->as.array_literal.capacity *= 2;
+            node->as.array_literal.elements = realloc(node->as.array_literal.elements, 
+                                                      sizeof(ASTNode*) * node->as.array_literal.capacity);
+        }
+        
+        node->as.array_literal.elements[node->as.array_literal.count++] = expression(parser);
+        
+    } while (parser_match(parser, TOKEN_COMMA));
+    
+    consume(parser, TOKEN_RIGHT_BRACKET, "Expect ']' after array elements.");
+    return node;
+}
+
 
 // Parse interpolated string with ${} syntax
 static ASTNode* parse_interpolated_string(Parser* parser) {
@@ -365,6 +406,10 @@ static ASTNode* primary(Parser* parser) {
         return parse_anonymous_function(parser, false);
     }
     
+    if (parser_match(parser, TOKEN_LEFT_BRACKET)) {
+        return parse_array_literal(parser);
+    }
+    
     error_at_current(parser, "Expect expression.");
     return NULL;
 }
@@ -403,6 +448,12 @@ static ASTNode* call(Parser* parser) {
             name[name_token->length] = '\0';
             member_node->as.member.property = name;
             expr = member_node;
+        } else if (parser_match(parser, TOKEN_LEFT_BRACKET)) {
+            ASTNode* array_access_node = ast_node_new(AST_ARRAY_ACCESS);
+            array_access_node->as.array_access.array = expr;
+            array_access_node->as.array_access.index = expression(parser);
+            consume(parser, TOKEN_RIGHT_BRACKET, "Expect ']' after array index.");
+            expr = array_access_node;
         } else {
             break;
         }

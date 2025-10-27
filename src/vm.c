@@ -175,7 +175,12 @@ static void print_value(Value value) {
             printf("%s", value.as.string); 
             break;
         case VALUE_ARRAY:
-            printf("[Array with %d elements]", value.as.array.count);
+            printf("[");
+            for (int i = 0; i < value.as.array.count; i++) {
+                print_value(value.as.array.values[i]);
+                if (i < value.as.array.count - 1) printf(", ");
+            }
+            printf("]");
             break;
         case VALUE_OBJECT:
             printf("{Object with %d fields}", value.as.object.count);
@@ -265,127 +270,6 @@ static Value native_to_string(int arg_count, Value* args) {
             break;
     }
     
-    return result;
-}
-
-// Math functions now handled by modular library system
-
-// Date utility functions now handled by modular library system
-
-// WebView integration functions (legacy - now handled by modular library system)
-// These functions are temporarily disabled while transitioning to the new modular system
-
-static Value native_webview_init(int arg_count, Value* args) {
-    (void)arg_count; (void)args; // Unused parameters
-    
-    // TODO: Use new modular library system via call_dynamic_function
-    LOG_INFO("WebView init called - will be handled by modular library system");
-    Value result = {VALUE_NUMBER, {.number = 1}};
-    return result;
-}
-
-static Value native_webview_create_window(int arg_count, Value* args) {
-    if (arg_count != 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
-        return result;
-    }
-    
-    // TODO: Use new modular library system via call_dynamic_function
-    LOG_INFO("WebView create_window called for: %s - will be handled by modular library system", args[0].as.string);
-    Value result = {VALUE_NIL};
-    return result;
-}
-
-static Value native_webview_run(int arg_count, Value* args) {
-    if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NUMBER, {.number = -1}};
-        return result;
-    }
-    
-    // TODO: Use new modular library system via call_dynamic_function
-    LOG_INFO("WebView run called - will be handled by modular library system");
-    Value result = {VALUE_NUMBER, {.number = 0}};
-    return result;
-}
-
-static Value native_webview_load_html(int arg_count, Value* args) {
-    if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NUMBER, {.number = 0}};
-        return result;
-    }
-    
-    // TODO: Use new modular library system via call_dynamic_function
-    LOG_INFO("WebView load_html called - will be handled by modular library system");
-    Value result = {VALUE_NUMBER, {.number = 1}};
-    return result;
-}
-
-static Value native_webview_cleanup(int arg_count, Value* args) {
-    (void)arg_count; (void)args; // Unused parameters
-    
-    // TODO: Use new modular library system via call_dynamic_function
-    LOG_INFO("WebView cleanup called - will be handled by modular library system");
-    Value result = {VALUE_NUMBER, {.number = 1}};
-    return result;
-}
-
-// HTTP Server Functions
-static Value native_http_server(int arg_count, Value* args) {
-    if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
-        return result;
-    }
-    
-    int port = (int)args[0].as.number;
-    
-    // Start HTTP server on specified port
-    // For now, return the port number to indicate success
-    Value result = {VALUE_NUMBER, {.number = port}};
-    return result;
-}
-
-static Value native_http_get(int arg_count, Value* args) {
-    if (arg_count != 2 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
-        return result;
-    }
-    
-    const char* path = args[0].as.string;
-    // args[1] should be a callback function (for now just log the path)
-    
-    kuyil_log_info("HTTP GET route registered: %s", path);
-    
-    Value result = {VALUE_STRING, {.string = strdup(path)}};
-    return result;
-}
-
-static Value native_http_post(int arg_count, Value* args) {
-    if (arg_count != 2 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
-        return result;
-    }
-    
-    const char* path = args[0].as.string;
-    // args[1] should be a callback function
-    
-    kuyil_log_info("HTTP POST route registered: %s", path);
-    
-    Value result = {VALUE_STRING, {.string = strdup(path)}};
-    return result;
-}
-
-static Value native_http_listen(int arg_count, Value* args) {
-    if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
-        return result;
-    }
-    
-    int port = (int)args[0].as.number;
-    
-    kuyil_log_info("HTTP server listening on port %d", port);
-    
-    // For now, just return success indicator
-    Value result = {VALUE_BOOL, {.boolean = true}};
     return result;
 }
 
@@ -1556,47 +1440,6 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             }
             return true;
         }
-        
-        // WebView desktop application functions (legacy fallbacks)
-        if (strcmp(callee.as.string, "webview_init") == 0) {
-            Value* args = vm->stack_top - arg_count;
-            Value result = native_webview_init(arg_count, args);
-            vm->stack_top -= arg_count + 1;
-            vm_push(vm, result);
-            return true;
-        }
-        
-        if (strcmp(callee.as.string, "webview_create_window") == 0) {
-            Value* args = vm->stack_top - arg_count;
-            Value result = native_webview_create_window(arg_count, args);
-            vm->stack_top -= arg_count + 1;
-            vm_push(vm, result);
-            return true;
-        }
-        
-        if (strcmp(callee.as.string, "webview_load_html") == 0) {
-            Value* args = vm->stack_top - arg_count;
-            Value result = native_webview_load_html(arg_count, args);
-            vm->stack_top -= arg_count + 1;
-            vm_push(vm, result);
-            return true;
-        }
-        
-        if (strcmp(callee.as.string, "webview_run") == 0) {
-            Value* args = vm->stack_top - arg_count;
-            Value result = native_webview_run(arg_count, args);
-            vm->stack_top -= arg_count + 1;
-            vm_push(vm, result);
-            return true;
-        }
-        
-        if (strcmp(callee.as.string, "webview_cleanup") == 0) {
-            Value* args = vm->stack_top - arg_count;
-            Value result = native_webview_cleanup(arg_count, args);
-            vm->stack_top -= arg_count + 1;
-            vm_push(vm, result);
-            return true;
-        }
     }
     
     runtime_error(vm, "Can only call functions and classes.");
@@ -1999,9 +1842,73 @@ InterpretResult vm_run(VM* vm) {
                 kuyil_pop_function_context();
                 break;
             }
+            case OP_ARRAY: {
+                uint8_t count = READ_BYTE();
+                Value array;
+                array.type = VALUE_ARRAY;
+                array.as.array.count = count;
+                array.as.array.values = malloc(sizeof(Value) * count);
+                
+                // Pop elements in reverse order (last element pushed first)
+                for (int i = count - 1; i >= 0; i--) {
+                    array.as.array.values[i] = vm_pop(vm);
+                }
+                
+                vm_push(vm, array);
+                break;
+            }
+            case OP_ARRAY_GET: {
+                Value index = vm_pop(vm);
+                Value array = vm_pop(vm);
+                
+                if (array.type != VALUE_ARRAY) {
+                    runtime_error(vm, "Can only index arrays.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (index.type != VALUE_NUMBER) {
+                    runtime_error(vm, "Array index must be a number.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                int idx = (int)index.as.number;
+                if (idx < 0 || idx >= array.as.array.count) {
+                    runtime_error(vm, "Array index out of bounds.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                vm_push(vm, array.as.array.values[idx]);
+                break;
+            }
+            case OP_ARRAY_SET: {
+                Value index = vm_pop(vm);
+                Value array = vm_pop(vm);
+                Value value = vm_pop(vm);
+                
+                if (array.type != VALUE_ARRAY) {
+                    runtime_error(vm, "Can only index arrays.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (index.type != VALUE_NUMBER) {
+                    runtime_error(vm, "Array index must be a number.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                int idx = (int)index.as.number;
+                if (idx < 0 || idx >= array.as.array.count) {
+                    runtime_error(vm, "Array index out of bounds.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                array.as.array.values[idx] = value;
+                vm_push(vm, value); // Assignment expression returns the value
+                break;
+            }
             case OP_HALT:
                 return INTERPRET_OK;
             default:
+
                 runtime_error(vm, "Unknown opcode %d", instruction);
                 return INTERPRET_RUNTIME_ERROR;
         }
@@ -2484,7 +2391,7 @@ void vm_init(VM* vm) {
     define_global(vm, "http_post", http_post_val);
     define_global(vm, "http_listen", http_listen_val);
     
-    // Initialize modular library system (replaces hardcoded WebView integration)
+    // Initialize modular library system
     vm_init_library_system(vm);
     
     LOG_INFO("FFI system initialized with %d functions", 53);

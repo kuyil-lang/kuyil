@@ -17,6 +17,32 @@ testTrue("division operator", 8 / 2 == 4)
 testTrue("modulo operator", 7 % 3 == 1)
 testTrue("comparison operator", 4 > 2 && 2 < 4 && 4 == 4 && 3 != 4)
 
+// Test array literal
+let arr = [1, 2, 3, 4, 5]
+print(arr)
+
+// Test array access
+let first = arr[0]
+print(first)
+
+let last = arr[4]
+print(last)
+
+// Test array assignment
+arr[2] = 99
+print(arr)
+print(arr[2])
+
+// Test empty array
+let empty = []
+print(empty)
+
+// Test array with expressions
+let x = 10
+let y = 20
+let arr2 = [x, y, x + y]
+print(arr2)
+
 fn() {
     let cnt = 0; 
     for (let i = 1; i <= 15; i = i + 1) {

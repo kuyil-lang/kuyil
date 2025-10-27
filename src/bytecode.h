@@ -57,6 +57,11 @@ typedef enum {
     OP_HTTP_POST,      // HTTP POST request
     OP_HTTP_SERVER,    // Create HTTP server
     
+    // Array operations
+    OP_ARRAY,          // Create array with N elements from stack
+    OP_ARRAY_GET,      // Get array element by index
+    OP_ARRAY_SET,      // Set array element by index
+    
     // Logging operations
     OP_LOG_FATAL,      // Log fatal message
     OP_LOG_ERROR,      // Log error message
