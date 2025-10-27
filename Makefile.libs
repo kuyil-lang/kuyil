@@ -2,12 +2,26 @@ SUBDIRS = math str http datetime fileio
 # Windows builds skip http library (requires curl/libcurl setup)
 SUBDIRS_WINDOWS = math str datetime fileio
 
+# Optionally include additional_libs if directory exists
+ifneq ($(wildcard additional_libs/.),)
+    ADDITIONAL_LIBS := $(patsubst additional_libs/%,%,$(wildcard additional_libs/*))
+    SUBDIRS += $(ADDITIONAL_LIBS)
+    SUBDIRS_WINDOWS += $(filter-out http,$(ADDITIONAL_LIBS))
+    $(info Found additional_libs: $(ADDITIONAL_LIBS))
+endif
+
 .PHONY: all clean $(SUBDIRS) cross-windows cross-windows-32 cross-macos macos
 
 all: $(SUBDIRS)
 
 $(SUBDIRS):
-	$(MAKE) -C shared_libs/$@
+	@if [ -d shared_libs/$@ ]; then \
+		$(MAKE) -C shared_libs/$@; \
+	elif [ -d additional_libs/$@ ]; then \
+		$(MAKE) -C additional_libs/$@; \
+	else \
+		echo "Warning: Library directory not found for $@"; \
+	fi
 
 # Cross-compilation for Windows (64-bit)
 cross-windows:
@@ -15,25 +29,39 @@ cross-windows:
 	@echo "Note: Skipping http library (requires libcurl-devel for MinGW)"
 	@for dir in $(SUBDIRS_WINDOWS); do \
 		echo "Building $$dir for Windows..."; \
-		$(MAKE) -C shared_libs/$$dir \
-			CC=x86_64-w64-mingw32-gcc \
-			CFLAGS="-Wall -Wextra -std=c99 -O2 -DWIN32 -D_WIN32_WINNT=0x0600" \
-			TARGET="../../libs/libkyl$$dir.dll" || true; \
+		if [ -d shared_libs/$$dir ]; then \
+			$(MAKE) -C shared_libs/$$dir \
+				CC=x86_64-w64-mingw32-gcc \
+				CFLAGS="-Wall -Wextra -std=c99 -O2 -DWIN32 -D_WIN32_WINNT=0x0600" \
+				TARGET="../../libs/libkyl$$dir.dll" || true; \
+		elif [ -d additional_libs/$$dir ]; then \
+			$(MAKE) -C additional_libs/$$dir \
+				CC=x86_64-w64-mingw32-gcc \
+				CFLAGS="-Wall -Wextra -std=c99 -O2 -DWIN32 -D_WIN32_WINNT=0x0600" \
+				TARGET="../../libs/libkyl$$dir.dll" || true; \
+		fi; \
 	done
 	@echo "Windows shared libraries built in libs/"
 
 # Cross-compilation for Windows (32-bit)
 cross-windows-32:
-	@echo "Building shared libraries for Windows (i686/32-bit)..."
+	@echo "Building shared libraries for Windows (i686)..."
 	@echo "Note: Skipping http library (requires libcurl-devel for MinGW)"
 	@for dir in $(SUBDIRS_WINDOWS); do \
-		echo "Building $$dir for Windows 32-bit..."; \
-		$(MAKE) -C shared_libs/$$dir \
-			CC=i686-w64-mingw32-gcc \
-			CFLAGS="-Wall -Wextra -std=c99 -O2 -DWIN32 -D_WIN32_WINNT=0x0600" \
-			TARGET="../../libs/libkyl$$dir-win32.dll" || true; \
+		echo "Building $$dir for Windows (32-bit)..."; \
+		if [ -d shared_libs/$$dir ]; then \
+			$(MAKE) -C shared_libs/$$dir \
+				CC=i686-w64-mingw32-gcc \
+				CFLAGS="-Wall -Wextra -std=c99 -O2 -DWIN32 -D_WIN32_WINNT=0x0600" \
+				TARGET="../../libs/libkyl$$dir.dll" || true; \
+		elif [ -d additional_libs/$$dir ]; then \
+			$(MAKE) -C additional_libs/$$dir \
+				CC=i686-w64-mingw32-gcc \
+				CFLAGS="-Wall -Wextra -std=c99 -O2 -DWIN32 -D_WIN32_WINNT=0x0600" \
+				TARGET="../../libs/libkyl$$dir.dll" || true; \
+		fi; \
 	done
-	@echo "Windows 32-bit shared libraries built in libs/"
+	@echo "Windows (32-bit) shared libraries built in libs/"
 
 # Cross-compilation for macOS
 cross-macos:
@@ -44,10 +72,17 @@ cross-macos:
 	fi
 	@for dir in $(SUBDIRS); do \
 		echo "Building $$dir for macOS..."; \
-		$(MAKE) -C shared_libs/$$dir \
-			CC=x86_64-apple-darwin20.4-clang \
-			CFLAGS="-Wall -Wextra -std=c99 -O2 -fPIC" \
-			TARGET="../../libs/libkyl$$dir.dylib"; \
+		if [ -d shared_libs/$$dir ]; then \
+			$(MAKE) -C shared_libs/$$dir \
+				CC=x86_64-apple-darwin20.4-clang \
+				CFLAGS="-Wall -Wextra -std=c99 -O2 -fPIC" \
+				TARGET="../../libs/libkyl$$dir.dylib"; \
+		elif [ -d additional_libs/$$dir ]; then \
+			$(MAKE) -C additional_libs/$$dir \
+				CC=x86_64-apple-darwin20.4-clang \
+				CFLAGS="-Wall -Wextra -std=c99 -O2 -fPIC" \
+				TARGET="../../libs/libkyl$$dir.dylib"; \
+		fi; \
 	done
 	@echo "macOS shared libraries built in libs/"
 
@@ -56,15 +91,26 @@ macos:
 	@echo "Building shared libraries for macOS (native)..."
 	@for dir in $(SUBDIRS); do \
 		echo "Building $$dir for macOS..."; \
-		$(MAKE) -C shared_libs/$$dir \
-			CC=clang \
-			CFLAGS="-Wall -Wextra -std=c99 -O2 -fPIC -mmacosx-version-min=10.13" \
-			TARGET="../../libs/libkyl$$dir.dylib"; \
+		if [ -d shared_libs/$$dir ]; then \
+			$(MAKE) -C shared_libs/$$dir \
+				CC=clang \
+				CFLAGS="-Wall -Wextra -std=c99 -O2 -fPIC -mmacosx-version-min=10.13" \
+				TARGET="../../libs/libkyl$$dir.dylib"; \
+		elif [ -d additional_libs/$$dir ]; then \
+			$(MAKE) -C additional_libs/$$dir \
+				CC=clang \
+				CFLAGS="-Wall -Wextra -std=c99 -O2 -fPIC -mmacosx-version-min=10.13" \
+				TARGET="../../libs/libkyl$$dir.dylib"; \
+		fi; \
 	done
 	@echo "macOS shared libraries built in libs/"
 
 clean:
-	for dir in $(SUBDIRS); do \
-		$(MAKE) -C shared_libs/$$dir clean; \
+	@for dir in $(SUBDIRS); do \
+		if [ -d shared_libs/$$dir ]; then \
+			$(MAKE) -C shared_libs/$$dir clean; \
+		elif [ -d additional_libs/$$dir ]; then \
+			$(MAKE) -C additional_libs/$$dir clean; \
+		fi; \
 	done
 	rm -f libs/*.so libs/*.dll libs/*.dylib
