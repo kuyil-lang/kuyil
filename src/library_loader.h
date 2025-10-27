@@ -2,7 +2,19 @@
 #define LIBRARY_LOADER_H
 
 #include "vm.h"
-#include <dlfcn.h>
+
+#ifdef _WIN32
+    #include <windows.h>
+    #define RTLD_LAZY 0
+    #define dlopen(name, flags) LoadLibraryA(name)
+    #define dlsym(handle, name) GetProcAddress((HMODULE)handle, name)
+    #define dlclose(handle) FreeLibrary((HMODULE)handle)
+    #define dlerror() "Windows DLL error"
+    typedef HMODULE dl_handle_t;
+#else
+    #include <dlfcn.h>
+    typedef void* dl_handle_t;
+#endif
 
 #define MAX_LIBRARIES 32
 #define MAX_FUNCTIONS_PER_LIBRARY 64

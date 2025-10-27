@@ -8,9 +8,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #include <limits.h>
+
+// Platform-specific includes
+#ifdef _WIN32
+    #include <windows.h>
+    #include <direct.h>
+    #define getcwd _getcwd
+#elif defined(__APPLE__)
+    #include <mach-o/dyld.h>
+    #include <unistd.h>
+    #include <sys/stat.h>
+#else
+    #include <unistd.h>
+    #include <sys/stat.h>
+#endif
 
 // Forward declarations for internal functions that might not be exposed
 Function* compiler_compile(ASTNode* ast);
@@ -335,7 +347,7 @@ static void compile_to_c_source(const char* input_path, const char* output_path,
     fclose(output);
 }
 
-static void compile_to_native_binary(const char* input_path, const char* output_path, const char* source, bool embed_bytecode) {
+static void compile_to_native_binary(const char* input_path, const char* output_path, const char* source, bool embed_bytecode, const char* target_platform) {
     // Create a temporary C file that will be compiled to native binary
     char temp_c_file[512];
     snprintf(temp_c_file, sizeof(temp_c_file), "%s_temp.c", output_path);
@@ -486,19 +498,29 @@ static void compile_to_native_binary(const char* input_path, const char* output_
         }
         fprintf(output, "\";\n\n");
         
-        // Get the current kuyil binary path
-        char kuyil_path[1024];
+        // Get the current kuyil binary path (cross-platform)
+        char kuyil_path[1024] = "kuyil"; // Default fallback
+#ifdef _WIN32
+        if (GetModuleFileNameA(NULL, kuyil_path, sizeof(kuyil_path)) == 0) {
+            strcpy(kuyil_path, "kuyil.exe");
+        }
+#elif defined(__APPLE__)
+        uint32_t size = sizeof(kuyil_path);
+        if (_NSGetExecutablePath(kuyil_path, &size) != 0) {
+            strcpy(kuyil_path, "kuyil");
+        }
+#else // Linux
         ssize_t len = readlink("/proc/self/exe", kuyil_path, sizeof(kuyil_path) - 1);
         if (len == -1) {
-            strcpy(kuyil_path, "kuyil"); // fallback
+            strcpy(kuyil_path, "kuyil");
         } else {
             kuyil_path[len] = '\0';
         }
+#endif
         
         // Write main function that runs source with embedded VM
         fprintf(output, "// Embedded Kuyil VM headers\n");
         fprintf(output, "#include \"vm.h\"\n");
-        fprintf(output, "#include \"http.h\"\n");
         fprintf(output, "#include \"logging.h\"\n\n");
         
         fprintf(output, "int main(int argc, char* argv[]) {\n");
@@ -524,29 +546,103 @@ static void compile_to_native_binary(const char* input_path, const char* output_
     // Now compile the C file to native binary with embedded VM
     char compile_command[4096];
     
-    // Get the directory where kuyil binary is located for both versions
-    char kuyil_dir[1024];
-    char* exe_path = realpath("/proc/self/exe", NULL);
-    if (exe_path) {
+    // Get the directory where kuyil binary is located (cross-platform)
+    char kuyil_dir[1024] = "."; // Default to current directory
+    
+#ifdef _WIN32
+    char exe_path[1024];
+    if (GetModuleFileNameA(NULL, exe_path, sizeof(exe_path)) > 0) {
         strcpy(kuyil_dir, exe_path);
+        char* last_slash = strrchr(kuyil_dir, '\\');
+        if (!last_slash) last_slash = strrchr(kuyil_dir, '/');
+        if (last_slash) *last_slash = '\0';
+    }
+#elif defined(__APPLE__)
+    char exe_path[1024];
+    uint32_t size = sizeof(exe_path);
+    if (_NSGetExecutablePath(exe_path, &size) == 0) {
+        realpath(exe_path, kuyil_dir);
         char* last_slash = strrchr(kuyil_dir, '/');
         if (last_slash) *last_slash = '\0';
-        free(exe_path);
+    }
+#else // Linux
+    char exe_path[1024];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len != -1) {
+        exe_path[len] = '\0';
+        char* resolved = realpath(exe_path, NULL);
+        if (resolved) {
+            strcpy(kuyil_dir, resolved);
+            char* last_slash = strrchr(kuyil_dir, '/');
+            if (last_slash) *last_slash = '\0';
+            free(resolved);
+        }
+    }
+#endif
+    
+    // Determine compiler and flags based on target platform
+    const char* compiler;
+    const char* exe_ext;
+    const char* obj_ext;
+    const char* libs;
+    const char* extra_flags = "";
+    
+    // If no target specified, use current platform
+    if (!target_platform) {
+#ifdef _WIN32
+        target_platform = "windows";
+#elif defined(__APPLE__)
+        target_platform = "macos";
+#else
+        target_platform = "linux";
+#endif
+    }
+    
+    // Cross-compilation setup
+    if (strcmp(target_platform, "windows") == 0) {
+        // Target: Windows
+#ifdef _WIN32
+        compiler = "gcc"; // Native Windows
+#else
+        compiler = "x86_64-w64-mingw32-gcc"; // Cross-compile from Linux/Mac
+#endif
+        exe_ext = ".exe";
+        obj_ext = ".obj";
+        libs = "-lws2_32 -lwinhttp -lpthread -lm -lpsapi";
+        extra_flags = "-DWIN32 -D_WIN32_WINNT=0x0600";
+    } else if (strcmp(target_platform, "macos") == 0) {
+        // Target: macOS
+#ifdef __APPLE__
+        compiler = "clang"; // Native macOS
+#else
+        compiler = "x86_64-apple-darwin20.4-clang"; // Cross-compile (requires OSXCross)
+#endif
+        exe_ext = "";
+        obj_ext = ".o";
+        libs = "-lcurl -lpthread -lm -ldl";
+        extra_flags = "-mmacosx-version-min=10.13";
+    } else if (strcmp(target_platform, "linux") == 0) {
+        // Target: Linux
+        compiler = "gcc";
+        exe_ext = "";
+        obj_ext = ".o";
+        libs = "-lcurl -lpthread -lm -ldl";
     } else {
-        strcpy(kuyil_dir, ".");
+        fprintf(stderr, "Error: Unknown target platform '%s'. Use: windows, linux, or macos\n", target_platform);
+        exit(1);
     }
     
     // Both bytecode and source versions now link with the entire Kuyil VM for true self-containment
     snprintf(compile_command, sizeof(compile_command), 
-             "gcc -O2 -s %s %s/src/vm.c %s/src/http.c %s/src/logging.c %s/src/config.c "
+             "%s -O2 -s %s %s %s/src/vm.c %s/src/logging.c %s/src/config.c "
              "%s/src/ffi.c %s/src/file_reader.c %s/src/green_threads.c "
              "%s/src/library_loader.c %s/src/vm_library_integration.c "
-             "-I%s/src -o %s -lcurl -lpthread -lm -ldl -DEMBEDDED_BINARY",
-             temp_c_file, kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir,
+             "-I%s/src -o %s%s %s -DEMBEDDED_BINARY",
+             compiler, extra_flags, temp_c_file, kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir,
              kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir,
-             kuyil_dir, output_path);
+             output_path, exe_ext, libs);
     
-    printf("Compiling native binary: %s\n", compile_command);
+    printf("Compiling native binary for %s: %s\n", target_platform, compile_command);
     int result = system(compile_command);
     
     // Clean up temporary C file
@@ -569,11 +665,11 @@ static void compile_to_native_binary(const char* input_path, const char* output_
     }
 }
 
-static void compile_file_with_options(const char* input_path, const char* output_path, bool native_mode, bool embed_bytecode) {
+static void compile_file_with_options(const char* input_path, const char* output_path, bool native_mode, bool embed_bytecode, const char* target_platform) {
     char* source = read_file(input_path);
     
     if (native_mode) {
-        compile_to_native_binary(input_path, output_path, source, embed_bytecode);
+        compile_to_native_binary(input_path, output_path, source, embed_bytecode, target_platform);
     } else {
         // Use existing compile_file logic
         CompileMode mode = COMPILE_WRAPPER;
@@ -665,6 +761,7 @@ static void print_usage() {
     printf("  -c, --compile        Compile script to binary\n");
     printf("  --native             Generate native executable (requires -c)\n");
     printf("  --embed-bytecode     Embed bytecode instead of source (more secure)\n");
+    printf("  --target <platform>  Cross-compile target: windows, linux, macos\n");
     printf("  -o <output>          Specify output file for compilation\n");
     printf("                       Extensions: .kyc (bytecode), .c (C source), other (wrapper)\n");
     printf("  -v, --version        Show version information\n");
@@ -683,7 +780,13 @@ static void print_usage() {
     printf("  kuyil -c script.kyl -o app.c                 Compile to C source\n");
     printf("  kuyil --native script.kyl -o myapp           Generate native binary\n");
     printf("  kuyil --native --embed-bytecode script.kyl   Secure native binary with bytecode\n");
+    printf("  kuyil --native --target windows script.kyl   Cross-compile to Windows .exe\n");
+    printf("  kuyil --native --target macos script.kyl     Cross-compile to macOS binary\n");
     printf("  echo 'print(\"Hi\")' | kuyil -                Run from stdin\n\n");
+    printf("Cross-Compilation:\n");
+    printf("  --target windows     Requires: mingw-w64 (sudo apt-get install mingw-w64)\n");
+    printf("  --target macos       Requires: OSXCross (complex setup, use native Mac or CI)\n");
+    printf("  --target linux       Default on Linux systems\n\n");
     printf("Logging in Kuyil:\n");
     printf("  log_fatal(\"message\")   - Fatal error (exits program)\n");
     printf("  log_error(\"message\")   - Error message\n");
@@ -998,6 +1101,7 @@ int main(int argc, char* argv[]) {
         bool embed_bytecode = false;
         char* input_file = NULL;
         char* output_file = NULL;
+        char* target_platform = NULL; // For cross-compilation
         
         for (int i = 1; i < argc; i++) {
             if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--compile") == 0) {
@@ -1007,6 +1111,13 @@ int main(int argc, char* argv[]) {
                 compile_mode = true;
             } else if (strcmp(argv[i], "--embed-bytecode") == 0) {
                 embed_bytecode = true;
+            } else if (strcmp(argv[i], "--target") == 0) {
+                if (i + 1 < argc) {
+                    target_platform = argv[++i];
+                } else {
+                    fprintf(stderr, "Error: --target requires a platform (windows, linux, macos)\n");
+                    exit(1);
+                }
             } else if (strcmp(argv[i], "-o") == 0) {
                 if (i + 1 < argc) {
                     output_file = argv[++i];
@@ -1078,7 +1189,7 @@ int main(int argc, char* argv[]) {
                     strcat(output_file, "_compiled");
                 }
             }
-            compile_file_with_options(input_file, output_file, native_mode, embed_bytecode);
+            compile_file_with_options(input_file, output_file, native_mode, embed_bytecode, target_platform);
         } else if (input_file != NULL) {
             run_file(input_file);
         } else {

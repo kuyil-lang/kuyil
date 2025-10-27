@@ -161,13 +161,13 @@ typedef struct {
 } ArrayAccess;
 
 typedef struct {
-    TokenType operator;
+    KuyilTokenType operator;
     ASTNode* left;
     ASTNode* right;
 } BinaryOp;
 
 typedef struct {
-    TokenType operator;
+    KuyilTokenType operator;
     ASTNode* operand;
 } UnaryOp;
 
@@ -180,7 +180,7 @@ typedef struct {
 typedef struct {
     ASTNode* target;
     ASTNode* value;
-    TokenType operator; // =, +=, -=, etc.
+    KuyilTokenType operator; // =, +=, -=, etc.
 } Assignment;
 
 struct ASTNode {

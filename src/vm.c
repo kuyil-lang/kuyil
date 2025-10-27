@@ -18,10 +18,28 @@
 #include <pthread.h>
 #include <ctype.h>
 #include <time.h>
-#include <sys/time.h>
+#ifndef _WIN32
+    #include <sys/time.h>
+#else
+    #include <windows.h>
+    #include <winsock2.h>  // For struct timeval on Windows
+    // Windows alternative for gettimeofday
+    int gettimeofday(struct timeval* tv, void* tz) {
+        FILETIME ft;
+        uint64_t tmpres = 0;
+        GetSystemTimeAsFileTime(&ft);
+        tmpres |= ft.dwHighDateTime;
+        tmpres <<= 32;
+        tmpres |= ft.dwLowDateTime;
+        tmpres /= 10;
+        tmpres -= 11644473600000000ULL;
+        tv->tv_sec = (long)(tmpres / 1000000UL);
+        tv->tv_usec = (long)(tmpres % 1000000UL);
+        return 0;
+    }
+#endif
 
 // Dynamic library support now handled by modular library system
-#include <dlfcn.h>
 
 // Global FFI context
 static FFIContext* g_ffi_context = NULL;
@@ -518,7 +536,12 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
                     overwrite = args[2].as.boolean ? 1 : 0;
                 }
                 
+#ifndef _WIN32
                 int result_code = setenv(args[0].as.string, args[1].as.string, overwrite);
+#else
+                // Windows equivalent: _putenv_s or SetEnvironmentVariable
+                int result_code = _putenv_s(args[0].as.string, args[1].as.string);
+#endif
                 Value result = {VALUE_BOOL, .as.boolean = (result_code == 0)};
                 vm->stack_top -= arg_count + 1;
                 vm_push(vm, result);

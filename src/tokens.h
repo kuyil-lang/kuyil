@@ -1,6 +1,7 @@
 #ifndef KUYIL_TOKENS_H
 #define KUYIL_TOKENS_H
 
+// Note: Renamed to KuyilTokenType to avoid conflict with Windows KuyilTokenType
 typedef enum {
     // Literals
     TOKEN_NUMBER,
@@ -68,10 +69,10 @@ typedef enum {
     TOKEN_NEWLINE,
     TOKEN_EOF,
     TOKEN_ERROR
-} TokenType;
+} KuyilTokenType;
 
 typedef struct {
-    TokenType type;
+    KuyilTokenType type;
     const char* start;
     int length;
     int line;
@@ -87,7 +88,7 @@ typedef struct {
 
 void lexer_init(Lexer* lexer, const char* source);
 Token lexer_scan_token(Lexer* lexer);
-const char* token_type_string(TokenType type);
+const char* token_type_string(KuyilTokenType type);
 void print_lexical_error_with_context(const char* source, Token token);
 
 #endif

@@ -4,7 +4,17 @@
 #include <stdbool.h>
 #include <time.h>
 #include "../kuyil_types.h"
-#include <curl/curl.h>
+
+#ifdef _WIN32
+    // Windows doesn't need curl headers for basic HTTP (using WinHTTP instead)
+    // or we can skip curl entirely for Windows builds
+    #ifndef CURL_H_
+        typedef void CURL;
+        typedef int CURLcode;
+    #endif
+#else
+    #include <curl/curl.h>
+#endif
 
 typedef struct {
     char* data;

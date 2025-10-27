@@ -27,12 +27,12 @@ static Token* parser_advance(Parser* parser) {
     return previous_token(parser);
 }
 
-static bool check(Parser* parser, TokenType type) {
+static bool check(Parser* parser, KuyilTokenType type) {
     if (parser_is_at_end(parser)) return false;
     return current_token(parser)->type == type;
 }
 
-static bool parser_match(Parser* parser, TokenType type) {
+static bool parser_match(Parser* parser, KuyilTokenType type) {
     if (check(parser, type)) {
         parser_advance(parser);
         return true;
@@ -66,7 +66,7 @@ static void error_at_current(Parser* parser, const char* message) {
     error_at(parser, current_token(parser), message);
 }
 
-static Token* consume(Parser* parser, TokenType type, const char* message) {
+static Token* consume(Parser* parser, KuyilTokenType type, const char* message) {
     if (current_token(parser)->type == type) {
         return parser_advance(parser);
     }

@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <dlfcn.h>
+// dlfcn.h is already handled in library_loader.h with Windows compatibility
 
 // Global library registry
 LibraryRegistry g_library_registry = {0};

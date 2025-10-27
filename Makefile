@@ -49,6 +49,133 @@ deps-mac:
 deps-centos:
 	sudo yum install -y gcc curl-devel
 
+# Install cross-compilation dependencies
+deps-cross-windows:
+	@echo "Installing MinGW-w64 for Windows cross-compilation..."
+	sudo apt-get update
+	sudo apt-get install -y mingw-w64
+	@echo "MinGW-w64 installed successfully!"
+	@echo "You can now use: make cross-windows or make cross-all"
+
+# Cross-compilation targets
+# Windows cross-compilation (requires mingw-w64)
+cross-windows: CC = x86_64-w64-mingw32-gcc
+cross-windows: TARGET = kuyil.exe
+cross-windows: LIBS = -lws2_32 -lwinhttp -lpthread -lm -lpsapi
+cross-windows: CFLAGS += -DWIN32 -D_WIN32_WINNT=0x0600
+cross-windows:
+	@if ! command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then \
+		echo "Error: MinGW-w64 not found. Install with:"; \
+		echo "  Ubuntu/Debian: sudo apt-get install mingw-w64"; \
+		echo "  Fedora: sudo dnf install mingw64-gcc"; \
+		echo "  Arch: sudo pacman -S mingw-w64-gcc"; \
+		exit 1; \
+	fi
+	@echo "Cross-compiling for Windows (x86_64)..."
+	@echo "Building shared libraries for Windows..."
+	$(MAKE) -f Makefile.libs cross-windows
+	@echo "Building main executable for Windows..."
+	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LIBS)
+	@echo "Windows executable created: $(TARGET)"
+	@echo "Windows libraries created in libs/ (.dll files)"
+	@echo "Note: Windows builds may need additional DLLs to run"
+
+# Windows 32-bit cross-compilation
+cross-windows-32: CC = i686-w64-mingw32-gcc
+cross-windows-32: TARGET = kuyil-win32.exe
+cross-windows-32: LIBS = -lws2_32 -lwinhttp -lpthread -lm -lpsapi
+cross-windows-32: CFLAGS += -DWIN32 -D_WIN32_WINNT=0x0600
+cross-windows-32:
+	@if ! command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then \
+		echo "Error: MinGW-w64 32-bit not found. Install with:"; \
+		echo "  Ubuntu/Debian: sudo apt-get install mingw-w64"; \
+		exit 1; \
+	fi
+	@echo "Cross-compiling for Windows (i686/32-bit)..."
+	@echo "Building shared libraries for Windows 32-bit..."
+	$(MAKE) -f Makefile.libs cross-windows-32
+	@echo "Building main executable for Windows 32-bit..."
+	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LIBS)
+	@echo "Windows 32-bit executable created: $(TARGET)"
+	@echo "Windows 32-bit libraries created in libs/ (.dll files)"
+
+# macOS cross-compilation (requires osxcross)
+cross-macos: CC = x86_64-apple-darwin20.4-clang
+cross-macos: TARGET = kuyil-macos
+cross-macos: LIBS = -lcurl -lpthread -lm
+cross-macos:
+	@if ! command -v x86_64-apple-darwin20.4-clang >/dev/null 2>&1; then \
+		echo "Error: OSXCross not found."; \
+		echo "OSXCross setup is complex. See: https://github.com/tpoechtrager/osxcross"; \
+		echo "Alternative: Build natively on macOS using 'make' or 'make macos'"; \
+		exit 1; \
+	fi
+	@echo "Cross-compiling for macOS (x86_64)..."
+	@echo "Building shared libraries for macOS..."
+	$(MAKE) -f Makefile.libs cross-macos
+	@echo "Building main executable for macOS..."
+	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LIBS)
+	@echo "macOS executable created: $(TARGET)"
+	@echo "macOS libraries created in libs/ (.dylib files)"
+
+# Native macOS build (when running on macOS)
+macos: CC = clang
+macos: TARGET = kuyil
+macos: LIBS = -lcurl -lpthread -lm
+macos: CFLAGS += -mmacosx-version-min=10.13
+macos:
+	@echo "Building for macOS (native)..."
+	@echo "Building shared libraries for macOS..."
+	$(MAKE) -f Makefile.libs macos
+	@echo "Building main executable for macOS..."
+	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LIBS)
+	@echo "macOS executable created: $(TARGET)"
+	@echo "macOS libraries created in libs/ (.dylib files)"
+
+# ARM64 (Apple Silicon) build
+macos-arm64: CC = clang
+macos-arm64: TARGET = kuyil-arm64
+macos-arm64: LIBS = -lcurl -lpthread -lm
+macos-arm64: CFLAGS += -arch arm64 -mmacosx-version-min=11.0
+macos-arm64:
+	@echo "Building for macOS ARM64 (Apple Silicon)..."
+	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LIBS)
+	@echo "macOS ARM64 executable created: $(TARGET)"
+
+# Universal macOS binary (x86_64 + ARM64)
+macos-universal: macos-arm64
+	@echo "Building x86_64 version..."
+	@$(MAKE) CC=clang TARGET=kuyil-x86_64 CFLAGS="$(CFLAGS) -arch x86_64 -mmacosx-version-min=10.13" $(TARGET)
+	@echo "Creating universal binary..."
+	lipo -create kuyil-x86_64 kuyil-arm64 -output kuyil
+	@echo "Universal macOS binary created: kuyil"
+	@rm -f kuyil-x86_64 kuyil-arm64
+
+# Install cross-compilation toolchains
+install-cross-tools:
+	@echo "Installing cross-compilation tools..."
+	@echo ""
+	@echo "For Windows (MinGW-w64):"
+	@echo "  Ubuntu/Debian: sudo apt-get install mingw-w64"
+	@echo "  Fedora:        sudo dnf install mingw64-gcc mingw32-gcc"
+	@echo "  Arch Linux:    sudo pacman -S mingw-w64-gcc"
+	@echo ""
+	@echo "For macOS (OSXCross) - Complex setup required:"
+	@echo "  See: https://github.com/tpoechtrager/osxcross"
+	@echo "  Requires: Xcode SDK from Apple"
+	@echo ""
+	@echo "Alternatively, build natively on the target platform"
+
+# Build all cross-platform binaries (requires all toolchains)
+cross-all: cross-windows cross-windows-32
+	@echo ""
+	@echo "Cross-compilation complete!"
+	@echo "Windows 64-bit: kuyil.exe"
+	@echo "Windows 32-bit: kuyil-win32.exe"
+	@echo ""
+	@echo "Note: macOS cross-compilation requires OSXCross setup"
+	@echo "For macOS, build natively or use CI/CD (GitHub Actions)"
+
 # Test the build
 test: $(TARGET)
 	@echo "Testing Kuyil build..."
@@ -284,9 +411,22 @@ help:
 	@echo "  clean        - Clean build artifacts"
 	@echo "  help         - Show this help"
 	@echo ""
+	@echo "Cross-compilation targets:"
+	@echo "  cross-windows      - Build Windows 64-bit executable (requires mingw-w64)"
+	@echo "  cross-windows-32   - Build Windows 32-bit executable (requires mingw-w64)"
+	@echo "  cross-macos        - Build macOS executable (requires osxcross)"
+	@echo "  macos              - Build macOS native (on macOS)"
+	@echo "  macos-arm64        - Build macOS ARM64/Apple Silicon (on macOS)"
+	@echo "  macos-universal    - Build Universal macOS binary (on macOS)"
+	@echo "  cross-all          - Build all Windows binaries"
+	@echo "  install-cross-tools - Show cross-compilation toolchain installation"
+	@echo ""
 	@echo "Dependency installation:"
 	@echo "  deps         - Install dependencies (Ubuntu/Debian)"
 	@echo "  deps-mac     - Install dependencies (macOS)"
 	@echo "  deps-centos  - Install dependencies (CentOS/RHEL)"
+	@echo "  deps-cross-windows - Install MinGW-w64 for Windows cross-compilation"
+
+.PHONY: all debug release test examples test-http perf memtest analyze format dist install uninstall compile-example benchmark docs clean help deps deps-mac deps-centos deps-cross-windows cross-windows cross-windows-32 cross-macos macos macos-arm64 macos-universal cross-all install-cross-tools
 
 .PHONY: all debug release test examples test-http perf memtest analyze format dist install uninstall compile-example benchmark docs clean help deps deps-mac deps-centos

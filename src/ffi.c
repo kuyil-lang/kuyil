@@ -1013,10 +1013,14 @@ FFILibrary* ffi_load_library_ex(FFIContext* ctx, const char* name, const char* p
     }
     
     // Convert flags to dlopen flags
+#ifndef _WIN32
     int dlopen_flags = RTLD_LAZY; // Default
     if (flags & FFI_LOAD_NOW) dlopen_flags = RTLD_NOW;
     if (flags & FFI_LOAD_GLOBAL) dlopen_flags |= RTLD_GLOBAL;
     if (flags & FFI_LOAD_LOCAL) dlopen_flags |= RTLD_LOCAL;
+#else
+    int dlopen_flags = 0; // Windows doesn't use these flags
+#endif
     
     kuyil_log_info("Loading library '%s' from '%s' with flags: %d", name, path, flags);
     

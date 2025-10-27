@@ -40,7 +40,7 @@ static bool match(Lexer* lexer, char expected) {
     return true;
 }
 
-static Token make_token(Lexer* lexer, TokenType type) {
+static Token make_token(Lexer* lexer, KuyilTokenType type) {
     Token token;
     token.type = type;
     token.start = lexer->start;
@@ -140,7 +140,7 @@ static void skip_whitespace(Lexer* lexer) {
     }
 }
 
-static TokenType check_keyword(int start, int length, const char* rest, TokenType type, Lexer* lexer) {
+static KuyilTokenType check_keyword(int start, int length, const char* rest, KuyilTokenType type, Lexer* lexer) {
     if (lexer->current - lexer->start == start + length &&
         memcmp(lexer->start + start, rest, length) == 0) {
         return type;
@@ -148,7 +148,7 @@ static TokenType check_keyword(int start, int length, const char* rest, TokenTyp
     return TOKEN_IDENTIFIER;
 }
 
-static TokenType identifier_type(Lexer* lexer) {
+static KuyilTokenType identifier_type(Lexer* lexer) {
     switch (lexer->start[0]) {
         case 'b': return check_keyword(1, 4, "reak", TOKEN_BREAK, lexer);
         case 'c': return check_keyword(1, 7, "ontinue", TOKEN_CONTINUE, lexer);
@@ -350,7 +350,7 @@ Token lexer_scan_token(Lexer* lexer) {
     return error_token(lexer, "Unexpected character.");
 }
 
-const char* token_type_string(TokenType type) {
+const char* token_type_string(KuyilTokenType type) {
     switch (type) {
         case TOKEN_NUMBER: return "NUMBER";
         case TOKEN_STRING: return "STRING";

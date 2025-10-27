@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <dlfcn.h>
+// dlfcn.h is already handled in library_loader.h with Windows compatibility
 
 // Dynamic function registration system
 typedef struct {
