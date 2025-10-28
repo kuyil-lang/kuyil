@@ -106,6 +106,76 @@ static bool values_equal(Value a, Value b) {
     }
 }
 
+// Public helpers for test and coverage modes
+void vm_enable_test_mode(VM* vm, bool enabled) {
+    vm->test_mode = enabled;
+    vm->assertions_total = 0;
+    vm->assertions_failed = 0;
+}
+
+int vm_get_assert_failures(VM* vm) {
+    return vm->assertions_failed;
+}
+
+void vm_enable_coverage(VM* vm, bool enabled, const char* source_path) {
+    vm->coverage_enabled = enabled;
+    vm->current_source_path = source_path;
+    if (!enabled) {
+        // reset coverage data
+        for (int i = 0; i < vm->coverage.count; i++) {
+            free(vm->coverage.entries[i].hits);
+            vm->coverage.entries[i].hits = NULL;
+            vm->coverage.entries[i].function = NULL;
+            vm->coverage.entries[i].hits_len = 0;
+        }
+        vm->coverage.count = 0;
+    }
+}
+
+static void coverage_report_text_for_entry(VM* vm, int idx) {
+    Function* fn = vm->coverage.entries[idx].function;
+    int* hits = vm->coverage.entries[idx].hits;
+    int len = vm->coverage.entries[idx].hits_len;
+    int executed = 0;
+    for (int i = 0; i < len; i++) if (hits[i] > 0) executed++;
+    double pct = len > 0 ? (100.0 * executed / len) : 100.0;
+    const char* name = fn && fn->name ? fn->name : "<script>";
+    printf("COVERAGE %s: %d/%d (%.1f%%)\n", name, executed, len, pct);
+}
+
+void vm_coverage_report_text(VM* vm) {
+    printf("\n==== Coverage Report (text) ====%s\n", vm->current_source_path ? "" : "");
+    for (int i = 0; i < vm->coverage.count; i++) {
+        coverage_report_text_for_entry(vm, i);
+    }
+}
+
+void vm_coverage_report_lcov(VM* vm) {
+    // Minimal LCOV output using current_source_path and per-instruction lines
+    const char* sf = vm->current_source_path ? vm->current_source_path : "<unknown>";
+    for (int i = 0; i < vm->coverage.count; i++) {
+        Function* fn = vm->coverage.entries[i].function;
+        int* hits = vm->coverage.entries[i].hits;
+        int len = vm->coverage.entries[i].hits_len;
+        printf("TN:%s\n", fn && fn->name ? fn->name : "");
+        printf("SF:%s\n", sf);
+        // Map instruction indices to source lines
+        if (fn) {
+            // Use a simple map to avoid duplicate DA lines; assume lines are <= 65536
+            int last_line = -1;
+            for (int ip = 0; ip < len; ip++) {
+                int line = fn->chunk.lines[ip];
+                if (line != last_line) {
+                    int count = hits[ip];
+                    printf("DA:%d,%d\n", line, count);
+                    last_line = line;
+                }
+            }
+        }
+        printf("end_of_record\n");
+    }
+}
+
 static void concatenate(VM* vm) {
     Value b = vm_pop(vm);
     Value a = vm_pop(vm);
@@ -330,6 +400,97 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
     }
     
     if (callee.type == VALUE_STRING) {
+        // Test assertions (enabled in test mode)
+        if (vm->test_mode) {
+            if (strcmp(callee.as.string, "assert_true") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                vm->assertions_total++;
+                bool ok = (arg_count > 0) && !is_falsey(args[0]);
+                if (!ok) vm->assertions_failed++;
+                vm->stack_top -= arg_count + 1;
+                Value result = {VALUE_BOOL, .as.boolean = ok};
+                vm_push(vm, result);
+                return true;
+            }
+            if (strcmp(callee.as.string, "assert_eq") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                vm->assertions_total++;
+                bool ok = false;
+                if (arg_count >= 2) {
+                    ok = values_equal(args[0], args[1]);
+                }
+                if (!ok) vm->assertions_failed++;
+                vm->stack_top -= arg_count + 1;
+                Value result = {VALUE_BOOL, .as.boolean = ok};
+                vm_push(vm, result);
+                return true;
+            }
+            if (strcmp(callee.as.string, "assert_neq") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                vm->assertions_total++;
+                bool ok = false;
+                if (arg_count >= 2) {
+                    ok = !values_equal(args[0], args[1]);
+                }
+                if (!ok) vm->assertions_failed++;
+                vm->stack_top -= arg_count + 1;
+                Value result = {VALUE_BOOL, .as.boolean = ok};
+                vm_push(vm, result);
+                return true;
+            }
+            // Simple mock controls (test mode)
+            if (strcmp(callee.as.string, "mock_return") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                if (arg_count >= 2 && args[0].type == VALUE_STRING) {
+                    extern void mock_set_return_value(const char* name, Value v);
+                    mock_set_return_value(args[0].as.string, args[1]);
+                }
+                vm->stack_top -= arg_count + 1;
+                Value result = (Value){VALUE_BOOL, {.boolean = true}};
+                vm_push(vm, result);
+                return true;
+            }
+            if (strcmp(callee.as.string, "mock_clear") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                extern void mock_clear(const char* name);
+                if (arg_count >= 1 && args[0].type == VALUE_STRING) {
+                    mock_clear(args[0].as.string);
+                }
+                vm->stack_top -= arg_count + 1;
+                Value result = (Value){VALUE_BOOL, {.boolean = true}};
+                vm_push(vm, result);
+                return true;
+            }
+            if (strcmp(callee.as.string, "mock_calls") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                extern int mock_get_call_count(const char* name);
+                int count = 0;
+                if (arg_count >= 1 && args[0].type == VALUE_STRING) {
+                    count = mock_get_call_count(args[0].as.string);
+                }
+                vm->stack_top -= arg_count + 1;
+                Value result = (Value){VALUE_NUMBER, {.number = (double)count}};
+                vm_push(vm, result);
+                return true;
+            }
+            if (strcmp(callee.as.string, "assert_called") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                extern int mock_get_call_count(const char* name);
+                vm->assertions_total++;
+                bool ok = false;
+                if (arg_count >= 2 && args[0].type == VALUE_STRING && args[1].type == VALUE_NUMBER) {
+                    int expected = (int)args[1].as.number;
+                    int got = mock_get_call_count(args[0].as.string);
+                    ok = (got == expected);
+                }
+                if (!ok) vm->assertions_failed++;
+                vm->stack_top -= arg_count + 1;
+                Value result = (Value){VALUE_BOOL, {.boolean = ok}};
+                vm_push(vm, result);
+                return true;
+            }
+        }
+
         // Check dynamic functions loaded by modular library system FIRST
         if (is_dynamic_function(callee.as.string)) {
             Value* args = vm->stack_top - arg_count -1;
@@ -355,7 +516,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             strcmp(callee.as.string, "log_info") == 0 ||
             strcmp(callee.as.string, "log_debug") == 0) {
             
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count -1;
             if (arg_count > 0 && args[0].type == VALUE_STRING) {
                 if (strcmp(callee.as.string, "log_fatal") == 0) {
                     kuyil_log_fatal("%s", args[0].as.string);
@@ -387,7 +548,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         
         // Development helper functions
         if (strcmp(callee.as.string, "dev_watch_file") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             if (arg_count > 0 && args[0].type == VALUE_STRING) {
                 printf("[DEV] Adding file to watch list: %s\n", args[0].as.string);
                 // TODO: Implement actual file watching when DevHelper is integrated
@@ -399,7 +560,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         }
         
         if (strcmp(callee.as.string, "dev_watch_dir") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             if (arg_count > 0 && args[0].type == VALUE_STRING) {
                 printf("[DEV] Adding directory to watch list: %s\n", args[0].as.string);
                 // TODO: Implement actual directory watching when DevHelper is integrated
@@ -428,7 +589,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         
         // Configuration and YAML functions
         if (strcmp(callee.as.string, "load_yaml") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             if (arg_count > 0 && args[0].type == VALUE_STRING) {
                 kuyil_log_info("Loading YAML config: %s", args[0].as.string);
                 
@@ -452,7 +613,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         }
         
         if (strcmp(callee.as.string, "merge_config") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             if (arg_count >= 2) {
                 kuyil_log_debug("Merging two configuration objects");
                 
@@ -476,7 +637,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         
         // Configuration path access function
         if (strcmp(callee.as.string, "config_get") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             if (arg_count >= 2 && args[1].type == VALUE_STRING) {
                 kuyil_log_debug("Getting config value: %s", args[1].as.string);
                 
@@ -505,7 +666,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         
         // Environment variable functions
         if (strcmp(callee.as.string, "getenv") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             if (arg_count > 0 && args[0].type == VALUE_STRING) {
                 printf("[DEBUG] getenv called with: '%s'\n", args[0].as.string);
                 const char* env_value = getenv(args[0].as.string);
@@ -529,7 +690,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         }
         
         if (strcmp(callee.as.string, "setenv") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             if (arg_count >= 2 && args[0].type == VALUE_STRING && args[1].type == VALUE_STRING) {
                 int overwrite = 1; // Default to overwrite
                 if (arg_count >= 3 && args[2].type == VALUE_BOOL) {
@@ -555,7 +716,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         
         // Dynamic execution function
         if (strcmp(callee.as.string, "execute_script") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             
             // execute_script(source, libraries, param0, param1, ...)
             if (arg_count >= 2 && args[0].type == VALUE_STRING && args[1].type == VALUE_NUMBER) {
@@ -595,7 +756,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         
         // Compile-once, execute-multiple functions
         if (strcmp(callee.as.string, "compile_script") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             
             // compile_script(source, libraries)
             if (arg_count >= 2 && args[0].type == VALUE_STRING && args[1].type == VALUE_NUMBER) {
@@ -625,7 +786,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         }
         
         if (strcmp(callee.as.string, "execute_compiled") == 0) {
-            Value* args = vm->stack_top - arg_count;
+            Value* args = vm->stack_top - arg_count - 1;
             
             // execute_compiled(handle, param0, param1, ...)
             if (arg_count >= 1 && args[0].type == VALUE_NUMBER) {
@@ -1501,6 +1662,28 @@ InterpretResult vm_run(VM* vm) {
     
     for (;;) {
         uint8_t instruction = READ_BYTE();
+        // Coverage instrumentation: increment hit for current instruction
+        if (vm->coverage_enabled && vm->frame_count > 0) {
+            CallFrame* cframe = &vm->frames[vm->frame_count - 1];
+            Function* fn = cframe->function;
+            size_t instr_index = (size_t)(cframe->ip - fn->chunk.code - 1);
+            if (instr_index < (size_t)fn->chunk.count) {
+                // Find or add entry for this function
+                int found = -1;
+                for (int ci = 0; ci < vm->coverage.count; ci++) {
+                    if (vm->coverage.entries[ci].function == fn) { found = ci; break; }
+                }
+                if (found == -1 && vm->coverage.count < 256) {
+                    found = vm->coverage.count++;
+                    vm->coverage.entries[found].function = fn;
+                    vm->coverage.entries[found].hits_len = fn->chunk.count;
+                    vm->coverage.entries[found].hits = calloc(fn->chunk.count, sizeof(int));
+                }
+                if (found != -1 && vm->coverage.entries[found].hits) {
+                    vm->coverage.entries[found].hits[instr_index]++;
+                }
+            }
+        }
         
         switch (instruction) {
             case OP_CONSTANT: {
@@ -2273,6 +2456,12 @@ InterpretResult vm_execute_dynamic(VM* vm, const char* source,
 void vm_init(VM* vm) {
     reset_stack(vm);
     vm->global_count = 0;
+    vm->test_mode = false;
+    vm->coverage_enabled = false;
+    vm->assertions_total = 0;
+    vm->assertions_failed = 0;
+    vm->coverage.count = 0;
+    vm->current_source_path = NULL;
     
     // Initialize logging system
     log_init(LOG_DEBUG);
@@ -2296,6 +2485,23 @@ void vm_init(VM* vm) {
     define_global(vm, "log_warning", log_warning_val);
     define_global(vm, "log_info", log_info_val);
     define_global(vm, "log_debug", log_debug_val);
+
+    // Register test/assert and mock helpers as callable names
+    Value assert_true_val = {VALUE_STRING, {.string = strdup("assert_true")}};
+    Value assert_eq_val = {VALUE_STRING, {.string = strdup("assert_eq")}};
+    Value assert_neq_val = {VALUE_STRING, {.string = strdup("assert_neq")}};
+    Value assert_called_val = {VALUE_STRING, {.string = strdup("assert_called")}};
+    Value mock_return_val = {VALUE_STRING, {.string = strdup("mock_return")}};
+    Value mock_clear_val = {VALUE_STRING, {.string = strdup("mock_clear")}};
+    Value mock_calls_val = {VALUE_STRING, {.string = strdup("mock_calls")}};
+
+    define_global(vm, "assert_true", assert_true_val);
+    define_global(vm, "assert_eq", assert_eq_val);
+    define_global(vm, "assert_neq", assert_neq_val);
+    define_global(vm, "assert_called", assert_called_val);
+    define_global(vm, "mock_return", mock_return_val);
+    define_global(vm, "mock_clear", mock_clear_val);
+    define_global(vm, "mock_calls", mock_calls_val);
     
     // Register development helper functions
     Value dev_watch_file_val = {VALUE_STRING, {.string = strdup("dev_watch_file")}};

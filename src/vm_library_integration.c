@@ -19,6 +19,62 @@ static DynamicFunction* g_dynamic_functions = NULL;
 static int g_dynamic_function_count = 0;
 static int g_dynamic_function_capacity = 0;
 
+// Simple mock registry for testing
+typedef struct {
+    char* name;
+    int call_count;
+    int has_return;
+    Value return_value;
+} MockEntry;
+
+static MockEntry g_mocks[256];
+static int g_mock_count = 0;
+
+static int find_mock(const char* name) {
+    for (int i = 0; i < g_mock_count; i++) {
+        if (strcmp(g_mocks[i].name, name) == 0) return i;
+    }
+    return -1;
+}
+
+void mock_set_return_value(const char* name, Value v) {
+    int idx = find_mock(name);
+    if (idx == -1) {
+        if (g_mock_count >= 256) return;
+        idx = g_mock_count++;
+        g_mocks[idx].name = strdup(name);
+        g_mocks[idx].call_count = 0;
+    }
+    g_mocks[idx].has_return = 1;
+    g_mocks[idx].return_value = v;
+}
+
+void mock_clear(const char* name) {
+    if (name == NULL) {
+        // Clear all
+        for (int i = 0; i < g_mock_count; i++) {
+            free(g_mocks[i].name);
+        }
+        g_mock_count = 0;
+        return;
+    }
+    int idx = find_mock(name);
+    if (idx != -1) {
+        free(g_mocks[idx].name);
+        // shift down
+        for (int i = idx; i < g_mock_count - 1; i++) {
+            g_mocks[i] = g_mocks[i + 1];
+        }
+        g_mock_count--;
+    }
+}
+
+int mock_get_call_count(const char* name) {
+    int idx = find_mock(name);
+    if (idx == -1) return 0;
+    return g_mocks[idx].call_count;
+}
+
 // Forward declarations
 static void add_default_libraries(void);
 static bool register_dynamic_functions(VM* vm);
@@ -445,6 +501,15 @@ static Value wrapper_ptr_string_ptr(int arg_count, Value* args, void* func_ptr) 
 
 // Lookup function for VM function calls
 Value call_dynamic_function(const char* name, int arg_count, Value* args) {
+    // Mock interception: record calls and optionally return a mocked value
+    int midx = find_mock(name);
+    if (midx != -1) {
+        g_mocks[midx].call_count++;
+        if (g_mocks[midx].has_return) {
+            return g_mocks[midx].return_value;
+        }
+        // fallthrough to real call if no forced return
+    }
     for (int i = 0; i < g_dynamic_function_count; i++) {
         if (strcmp(g_dynamic_functions[i].name, name) == 0) {
             DynamicFunction* df = &g_dynamic_functions[i];
@@ -507,6 +572,12 @@ void vm_cleanup_library_system(void) {
     
     // Clean up library loader
     library_loader_cleanup();
+
+    // Clean up mocks
+    for (int i = 0; i < g_mock_count; i++) {
+        free(g_mocks[i].name);
+    }
+    g_mock_count = 0;
     
     LOG_INFO("VM library system cleanup completed");
 }

@@ -20,6 +20,11 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args);
 bool is_dynamic_function(const char* name);
 Value create_dynamic_function_value(const char* name);
 
+// Test/mocking support for dynamic functions (used in --test mode)
+void mock_set_return_value(const char* name, Value v);
+void mock_clear(const char* name);
+int mock_get_call_count(const char* name);
+
 // Library management
 LibraryStats get_library_stats(void);
 void list_loaded_libraries(void);

@@ -52,6 +52,26 @@ make all
 for test in tests/*test*.kyl; do ./kuyil "$test"; done
 ```
 
+### Docker Quick Start
+```bash
+# Build Docker image
+./docker-run.sh build
+
+# Run a script in Docker
+./docker-run.sh run examples/hello.kyl
+
+# Run with GUI support (webview, etc.)
+./docker-run.sh webview
+
+# Interactive shell
+./docker-run.sh shell
+```
+
+📦 **Docker Documentation:**
+- **[DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)** - Get started in 3 steps
+- **[DOCKER_DISPLAY_GUIDE.md](DOCKER_DISPLAY_GUIDE.md)** - Platform-specific display forwarding
+- **[docker-run.sh](docker-run.sh)** - Helper script for common tasks
+
 ## Project Structure
 
 ```

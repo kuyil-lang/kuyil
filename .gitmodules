@@ -1,3 +1,18 @@
 [submodule "additional_libs/webview"]
 	path = additional_libs/webview
 	url = git@github.com:kuyil-lang/kuyil-lib-webview.git
+[submodule "additional_libs/crypto"]
+	path = additional_libs/crypto
+	url = git@github.com:kuyil-lang/kuyil-lib-crypto.git
+[submodule "additional_libs/rpc"]
+	path = additional_libs/rpc
+	url = git@github.com:kuyil-lang/kuyil-lib-rpc.git
+[submodule "additional_libs/sqlite"]
+	path = additional_libs/sqlite
+	url = git@github.com:kuyil-lang/kuyil-lib-sqlite.git
+[submodule "additional_libs/transcoder"]
+	path = additional_libs/transcoder
+	url = git@github.com:kuyil-lang/kuyil-lib-transcoder.git
+[submodule "additional_libs/ffmpeg"]
+	path = additional_libs/ffmpeg
+	url = git@github.com:kuyil-lang/kuyil-lib-ffmpeg.git

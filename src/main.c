@@ -769,11 +769,16 @@ static void print_usage() {
     printf("  --log-file <file>    Log to file instead of stderr\n");
     printf("  --no-color           Disable colored log output\n");
     printf("  --no-trace           Disable function call tracing\n");
+    printf("  --test               Enable test mode (assertions and FFI mocks)\n");
+    printf("  --coverage           Enable code coverage instrumentation\n");
+    printf("  --coverage-format <text|lcov>  Set coverage report format (default: text)\n");
     printf("  -                    Read from stdin\n\n");
     printf("Examples:\n");
     printf("  kuyil script.kyl                             Run script.kyl\n");
     printf("  kuyil --log-level debug script.kyl           Run with debug logging\n");
     printf("  kuyil --log-file app.log script.kyl          Log to file\n");
+    printf("  kuyil --test tests/sample.kyl                Run tests with assertions\n");
+    printf("  kuyil --coverage --coverage-format lcov script.kyl > coverage.info\n");
     printf("  kuyil                                        Start interactive REPL\n");
     printf("  kuyil -c script.kyl -o app                   Compile to wrapper binary\n");
     printf("  kuyil -c script.kyl -o app.kyc               Compile to bytecode\n");
@@ -1096,12 +1101,15 @@ int main(int argc, char* argv[]) {
         }
     } else {
         // Parse command line arguments
-        bool compile_mode = false;
+    bool compile_mode = false;
         bool native_mode = false;
         bool embed_bytecode = false;
         char* input_file = NULL;
         char* output_file = NULL;
         char* target_platform = NULL; // For cross-compilation
+    bool test_mode = false;
+    bool coverage_enabled = false;
+    const char* coverage_format = "text";
         
         for (int i = 1; i < argc; i++) {
             if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--compile") == 0) {
@@ -1158,6 +1166,17 @@ int main(int argc, char* argv[]) {
                 log_set_colored(false);
             } else if (strcmp(argv[i], "--no-trace") == 0) {
                 log_set_trace_calls(false);
+            } else if (strcmp(argv[i], "--test") == 0) {
+                test_mode = true;
+            } else if (strcmp(argv[i], "--coverage") == 0) {
+                coverage_enabled = true;
+            } else if (strcmp(argv[i], "--coverage-format") == 0) {
+                if (i + 1 < argc) {
+                    coverage_format = argv[++i];
+                } else {
+                    fprintf(stderr, "Error: --coverage-format requires a value (text|lcov)\n");
+                    exit(1);
+                }
             } else if (strcmp(argv[i], "--check") == 0 || strcmp(argv[i], "--syntax-only") == 0) {
                 // Syntax check mode - validate syntax without execution
                 if (i + 1 < argc && argv[i + 1][0] != '-') {
@@ -1167,6 +1186,8 @@ int main(int argc, char* argv[]) {
                     fprintf(stderr, "Error: --check requires a filename\n");
                     exit(1);
                 }
+            } else if (strcmp(argv[i], "-") == 0) {
+                input_file = argv[i];
             } else if (argv[i][0] != '-') {
                 input_file = argv[i];
             }
@@ -1191,7 +1212,64 @@ int main(int argc, char* argv[]) {
             }
             compile_file_with_options(input_file, output_file, native_mode, embed_bytecode, target_platform);
         } else if (input_file != NULL) {
-            run_file(input_file);
+            // Run with optional test/coverage modes
+            VM vm;
+            vm_init(&vm);
+            if (coverage_enabled) {
+                vm_enable_coverage(&vm, true, input_file);
+            }
+            if (test_mode) {
+                vm_enable_test_mode(&vm, true);
+            }
+
+            InterpretResult result;
+            if (strcmp(input_file, "-") == 0) {
+                // Read from stdin
+                char* input = malloc(64 * 1024);
+                size_t pos = 0; int c;
+                while ((c = getchar()) != EOF && pos < 64 * 1024 - 1) input[pos++] = c;
+                input[pos] = '\0';
+                result = vm_interpret(&vm, input);
+                free(input);
+            } else {
+                const char* ext = strrchr(input_file, '.');
+                if (ext && strcmp(ext, ".kyc") == 0) {
+                    result = vm_interpret_bytecode(&vm, input_file);
+                } else {
+                    char* source = read_file(input_file);
+                    result = vm_interpret(&vm, source);
+                    free(source);
+                }
+            }
+
+            if (coverage_enabled) {
+                if (strcmp(coverage_format, "lcov") == 0) {
+                    vm_coverage_report_lcov(&vm);
+                } else {
+                    vm_coverage_report_text(&vm);
+                }
+            }
+
+            int failures = 0;
+            if (test_mode) {
+                // Use the same counter we print to avoid any mismatch
+                failures = vm.assertions_failed;
+                printf("\nTest summary: %d total, %d failed\n", vm.assertions_total, vm.assertions_failed);
+            }
+
+            // If tests failed, exit immediately with non-zero before further cleanup
+            if (test_mode && failures > 0) {
+                // Diagnostic log to confirm we hit this branch
+                kuyil_log_error("Exiting with test failures: %d", failures);
+                vm_free(&vm);
+                // Use _exit to avoid any atexit handlers accidentally altering status
+                _exit(1);
+            }
+
+            vm_free(&vm);
+
+            if (result == INTERPRET_COMPILE_ERROR) exit(65);
+            if (result == INTERPRET_RUNTIME_ERROR) exit(70);
         } else {
             print_usage();
             exit(1);

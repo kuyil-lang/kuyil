@@ -31,6 +31,26 @@ typedef struct {
     
     // Built-in functions
     Function* print_fn;
+
+    // Test and instrumentation flags
+    bool test_mode;
+    bool coverage_enabled;
+
+    // Test statistics
+    int assertions_total;
+    int assertions_failed;
+
+    // Coverage data (per-function instruction hit counts)
+    struct {
+        struct {
+            Function* function;
+            int* hits;      // length = function->chunk.count
+            int hits_len;
+        } entries[256];
+        int count;
+    } coverage;
+    // Optional script path for reporting
+    const char* current_source_path;
 } VM;
 
 typedef enum {
@@ -59,6 +79,15 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args);
 
 // Built-in functions
 void vm_register_natives(VM* vm);
+
+// Test/assert helpers
+void vm_enable_test_mode(VM* vm, bool enabled);
+int vm_get_assert_failures(VM* vm);
+
+// Coverage/instrumentation helpers
+void vm_enable_coverage(VM* vm, bool enabled, const char* source_path);
+void vm_coverage_report_text(VM* vm);
+void vm_coverage_report_lcov(VM* vm);
 
 // Dynamic execution
 typedef enum {

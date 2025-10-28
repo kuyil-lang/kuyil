@@ -5,6 +5,10 @@
 #include <stdlib.h>
 // dlfcn.h is already handled in library_loader.h with Windows compatibility
 
+// Forward declarations
+void load_ffmpeg_functions(SharedLibrary* lib);
+void load_generic_functions(SharedLibrary* lib, const char* functions[][3], const char* category);
+
 // Global library registry
 LibraryRegistry g_library_registry = {0};
 
@@ -114,6 +118,8 @@ bool load_library(const char* library_name) {
         load_rpc_functions(lib);
     } else if (strcmp(library_name, "fileio") == 0) {
         load_fileio_functions(lib);
+    } else if (strcmp(library_name, "ffmpeg") == 0) {
+        load_ffmpeg_functions(lib);
     }
     
     return true;
@@ -287,6 +293,35 @@ void load_fileio_functions(SharedLibrary* lib) {
     };
     
     load_generic_functions(lib, fileio_functions, "FileIO");
+}
+
+void load_ffmpeg_functions(SharedLibrary* lib) {
+    // Define FFmpeg functions - these correspond to the functions in libkylffmpeg.c
+    const char* ffmpeg_functions[][3] = {
+        {"audio_editor_create_kyl", "audio_editor_create_kyl", "value_args"},
+        {"audio_editor_destroy_kyl", "audio_editor_destroy_kyl", "value_args"},
+        {"audio_load_kyl", "audio_load_kyl", "value_args"},
+        {"audio_save_kyl", "audio_save_kyl", "value_args"},
+        {"audio_segment_free_kyl", "audio_segment_free_kyl", "value_args"},
+        {"audio_get_duration_kyl", "audio_get_duration_kyl", "value_args"},
+        {"audio_get_sample_rate_kyl", "audio_get_sample_rate_kyl", "value_args"},
+        {"audio_get_channels_kyl", "audio_get_channels_kyl", "value_args"},
+        {"audio_trim_kyl", "audio_trim_kyl", "value_args"},
+        {"audio_fade_in_kyl", "audio_fade_in_kyl", "value_args"},
+        {"audio_fade_out_kyl", "audio_fade_out_kyl", "value_args"},
+        {"audio_adjust_volume_kyl", "audio_adjust_volume_kyl", "value_args"},
+        {"audio_normalize_kyl", "audio_normalize_kyl", "value_args"},
+        {"audio_concat_kyl", "audio_concat_kyl", "value_args"},
+        {"audio_merge_kyl", "audio_merge_kyl", "value_args"},
+        {"audio_overlay_kyl", "audio_overlay_kyl", "value_args"},
+        {"audio_speed_change_kyl", "audio_speed_change_kyl", "value_args"},
+        {"audio_reverse_kyl", "audio_reverse_kyl", "value_args"},
+        {"ffmpeg_get_last_error_kyl", "ffmpeg_get_last_error_kyl", "value_args"},
+        {"ffmpeg_clear_error_kyl", "ffmpeg_clear_error_kyl", "value_args"},
+        {NULL, NULL, NULL} // Terminator
+    };
+    
+    load_generic_functions(lib, ffmpeg_functions, "FFmpeg");
 }
 
 void load_generic_functions(SharedLibrary* lib, const char* functions[][3], const char* category) {
