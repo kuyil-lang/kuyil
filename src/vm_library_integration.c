@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <sys/types.h>
 // dlfcn.h is already handled in library_loader.h with Windows compatibility
 
 // Global VM pointer for library access
@@ -113,6 +115,38 @@ static Value wrapper_void_ptr(int arg_count, Value* args, void* func_ptr);
 static Value wrapper_ptr_void(int arg_count, Value* args, void* func_ptr);
 static Value wrapper_int_ptr(int arg_count, Value* args, void* func_ptr);
 
+static void build_path(char* out, size_t out_sz, const char* a, const char* b) {
+    // join a + "/" + b with simple logic
+    size_t la = strlen(a);
+    bool need_slash = la > 0 && a[la-1] != '/';
+    snprintf(out, out_sz, need_slash ? "%s/%s" : "%s%s", a, b);
+}
+
+static bool file_exists_simple(const char* path) {
+    FILE* f = fopen(path, "r");
+    if (f) { fclose(f); return true; }
+    return false;
+}
+
+static void get_executable_dir(char* out, size_t out_sz) {
+#ifdef __linux__
+    char buf[1024];
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf)-1);
+    if (len > 0) {
+        buf[len] = '\0';
+        // strip filename to directory
+        char* last = strrchr(buf, '/');
+        if (last) *last = '\0';
+        strncpy(out, buf, out_sz-1);
+        out[out_sz-1] = '\0';
+        return;
+    }
+#endif
+    // Fallback to current directory
+    strncpy(out, ".", out_sz-1);
+    out[out_sz-1] = '\0';
+}
+
 bool vm_init_library_system(VM* vm) {
     LOG_INFO("Initializing VM library system");
     
@@ -122,19 +156,40 @@ bool vm_init_library_system(VM* vm) {
         return false;
     }
     
-    // Load library configuration
-    const char* config_files[] = {
-        "./libraries.conf",
-        "libraries.conf",
-        NULL
-    };
-    
+    // Load library configuration with priority:
+    // 1) $KUYIL_HOME/libraries.conf
+    // 2) <executable_dir>/libraries.conf
+    // 3) ./libraries.conf (CWD)
+    // 4) libraries.conf (CWD without ./)
     bool config_loaded = false;
-    for (int i = 0; config_files[i] != NULL; i++) {
-        if (load_library_config(config_files[i])) {
-            LOG_INFO("Loaded library config from: %s", config_files[i]);
+    char candidate[1024];
+    const char* home = getenv("KUYIL_HOME");
+    if (home && *home) {
+        build_path(candidate, sizeof(candidate), home, "libraries.conf");
+        if (file_exists_simple(candidate) && load_library_config(candidate)) {
+            LOG_INFO("Loaded library config from: %s", candidate);
             config_loaded = true;
-            break;
+        }
+    }
+    if (!config_loaded) {
+        char exe_dir[1024];
+        get_executable_dir(exe_dir, sizeof(exe_dir));
+        build_path(candidate, sizeof(candidate), exe_dir, "libraries.conf");
+        if (file_exists_simple(candidate) && load_library_config(candidate)) {
+            LOG_INFO("Loaded library config from: %s", candidate);
+            config_loaded = true;
+        }
+    }
+    if (!config_loaded) {
+        if (load_library_config("./libraries.conf")) {
+            LOG_INFO("Loaded library config from: ./libraries.conf");
+            config_loaded = true;
+        }
+    }
+    if (!config_loaded) {
+        if (load_library_config("libraries.conf")) {
+            LOG_INFO("Loaded library config from: libraries.conf");
+            config_loaded = true;
         }
     }
     
@@ -185,6 +240,22 @@ static bool register_dynamic_functions(VM* vm) {
         return false;
     }
     
+    // If HTTP library is loaded via registry, inject Kuyil caller bridge
+    for (int i = 0; i < g_library_registry.library_count; i++) {
+        SharedLibrary* lib = &g_library_registry.libraries[i];
+        if (!lib->is_loaded) continue;
+        if (strcmp(lib->name, "http") == 0 && lib->handle) {
+            void (*http_set_kuyil_caller)(void*) = dlsym(lib->handle, "http_set_kuyil_caller");
+            if (http_set_kuyil_caller) {
+                LOG_INFO("Injected Kuyil caller into HTTP library (registry)");
+                http_set_kuyil_caller((void*)call_kuyil_function);
+            } else {
+                LOG_DEBUG("HTTP library missing http_set_kuyil_caller symbol in registry-loaded handle");
+            }
+            break;
+        }
+    }
+
     // Register functions from all loaded libraries
     for (int i = 0; i < g_library_registry.library_count; i++) {
         SharedLibrary* lib = &g_library_registry.libraries[i];
@@ -235,10 +306,27 @@ static void register_system_functions(VM* vm) {
 }
 
 static void register_default_library_functions(void) {
-    LOG_INFO("Registering default library functions using direct dlopen");
+    const char* skip = getenv("KUYIL_SKIP_DEFAULT_DLOPEN");
+    if (skip && strcmp(skip, "1") == 0) {
+        LOG_INFO("Skipping default dlopen registration due to KUYIL_SKIP_DEFAULT_DLOPEN=1");
+        return;
+    }
+    LOG_INFO("Registering default library functions using direct dlopen (best-effort, non-fatal)");
     
-    // Math library functions - load directly with dlopen
-    void* math_lib = dlopen("./libs/libkylmath.so", RTLD_LAZY);
+    // Math library functions - load directly with dlopen only if not already loaded via registry
+    bool math_loaded_via_registry = false;
+    for (int i = 0; i < g_library_registry.library_count; i++) {
+        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "math") == 0) {
+            math_loaded_via_registry = true;
+            break;
+        }
+    }
+    void* math_lib = NULL;
+    if (!math_loaded_via_registry) {
+        math_lib = dlopen("./libs/libkylmath.so", RTLD_LAZY);
+    } else {
+        LOG_INFO("Math library already loaded via registry; skipping default dlopen for Math");
+    }
     if (math_lib) {
         void* abs_fn = dlsym(math_lib, "kyl_math_abs");
         void* floor_fn = dlsym(math_lib, "kyl_math_floor");
@@ -260,12 +348,25 @@ static void register_default_library_functions(void) {
         if (cos_fn) register_dynamic_function("math_cos", cos_fn, FUNC_SIG_VALUE_ARGS);
         if (tan_fn) register_dynamic_function("math_tan", tan_fn, FUNC_SIG_VALUE_ARGS);
         LOG_INFO("Loaded math library functions");
-    } else {
-        LOG_ERROR("Failed to load math library: %s", dlerror());
+    } else if (!math_loaded_via_registry) {
+        // This is a best-effort fallback from CWD; safe to skip if not present
+        LOG_DEBUG("Default dlopen: math not found at ./libs/libkylmath.so (%s) — skipping (non-fatal)", dlerror());
     }
     
-    // String library functions - load directly with dlopen
-    void* str_lib = dlopen("./libs/libkylstr.so", RTLD_LAZY);
+    // String library functions - load directly with dlopen only if not already loaded via registry
+    bool str_loaded_via_registry = false;
+    for (int i = 0; i < g_library_registry.library_count; i++) {
+        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "str") == 0) {
+            str_loaded_via_registry = true;
+            break;
+        }
+    }
+    void* str_lib = NULL;
+    if (!str_loaded_via_registry) {
+        str_lib = dlopen("./libs/libkylstr.so", RTLD_LAZY);
+    } else {
+        LOG_INFO("String library already loaded via registry; skipping default dlopen for String");
+    }
     if (str_lib) {
         void* length_fn = dlsym(str_lib, "kyl_str_length");
         void* substring_fn = dlsym(str_lib, "kyl_str_substring");
@@ -289,12 +390,25 @@ static void register_default_library_functions(void) {
         if (to_number_fn) register_dynamic_function("to_number", to_number_fn, FUNC_SIG_VALUE_ARGS);
         if (to_string_fn) register_dynamic_function("to_string", to_string_fn, FUNC_SIG_VALUE_ARGS);
         LOG_INFO("Loaded string library functions");
-    } else {
-        LOG_ERROR("Failed to load string library: %s", dlerror());
+    } else if (!str_loaded_via_registry) {
+        // This is a best-effort fallback from CWD; safe to skip if not present
+        LOG_DEBUG("Default dlopen: string not found at ./libs/libkylstr.so (%s) — skipping (non-fatal)", dlerror());
     }
     
-    // HTTP library functions - load directly with dlopen
-    void* http_lib = dlopen("./libs/libkylhttp.so", RTLD_LAZY);
+    // HTTP library functions - load directly with dlopen only if not already loaded via registry
+    bool http_loaded_via_registry = false;
+    for (int i = 0; i < g_library_registry.library_count; i++) {
+        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "http") == 0) {
+            http_loaded_via_registry = true;
+            break;
+        }
+    }
+    void* http_lib = NULL;
+    if (!http_loaded_via_registry) {
+        http_lib = dlopen("./libs/libkylhttp.so", RTLD_LAZY);
+    } else {
+        LOG_INFO("HTTP library already loaded via registry; skipping default dlopen for HTTP");
+    }
     if (http_lib) {
         // Provide VM callback bridge to HTTP library
         void (*http_set_kuyil_caller)(void*) = dlsym(http_lib, "http_set_kuyil_caller");
@@ -388,12 +502,25 @@ static void register_default_library_functions(void) {
         if (cleanup_fn) register_dynamic_function("http_cleanup", cleanup_fn, FUNC_SIG_VALUE_ARGS);
         
         LOG_INFO("Loaded HTTP library functions");
-    } else {
-        LOG_ERROR("Failed to load HTTP library: %s", dlerror());
+    } else if (!http_loaded_via_registry) {
+        // This is a best-effort fallback from CWD; safe to skip if not present
+        LOG_DEBUG("Default dlopen: http not found at ./libs/libkylhttp.so (%s) — skipping (non-fatal)", dlerror());
     }
     
-    // DateTime library functions - load directly with dlopen
-    void* datetime_lib = dlopen("./libs/libkyldatetime.so", RTLD_LAZY);
+    // DateTime library functions - load directly with dlopen only if not already loaded via registry
+    bool datetime_loaded_via_registry = false;
+    for (int i = 0; i < g_library_registry.library_count; i++) {
+        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "datetime") == 0) {
+            datetime_loaded_via_registry = true;
+            break;
+        }
+    }
+    void* datetime_lib = NULL;
+    if (!datetime_loaded_via_registry) {
+        datetime_lib = dlopen("./libs/libkyldatetime.so", RTLD_LAZY);
+    } else {
+        LOG_INFO("DateTime library already loaded via registry; skipping default dlopen for DateTime");
+    }
     if (datetime_lib) {
         void* date_now_fn = dlsym(datetime_lib, "kyl_date_now");
         void* date_current_fn = dlsym(datetime_lib, "kyl_date_current");
@@ -419,12 +546,25 @@ static void register_default_library_functions(void) {
         if (date_iso_fn) register_dynamic_function("date_iso", date_iso_fn, FUNC_SIG_VALUE_ARGS);
         if (date_format_fn) register_dynamic_function("date_format", date_format_fn, FUNC_SIG_VALUE_ARGS);
         LOG_INFO("Loaded datetime library functions");
-    } else {
-        LOG_ERROR("Failed to load datetime library: %s", dlerror());
+    } else if (!datetime_loaded_via_registry) {
+        // This is a best-effort fallback from CWD; safe to skip if not present
+        LOG_DEBUG("Default dlopen: datetime not found at ./libs/libkyldatetime.so (%s) — skipping (non-fatal)", dlerror());
     }
     
-    // SQLite wrapper library functions
-    void* sqlite_lib = dlopen("./libs/libkylsqlite.so", RTLD_LAZY);
+    // SQLite wrapper library functions - load directly with dlopen only if not already loaded via registry
+    bool sqlite_loaded_via_registry = false;
+    for (int i = 0; i < g_library_registry.library_count; i++) {
+        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "sqlite") == 0) {
+            sqlite_loaded_via_registry = true;
+            break;
+        }
+    }
+    void* sqlite_lib = NULL;
+    if (!sqlite_loaded_via_registry) {
+        sqlite_lib = dlopen("./libs/libkylsqlite.so", RTLD_LAZY);
+    } else {
+        LOG_INFO("SQLite library already loaded via registry; skipping default dlopen for SQLite");
+    }
     if (sqlite_lib) {
         void* open_db_fn = dlsym(sqlite_lib, "kyl_sqlite_open_database");
         void* close_db_fn = dlsym(sqlite_lib, "kyl_sqlite_close_database");
@@ -454,8 +594,9 @@ static void register_default_library_functions(void) {
         if (set_global_db_fn) register_dynamic_function("sqlite_set_global_db", set_global_db_fn, FUNC_SIG_VALUE_ARGS);
         if (get_global_db_fn) register_dynamic_function("sqlite_get_global_db", get_global_db_fn, FUNC_SIG_VALUE_ARGS);
         LOG_INFO("Loaded SQLite library functions");
-    } else {
-        LOG_ERROR("Failed to load SQLite wrapper library: %s", dlerror());
+    } else if (!sqlite_loaded_via_registry) {
+        // This is a best-effort fallback from CWD; safe to skip if not present
+        LOG_DEBUG("Default dlopen: sqlite not found at ./libs/libkylsqlite.so (%s) — skipping (non-fatal)", dlerror());
     }
     
     LOG_INFO("Finished registering default library functions");

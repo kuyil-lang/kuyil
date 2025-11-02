@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <libgen.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <sys/types.h>
 // dlfcn.h is already handled in library_loader.h with Windows compatibility
 
 // Forward declarations
@@ -24,12 +28,32 @@ bool library_loader_init(void) {
     return true;
 }
 
+static bool is_absolute_path(const char* p) {
+#ifdef _WIN32
+    // Drive letter like C:\ or UNC \\
+    return (strlen(p) > 2 && p[1] == ':' ) || (p[0] == '\\' && p[1] == '\\');
+#else
+    return p[0] == '/';
+#endif
+}
+
+static void join_paths(char* out, size_t out_sz, const char* a, const char* b) {
+    size_t la = strlen(a);
+    bool slash = (la > 0 && a[la-1] == '/');
+    snprintf(out, out_sz, slash ? "%s%s" : "%s/%s", a, b);
+}
+
 bool load_library_config(const char* config_file) {
     FILE* file = fopen(config_file, "r");
     if (!file) {
         LOG_WARNING("Could not open library config file: %s", config_file);
         return false;
     }
+    // Determine base directory of the config file; duplicate path as dirname may modify
+    char cfg_path_copy[1024];
+    strncpy(cfg_path_copy, config_file, sizeof(cfg_path_copy)-1);
+    cfg_path_copy[sizeof(cfg_path_copy)-1] = '\0';
+    char* cfg_dir = dirname(cfg_path_copy);
     
     char line[1024];
     while (fgets(line, sizeof(line), file)) {
@@ -54,7 +78,15 @@ bool load_library_config(const char* config_file) {
         if (g_library_registry.library_count < MAX_LIBRARIES) {
             SharedLibrary* lib = &g_library_registry.libraries[g_library_registry.library_count];
             strncpy(lib->name, name, MAX_NAME_LENGTH - 1);
-            strncpy(lib->path, path, MAX_PATH_LENGTH - 1);
+            // Resolve path relative to config file directory if not absolute
+            if (!is_absolute_path(path)) {
+                char resolved[MAX_PATH_LENGTH];
+                // If path starts with ./ or libs/ etc., join with cfg_dir
+                join_paths(resolved, sizeof(resolved), cfg_dir, path);
+                strncpy(lib->path, resolved, MAX_PATH_LENGTH - 1);
+            } else {
+                strncpy(lib->path, path, MAX_PATH_LENGTH - 1);
+            }
             lib->is_optional = optional;
             lib->is_loaded = false;
             lib->handle = NULL;
@@ -62,7 +94,7 @@ bool load_library_config(const char* config_file) {
             
             g_library_registry.library_count++;
             LOG_INFO("Registered library: %s (path: %s, optional: %s)", 
-                    name, path, optional ? "true" : "false");
+                    name, lib->path, optional ? "true" : "false");
         }
     }
     
@@ -90,15 +122,45 @@ bool load_library(const char* library_name) {
         return true; // Already loaded
     }
     
-    // Try to load the library
+    // Try to load the library at configured path first
     lib->handle = dlopen(lib->path, RTLD_LAZY);
     if (!lib->handle) {
-        if (lib->is_optional) {
-            LOG_INFO("Optional library not available: %s (%s)", library_name, dlerror());
-            return true; // Success for optional libraries
-        } else {
-            LOG_ERROR("Failed to load required library %s: %s", library_name, dlerror());
-            return false;
+        // Fallback: if path is relative and contains "/libs/", try resolving from KUYIL_HOME and executable dir
+        const char* err1 = dlerror();
+        char attempt[1024];
+        bool loaded = false;
+        if (!is_absolute_path(lib->path)) {
+            const char* home = getenv("KUYIL_HOME");
+            if (home && *home) {
+                join_paths(attempt, sizeof(attempt), home, lib->path);
+                dl_handle_t h = dlopen(attempt, RTLD_LAZY);
+                if (h) { lib->handle = h; loaded = true; }
+            }
+            if (!loaded) {
+                char exe_dir[1024];
+                // reuse linux helper via /proc/self/exe
+#ifdef __linux__
+                ssize_t len = readlink("/proc/self/exe", attempt, sizeof(attempt)-1);
+                if (len > 0) {
+                    attempt[len] = '\0';
+                    char* last = strrchr(attempt, '/');
+                    if (last) *last = '\0';
+                    char base[1024]; strncpy(base, attempt, sizeof(base)); base[sizeof(base)-1] = '\0';
+                    join_paths(attempt, sizeof(attempt), base, lib->path);
+                    dl_handle_t h2 = dlopen(attempt, RTLD_LAZY);
+                    if (h2) { lib->handle = h2; loaded = true; }
+                }
+#endif
+            }
+        }
+        if (!loaded) {
+            if (lib->is_optional) {
+                LOG_INFO("Optional library not available: %s (%s)", library_name, err1 ? err1 : "unknown");
+                return true; // Success for optional libraries
+            } else {
+                LOG_ERROR("Failed to load required library %s: %s", library_name, err1 ? err1 : "unknown");
+                return false;
+            }
         }
     }
     
@@ -114,6 +176,15 @@ bool load_library(const char* library_name) {
         load_compression_functions(lib);
     } else if (strcmp(library_name, "sqlite") == 0) {
         load_sqlite_functions(lib);
+    } else if (strcmp(library_name, "http") == 0) {
+        // Enumerate HTTP functions from the loaded handle
+        load_http_functions(lib);
+    } else if (strcmp(library_name, "math") == 0) {
+        load_math_functions(lib);
+    } else if (strcmp(library_name, "str") == 0) {
+        load_str_functions(lib);
+    } else if (strcmp(library_name, "datetime") == 0) {
+        load_datetime_functions(lib);
     } else if (strcmp(library_name, "rpc") == 0) {
         load_rpc_functions(lib);
     } else if (strcmp(library_name, "fileio") == 0) {
@@ -178,13 +249,30 @@ void load_webview_functions(SharedLibrary* lib) {
 }
 
 void load_crypto_functions(SharedLibrary* lib) {
-    // Define crypto functions
+    // Define crypto functions - match actual exported symbols from crypto_utils.c
     const char* crypto_functions[][3] = {
-        {"crypto_hash_md5", "hash_md5", "value_args"},
-        {"crypto_hash_sha256", "hash_sha256", "value_args"},
-        {"crypto_encrypt_aes", "encrypt_aes", "value_args"},
-        {"crypto_decrypt_aes", "decrypt_aes", "value_args"},
-        {"crypto_generate_key", "generate_key", "value_args"},
+        {"crypto_md5", "crypto_md5", "value_args"},
+        {"crypto_sha256", "crypto_sha256", "value_args"},
+        {"crypto_sha512", "crypto_sha512", "value_args"},
+        {"crypto_blake2b", "crypto_blake2b", "value_args"},
+        {"crypto_hmac_sha256", "crypto_hmac_sha256", "value_args"},
+        {"crypto_hmac_sha512", "crypto_hmac_sha512", "value_args"},
+        {"crypto_pbkdf2_sha256", "crypto_pbkdf2_sha256", "value_args"},
+        {"crypto_base64_encode", "crypto_base64_encode", "value_args"},
+        {"crypto_base64_decode", "crypto_base64_decode", "value_args"},
+        {"crypto_aes_create_context", "crypto_aes_create_context", "value_args"},
+        {"crypto_aes_encrypt", "crypto_aes_encrypt", "value_args"},
+        {"crypto_aes_decrypt", "crypto_aes_decrypt", "value_args"},
+        {"crypto_aes_free_context", "crypto_aes_free_context", "value_args"},
+        {"crypto_random_init", "crypto_random_init", "value_args"},
+        {"crypto_random_bytes", "crypto_random_bytes", "value_args"},
+        {"crypto_random_hex", "crypto_random_hex", "value_args"},
+        {"crypto_random_int", "crypto_random_int", "value_args"},
+        {"crypto_generate_uuid", "crypto_generate_uuid", "value_args"},
+        {"crypto_generate_token", "crypto_generate_token", "value_args"},
+        {"crypto_constant_time_compare", "crypto_constant_time_compare", "value_args"},
+        {"crypto_get_last_error", "crypto_get_last_error", "value_args"},
+        {"crypto_clear_error", "crypto_clear_error", "value_args"},
         {NULL, NULL, NULL}
     };
     
@@ -348,6 +436,113 @@ void load_generic_functions(SharedLibrary* lib, const char* functions[][3], cons
             LOG_WARNING("Failed to load %s function: %s (%s)", category, func->name, dlerror());
         }
     }
+}
+
+// HTTP library: load server, client, request/response, and static serving functions
+void load_http_functions(SharedLibrary* lib) {
+    const char* http_functions[][3] = {
+        // Server endpoints
+        {"http_server", "kyl_http_server", "value_args"},
+        {"http_get", "kyl_http_get", "value_args"},
+        {"http_post", "kyl_http_post", "value_args"},
+        {"http_put", "kyl_http_put", "value_args"},
+        {"http_delete", "kyl_http_delete", "value_args"},
+        {"http_listen", "kyl_http_listen", "value_args"},
+        {"http_register_route", "kyl_http_register_route", "value_args"},
+
+        // HTTP client
+        {"http_client_get", "kyl_http_client_get", "value_args"},
+        {"http_client_post", "kyl_http_client_post", "value_args"},
+
+        // Response builders
+        {"response_set_status", "kyl_response_set_status", "value_args"},
+        {"response_set_body", "kyl_response_set_body", "value_args"},
+        {"response_set_json", "kyl_response_set_json", "value_args"},
+        {"response_add_header", "kyl_response_add_header", "value_args"},
+
+        // Request accessors
+        {"request_get_method", "kyl_request_get_method", "value_args"},
+        {"request_get_path", "kyl_request_get_path", "value_args"},
+        {"request_get_body", "kyl_request_get_body", "value_args"},
+        {"request_get_param", "kyl_request_get_param", "value_args"},
+        {"request_get_header", "kyl_request_get_header", "value_args"},
+        {"request_parse_multipart", "kyl_request_parse_multipart", "value_args"},
+        {"request_get_multipart_field", "kyl_request_get_multipart_field", "value_args"},
+        {"request_parse_multipart_fields", "kyl_request_parse_multipart_fields", "value_args"},
+        {"request_parse_multipart_file", "kyl_request_parse_multipart_file", "value_args"},
+        {"request_save_multipart_file", "kyl_request_save_multipart_file", "value_args"},
+        {"request_get_json_string", "kyl_request_get_json_string", "value_args"},
+        {"request_get_json_number", "kyl_request_get_json_number", "value_args"},
+        {"request_get_json_bool", "kyl_request_get_json_bool", "value_args"},
+
+        // Static server helpers and cleanup
+        {"http_static", "kyl_http_static", "value_args"},
+        {"http_static_add", "kyl_http_static_add", "value_args"},
+        {"http_static_bypass", "kyl_http_static_bypass", "value_args"},
+        {"http_static_bypass_clear", "kyl_http_static_bypass_clear", "value_args"},
+        {"http_cleanup", "kyl_http_cleanup", "value_args"},
+
+        {NULL, NULL, NULL}
+    };
+
+    load_generic_functions(lib, http_functions, "HTTP");
+}
+
+// Math library: basic arithmetic and trigonometric functions
+void load_math_functions(SharedLibrary* lib) {
+    const char* math_functions[][3] = {
+        {"math_abs", "kyl_math_abs", "value_args"},
+        {"math_floor", "kyl_math_floor", "value_args"},
+        {"math_ceil", "kyl_math_ceil", "value_args"},
+        {"math_round", "kyl_math_round", "value_args"},
+        {"math_sqrt", "kyl_math_sqrt", "value_args"},
+        {"math_pow", "kyl_math_pow", "value_args"},
+        {"math_sin", "kyl_math_sin", "value_args"},
+        {"math_cos", "kyl_math_cos", "value_args"},
+        {"math_tan", "kyl_math_tan", "value_args"},
+        {NULL, NULL, NULL}
+    };
+
+    load_generic_functions(lib, math_functions, "Math");
+}
+
+// String library: string manipulation functions
+void load_str_functions(SharedLibrary* lib) {
+    const char* str_functions[][3] = {
+        {"str_length", "kyl_str_length", "value_args"},
+        {"str_substring", "kyl_str_substring", "value_args"},
+        {"str_upper", "kyl_str_upper", "value_args"},
+        {"str_lower", "kyl_str_lower", "value_args"},
+        {"str_trim", "kyl_str_trim", "value_args"},
+        {"str_contains", "kyl_str_contains", "value_args"},
+        {"str_replace", "kyl_str_replace", "value_args"},
+        {"split", "kyl_str_split", "value_args"},
+        {"to_number", "kyl_str_to_number", "value_args"},
+        {"to_string", "kyl_str_to_string", "value_args"},
+        {NULL, NULL, NULL}
+    };
+
+    load_generic_functions(lib, str_functions, "String");
+}
+
+// DateTime library: date and time manipulation
+void load_datetime_functions(SharedLibrary* lib) {
+    const char* datetime_functions[][3] = {
+        {"date_now", "kyl_date_now", "value_args"},
+        {"date_current", "kyl_date_current", "value_args"},
+        {"datetime_now", "kyl_datetime_now", "value_args"},
+        {"datetime_current", "kyl_datetime_current", "value_args"},
+        {"date_add", "kyl_date_add", "value_args"},
+        {"date_sub", "kyl_date_sub", "value_args"},
+        {"date_diff", "kyl_date_diff", "value_args"},
+        {"date_unix", "kyl_date_unix", "value_args"},
+        {"date_from_unix", "kyl_date_from_unix", "value_args"},
+        {"date_iso", "kyl_date_iso", "value_args"},
+        {"date_format", "kyl_date_format", "value_args"},
+        {NULL, NULL, NULL}
+    };
+
+    load_generic_functions(lib, datetime_functions, "DateTime");
 }
 
 bool load_all_libraries(void) {

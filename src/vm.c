@@ -421,6 +421,20 @@ static Value native_to_string(int arg_count, Value* args) {
     return result;
 }
 
+// Helper to stringify value types for diagnostics
+static const char* value_type_name(ValueType t) {
+    switch (t) {
+        case VALUE_NIL: return "nil";
+        case VALUE_BOOL: return "bool";
+        case VALUE_NUMBER: return "number";
+        case VALUE_STRING: return "string";
+        case VALUE_ARRAY: return "array";
+        case VALUE_OBJECT: return "object";
+        case VALUE_FUNCTION: return "function";
+        default: return "<unknown>";
+    }
+}
+
 static bool call_value(VM* vm, Value callee, int arg_count) {
     if (callee.type == VALUE_FUNCTION) {
         // Function call
@@ -1736,8 +1750,15 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             return true;
         }
     }
-    
-    runtime_error(vm, "Can only call functions and classes.");
+
+    // If the callee is a string here, none of the resolution paths matched
+    if (callee.type == VALUE_STRING) {
+        runtime_error(vm, "Undefined function '%s'.", callee.as.string);
+        return false;
+    }
+
+    // Generic non-callable value invocation
+    runtime_error(vm, "Can only call functions and classes (got %s).", value_type_name(callee.type));
     return false;
 }
 
