@@ -80,6 +80,24 @@ int file_validate_path(const char* filepath) {
     return FILE_SUCCESS;
 }
 
+// Ensure parent directory exists (naive, creates single-level if missing)
+static void ensure_parent_dir(const char* filepath) {
+    if (!filepath) return;
+    const char* slash = strrchr(filepath, '/');
+    if (!slash) return;
+    size_t len = (size_t)(slash - filepath);
+    if (len == 0) return;
+    char* dir = (char*)malloc(len + 1);
+    if (!dir) return;
+    memcpy(dir, filepath, len);
+    dir[len] = '\0';
+    struct stat st = {0};
+    if (stat(dir, &st) == -1) {
+        mkdir(dir, 0755);
+    }
+    free(dir);
+}
+
 // ============================================================================
 // MEMORY MANAGEMENT
 // ============================================================================
@@ -594,29 +612,62 @@ Value kuyil_file_read_text(int arg_count, Value* args) {
     return result;
 }
 
+/* Helper to append a row (Value array) into a result (Value array) */
+static int append_row_to_result(Value* result, Value rowVal) {
+    int newCount = result->as.array.count + 1;
+    Value* newArr = (Value*)realloc(result->as.array.values, (size_t)newCount * sizeof(Value));
+    if (!newArr) {
+        return 0;
+    }
+    result->as.array.values = newArr;
+    result->as.array.values[result->as.array.count] = rowVal;
+    result->as.array.count = newCount;
+    return 1;
+}
+
 Value kuyil_file_read_csv(int arg_count, Value* args) {
-    Value result = {VALUE_NIL, .as = {.number = 0}};
+    Value result = (Value){ .type = VALUE_NIL };
     
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
         return result;
     }
     
-    CSVResult* csv_result = file_read_csv(args[0].as.string);
-    if (!csv_result) {
+    const char* path = args[0].as.string;
+    CSVResult* csv = file_read_csv(path);
+    if (!csv || csv->error_code != FILE_SUCCESS) {
+        if (csv) csv_result_free(csv);
         return result;
     }
-    
-    // For now, return a simple string representation
-    // In a full implementation, this would return a structured object
-    if (csv_result->error_code == FILE_SUCCESS) {
-        char info[1024];
-        snprintf(info, sizeof(info), "CSV: %d headers, %d rows", 
-                csv_result->header_count, csv_result->row_count);
-        result.type = VALUE_STRING;
-        result.as.string = strdup(info);
+
+    // Build array-of-arrays: first row = headers; subsequent rows = data rows
+    result.type = VALUE_ARRAY;
+    result.as.array.count = 0;
+    result.as.array.values = NULL;
+
+    // Create header row
+    Value headerRow; headerRow.type = VALUE_ARRAY; headerRow.as.array.count = csv->header_count; 
+    headerRow.as.array.values = (Value*)calloc(csv->header_count, sizeof(Value));
+    if (!headerRow.as.array.values) { csv_result_free(csv); result.type = VALUE_NIL; return result; }
+    for (int j = 0; j < csv->header_count; j++) {
+        headerRow.as.array.values[j].type = VALUE_STRING;
+        headerRow.as.array.values[j].as.string = strdup(csv->headers && csv->headers[j] ? csv->headers[j] : "");
     }
-    
-    csv_result_free(csv_result);
+    if (!append_row_to_result(&result, headerRow)) { csv_result_free(csv); result.type = VALUE_NIL; return result; }
+
+    // Data rows
+    for (int i = 0; i < csv->row_count; i++) {
+        Value rowVal; rowVal.type = VALUE_ARRAY; rowVal.as.array.count = csv->header_count;
+        rowVal.as.array.values = (Value*)calloc(csv->header_count, sizeof(Value));
+        if (!rowVal.as.array.values) { csv_result_free(csv); result.type = VALUE_NIL; return result; }
+        for (int j = 0; j < csv->header_count; j++) {
+            rowVal.as.array.values[j].type = VALUE_STRING;
+            const char* cell = (csv->rows && csv->rows[i] && j < csv->header_count) ? csv->rows[i][j] : "";
+            rowVal.as.array.values[j].as.string = strdup(cell ? cell : "");
+        }
+        if (!append_row_to_result(&result, rowVal)) { csv_result_free(csv); result.type = VALUE_NIL; return result; }
+    }
+
+    csv_result_free(csv);
     return result;
 }
 
@@ -712,6 +763,35 @@ void fileio_cleanup(void) {
     if (g_file_config) {
         file_set_config(NULL);
     }
+}
+
+// ============================================================================
+// TEXT FILE WRITING (simple)
+// ============================================================================
+
+static int file_write_text_internal(const char* filepath, const char* content) {
+    if (!filepath || !content) return 0;
+    int path_error = file_validate_path(filepath);
+    if (path_error != FILE_SUCCESS) return 0;
+    ensure_parent_dir(filepath);
+    FILE* f = fopen(filepath, "wb");
+    if (!f) return 0;
+    size_t len = strlen(content);
+    size_t written = fwrite(content, 1, len, f);
+    fclose(f);
+    return written == len;
+}
+
+Value kuyil_file_write_text(int arg_count, Value* args) {
+    Value result = {VALUE_BOOL, .as = {.boolean = 0}};
+    if (arg_count < 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        return result;
+    }
+    const char* path = args[0].as.string;
+    const char* content = args[1].as.string;
+    int ok = file_write_text_internal(path, content);
+    result.as.boolean = ok ? 1 : 0;
+    return result;
 }
 
 // Library entry point for dynamic loading

@@ -1,0 +1,30 @@
+print("=== fromJSON Demo ===")
+
+struct Person {
+  name,
+  age,
+  email,
+}
+
+// NOTE: file_read_json currently returns a JSON string.
+// For this demo, we pass a plain object (struct literal) as the source map.
+let data = Person {
+  name: "Alice",
+  age: 29,
+  email: "alice@example.com",
+}
+let p = Person_fromJSON(data)
+
+print("Loaded:", p.name, p.age, p.email)
+
+print("Roundtrip JSON:")
+print(p.toJSON())
+
+print("Roundtrip YAML:")
+print(p.toYAML())
+
+// Also test fromYAML (expects a plain object)
+let q = Person_fromYAML(data)
+print("fromYAML Loaded:", q.name, q.age, q.email)
+
+print("=== Done ===")

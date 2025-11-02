@@ -367,7 +367,7 @@ HttpResponse* http_delete(const char* url) {
     return response;
 }
 
-void http_response_free(HttpResponse* response) {
+void http_client_response_free(HttpResponse* response) {
     if (response) {
         free(response->data);
         free(response);
@@ -382,6 +382,12 @@ typedef struct {
     HttpServer* server;
 } ClientHandlerArgs;
 
+// Static mount entry
+typedef struct {
+    char* prefix;   // URL prefix (e.g., "/", "/api/files")
+    char* root;     // Filesystem root directory
+} StaticMount;
+
 struct HttpServer {
     int port;
     bool running;
@@ -389,9 +395,316 @@ struct HttpServer {
     Route* routes;
     int route_count;
     int route_capacity;
-    char* static_root;      // Root directory for static files
-    bool serve_static;      // Enable static file serving
+    // Legacy single static root/prefix (deprecated but kept for compatibility)
+    char* static_root;
+    bool serve_static;
+    char* static_prefix;
+    // Dynamic array of static mounts (supports 16-128 growing)
+    StaticMount* static_mounts;
+    int static_mount_count;
+    int static_mount_capacity;
+    // URL prefixes to bypass static serving and SPA fallback (e.g., "/api")
+    char** static_bypass_prefixes;
+    int static_bypass_count;
+    int static_bypass_capacity;
 };
+
+// HTTP Request/Response helper functions implementation
+
+HttpRequest* http_request_create() {
+    HttpRequest* req = calloc(1, sizeof(HttpRequest));
+    return req;
+}
+
+void http_request_free(HttpRequest* req) {
+    if (!req) return;
+    
+    free(req->method);
+    free(req->path);
+    free(req->query_string);
+    free(req->body);
+    
+    for (int i = 0; i < req->header_count; i++) {
+        free(req->header_names[i]);
+        free(req->header_values[i]);
+    }
+    free(req->header_names);
+    free(req->header_values);
+    
+    for (int i = 0; i < req->param_count; i++) {
+        free(req->param_names[i]);
+        free(req->param_values[i]);
+    }
+    free(req->param_names);
+    free(req->param_values);
+    
+    free(req);
+}
+
+void http_request_add_header(HttpRequest* req, const char* name, const char* value) {
+    if (!req || !name || !value) return;
+    
+    req->header_names = realloc(req->header_names, sizeof(char*) * (req->header_count + 1));
+    req->header_values = realloc(req->header_values, sizeof(char*) * (req->header_count + 1));
+    
+    req->header_names[req->header_count] = strdup(name);
+    req->header_values[req->header_count] = strdup(value);
+    req->header_count++;
+}
+
+void http_request_add_param(HttpRequest* req, const char* name, const char* value) {
+    if (!req || !name || !value) return;
+    
+    req->param_names = realloc(req->param_names, sizeof(char*) * (req->param_count + 1));
+    req->param_values = realloc(req->param_values, sizeof(char*) * (req->param_count + 1));
+    
+    req->param_names[req->param_count] = strdup(name);
+    req->param_values[req->param_count] = strdup(value);
+    req->param_count++;
+}
+
+const char* http_request_get_header(HttpRequest* req, const char* name) {
+    if (!req || !name) return NULL;
+    
+    for (int i = 0; i < req->header_count; i++) {
+        if (strcasecmp(req->header_names[i], name) == 0) {
+            return req->header_values[i];
+        }
+    }
+    return NULL;
+}
+
+const char* http_request_get_param(HttpRequest* req, const char* name) {
+    if (!req || !name) return NULL;
+    
+    for (int i = 0; i < req->param_count; i++) {
+        if (strcmp(req->param_names[i], name) == 0) {
+            return req->param_values[i];
+        }
+    }
+    return NULL;
+}
+
+HttpResponseBuilder* http_response_create() {
+    HttpResponseBuilder* res = calloc(1, sizeof(HttpResponseBuilder));
+    res->status_code = 200;
+    res->content_type = strdup("text/plain");
+    return res;
+}
+
+void http_response_builder_free(HttpResponseBuilder* res) {
+    if (!res) return;
+    
+    free(res->body);
+    free(res->content_type);
+    
+    for (int i = 0; i < res->header_count; i++) {
+        free(res->header_names[i]);
+        free(res->header_values[i]);
+    }
+    free(res->header_names);
+    free(res->header_values);
+    
+    free(res);
+}
+
+void http_response_set_status(HttpResponseBuilder* res, int status_code) {
+    if (res) res->status_code = status_code;
+}
+
+void http_response_set_body(HttpResponseBuilder* res, const char* body, size_t length) {
+    if (!res || !body) return;
+    
+    free(res->body);
+    res->body = malloc(length + 1);
+    memcpy(res->body, body, length);
+    res->body[length] = '\0';
+    res->body_length = length;
+}
+
+void http_response_set_json(HttpResponseBuilder* res, const char* json) {
+    if (!res || !json) return;
+    
+    http_response_set_body(res, json, strlen(json));
+    http_response_set_content_type(res, "application/json");
+}
+
+void http_response_add_header(HttpResponseBuilder* res, const char* name, const char* value) {
+    if (!res || !name || !value) return;
+    
+    res->header_names = realloc(res->header_names, sizeof(char*) * (res->header_count + 1));
+    res->header_values = realloc(res->header_values, sizeof(char*) * (res->header_count + 1));
+    
+    res->header_names[res->header_count] = strdup(name);
+    res->header_values[res->header_count] = strdup(value);
+    res->header_count++;
+}
+
+void http_response_set_content_type(HttpResponseBuilder* res, const char* content_type) {
+    if (!res || !content_type) return;
+    
+    free(res->content_type);
+    res->content_type = strdup(content_type);
+}
+
+const char* http_status_text(int status_code) {
+    switch (status_code) {
+        case 200: return "OK";
+        case 201: return "Created";
+        case 204: return "No Content";
+        case 400: return "Bad Request";
+        case 401: return "Unauthorized";
+        case 403: return "Forbidden";
+        case 404: return "Not Found";
+        case 500: return "Internal Server Error";
+        default: return "Unknown";
+    }
+}
+
+char* http_response_build(HttpResponseBuilder* res, size_t* total_length) {
+    if (!res) return NULL;
+    
+    // Calculate total size needed
+    size_t header_size = 256; // Status line + basic headers
+    for (int i = 0; i < res->header_count; i++) {
+        header_size += strlen(res->header_names[i]) + strlen(res->header_values[i]) + 4; // ": \r\n"
+    }
+    header_size += strlen(res->content_type) + 16; // "Content-Type: \r\n"
+    
+    size_t body_len = res->body ? res->body_length : 0;
+    size_t total = header_size + body_len + 128; // Extra space for Content-Length, etc.
+    
+    char* response = malloc(total);
+    if (!response) return NULL;
+    
+    // Build status line
+    int offset = snprintf(response, total, "HTTP/1.1 %d %s\r\n", 
+                         res->status_code, http_status_text(res->status_code));
+    
+    // Add Content-Type
+    offset += snprintf(response + offset, total - offset, 
+                      "Content-Type: %s\r\n", res->content_type);
+    
+    // Add Content-Length
+    offset += snprintf(response + offset, total - offset, 
+                      "Content-Length: %zu\r\n", body_len);
+    
+    // Add custom headers
+    for (int i = 0; i < res->header_count; i++) {
+        offset += snprintf(response + offset, total - offset, 
+                          "%s: %s\r\n", res->header_names[i], res->header_values[i]);
+    }
+    
+    // End headers
+    offset += snprintf(response + offset, total - offset, "\r\n");
+    
+    // Add body
+    if (res->body && body_len > 0) {
+        memcpy(response + offset, res->body, body_len);
+        offset += body_len;
+    }
+    
+    if (total_length) *total_length = offset;
+    return response;
+}
+
+// Path parameter matching (supports :param syntax)
+static bool match_route_path(const char* route_pattern, const char* request_path, HttpRequest* req) {
+    const char* r = route_pattern;
+    const char* p = request_path;
+    
+    while (*r && *p) {
+        if (*r == ':') {
+            // Extract parameter name
+            r++; // Skip ':'
+            const char* param_start = r;
+            while (*r && *r != '/') r++;
+            
+            size_t param_name_len = r - param_start;
+            char* param_name = strndup(param_start, param_name_len);
+            
+            // Extract parameter value
+            const char* value_start = p;
+            while (*p && *p != '/') p++;
+            
+            size_t value_len = p - value_start;
+            char* param_value = strndup(value_start, value_len);
+            
+            http_request_add_param(req, param_name, param_value);
+            
+            free(param_name);
+            free(param_value);
+        } else if (*r == *p) {
+            r++;
+            p++;
+        } else {
+            return false;
+        }
+    }
+    
+    return (*r == '\0' && *p == '\0');
+}
+
+// Parse HTTP headers from request buffer
+static void parse_http_headers(const char* buffer, size_t buffer_len, HttpRequest* req) {
+    const char* line_start = buffer;
+    const char* line_end;
+    
+    // Skip request line
+    line_end = strstr(line_start, "\r\n");
+    if (!line_end) return;
+    line_start = line_end + 2;
+    
+    // Parse headers
+    while ((line_end = strstr(line_start, "\r\n")) != NULL && line_end != line_start) {
+        // Find the colon separator
+        const char* colon = strchr(line_start, ':');
+        if (colon && colon < line_end) {
+            size_t name_len = colon - line_start;
+            char* name = strndup(line_start, name_len);
+            
+            // Skip colon and whitespace
+            const char* value_start = colon + 1;
+            while (value_start < line_end && (*value_start == ' ' || *value_start == '\t')) {
+                value_start++;
+            }
+            
+            size_t value_len = line_end - value_start;
+            char* value = strndup(value_start, value_len);
+            
+            http_request_add_header(req, name, value);
+            
+            free(name);
+            free(value);
+        }
+        
+        line_start = line_end + 2;
+    }
+    
+    // Parse body if present (after empty line)
+    if (line_end) {
+        const char* body_start = line_end + 2;
+        if (*body_start && body_start < buffer + buffer_len) {
+            // Get Content-Length header to handle binary data correctly
+            const char* content_length_str = http_request_get_header(req, "Content-Length");
+            size_t content_length = content_length_str ? (size_t)atoll(content_length_str) : 0;
+            
+            // Calculate maximum possible body length from buffer
+            size_t max_body_len = buffer_len - (body_start - buffer);
+            size_t actual_body_len = content_length > 0 && content_length <= max_body_len ? content_length : max_body_len;
+            
+            // Use minimum of Content-Length and available buffer data
+            if (actual_body_len > max_body_len) actual_body_len = max_body_len;
+            
+            req->body = malloc(actual_body_len + 1);
+            if (req->body) {
+                memcpy(req->body, body_start, actual_body_len);
+                req->body[actual_body_len] = '\0'; // Null terminate for safety
+                req->body_length = actual_body_len;
+            }
+        }
+    }
+}
 
 static void* handle_client(void* arg) {
     ClientHandlerArgs* args = (ClientHandlerArgs*)arg;
@@ -399,22 +712,89 @@ static void* handle_client(void* arg) {
     HttpServer* server = args->server;
     free(arg);
     
-    char buffer[4096];
-    ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+    // Initial buffer for headers (should be enough for most cases)
+    char initial_buffer[8192];
+    ssize_t initial_read = read(client_fd, initial_buffer, sizeof(initial_buffer) - 1);
+    
+    if (initial_read <= 0) {
+        close(client_fd);
+        return NULL;
+    }
+    
+    initial_buffer[initial_read] = '\0';
+    
+    // Find Content-Length in headers to determine if we need to read more
+    const char* cl_header = strstr(initial_buffer, "Content-Length: ");
+    size_t content_length = 0;
+    if (cl_header) {
+        content_length = (size_t)atoll(cl_header + 16);
+    }
+    
+    // Find end of headers (empty line)
+    const char* headers_end = strstr(initial_buffer, "\r\n\r\n");
+    if (!headers_end) headers_end = strstr(initial_buffer, "\n\n");
+    
+    size_t headers_size = 0;
+    if (headers_end) {
+        headers_size = headers_end - initial_buffer + 4; // Include the \r\n\r\n
+    } else {
+        headers_size = initial_read; // No body separator found
+    }
+    
+    // Calculate how much body we already have and how much more we need
+    size_t body_in_initial = initial_read - headers_size;
+    size_t total_needed = headers_size + content_length;
+    
+    char* buffer = NULL;
+    ssize_t bytes_read = initial_read;
+    
+    // If we need more data, allocate a larger buffer and continue reading
+    if (content_length > 0 && total_needed > (size_t)initial_read) {
+        buffer = malloc(total_needed + 1);
+        if (!buffer) {
+            close(client_fd);
+            return NULL;
+        }
+        
+        // Copy initial data
+        memcpy(buffer, initial_buffer, initial_read);
+        bytes_read = initial_read;
+        
+        // Read remaining body data
+        while (bytes_read < (ssize_t)total_needed) {
+            ssize_t chunk = read(client_fd, buffer + bytes_read, total_needed - bytes_read);
+            if (chunk <= 0) break; // Connection closed or error
+            bytes_read += chunk;
+        }
+        
+        buffer[bytes_read] = '\0';
+    } else {
+        // All data fit in initial read, use stack buffer
+        buffer = initial_buffer;
+    }
     
     if (bytes_read > 0) {
-        buffer[bytes_read] = '\0';
+        // Create HTTP request object
+        HttpRequest* req = http_request_create();
         
         // Parse HTTP request line
-        char method[16], path[512];
-        sscanf(buffer, "%s %s", method, path);
+        char method[16], path[512], version[16];
+        sscanf(buffer, "%s %s %s", method, path, version);
         
-        // URL decode path (basic implementation)
+        req->method = strdup(method);
+        
+        // Split path and query string
+        char* query_start = strchr(path, '?');
+        if (query_start) {
+            *query_start = '\0';
+            req->query_string = strdup(query_start + 1);
+        }
+        
+        // URL decode path
         char decoded_path[512];
         int j = 0;
         for (int i = 0; path[i] && j < sizeof(decoded_path) - 1; i++) {
             if (path[i] == '%' && path[i+1] && path[i+2]) {
-                // Simple hex decode
                 int hex_val;
                 sscanf(&path[i+1], "%2x", &hex_val);
                 decoded_path[j++] = (char)hex_val;
@@ -427,64 +807,216 @@ static void* handle_client(void* arg) {
         }
         decoded_path[j] = '\0';
         
-        // Remove query string if present
-        char* query_start = strchr(decoded_path, '?');
-        if (query_start) {
-            *query_start = '\0';
-        }
+        req->path = strdup(decoded_path);
         
-        // Check if this is a static file request (GET method and server has static serving enabled)
-        if (strcmp(method, "GET") == 0 && server->serve_static) {
-            // Remove leading slash for file path
-            const char* file_path = decoded_path;
-            if (file_path[0] == '/') {
-                file_path++;
+        // Parse headers and body
+        parse_http_headers(buffer, bytes_read, req);
+        
+        // Check if this is a static file request (supports multiple mounts)
+        // Support both GET and HEAD methods for static files; HEAD sends headers only
+        if ((strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0) && server->serve_static && server->static_mount_count > 0) {
+            const char* original_path = decoded_path;
+
+            // IMPORTANT: Never attempt static handling for paths under configured bypass prefixes
+            // When mounting SPA at '/', static probing for certain prefixes (e.g., '/api') can interfere with dynamic routes.
+            // Skip static handling early for any path beginning with a configured bypass prefix and let dynamic routes handle it.
+            int should_bypass_static = 0;
+            for (int bp = 0; bp < server->static_bypass_count; bp++) {
+                const char* pref = server->static_bypass_prefixes[bp];
+                if (pref && pref[0] != '\0') {
+                    size_t plen = strlen(pref);
+                    if (strncmp(original_path, pref, plen) == 0) {
+                        should_bypass_static = 1;
+                        break;
+                    }
+                }
+            }
+            if (should_bypass_static) {
+                goto AFTER_STATIC_CHECK;
             }
             
-            // If path is empty or ends with /, serve index.html
-            char index_path[512];
-            if (strlen(file_path) == 0 || file_path[strlen(file_path)-1] == '/') {
-                snprintf(index_path, sizeof(index_path), "%sindex.html", file_path);
-                file_path = index_path;
-            }
-            
-            // Try to serve static file
-            if (http_server_serve_file(server, file_path, client_fd)) {
-                close(client_fd);
-                return NULL;
+            // Try each static mount in order
+            for (int mount_idx = 0; mount_idx < server->static_mount_count; mount_idx++) {
+                StaticMount* mount = &server->static_mounts[mount_idx];
+                const char* urlpath = original_path;
+                
+                // Check if URL matches this mount's prefix
+                if (mount->prefix && mount->prefix[0] != '\0') {
+                    size_t prefix_len = strlen(mount->prefix);
+                    if (strncmp(urlpath, mount->prefix, prefix_len) != 0) {
+                        // Doesn't match this prefix, try next mount
+                        continue;
+                    }
+                    // Strip the prefix
+                    urlpath += prefix_len;
+                }
+                
+                // Trim leading slash after prefix stripping
+                if (urlpath[0] == '/') urlpath++;
+                
+                // Determine file path (add index.html for directories)
+                const char* file_path = NULL;
+                char index_path[512];
+                if (strlen(urlpath) == 0 || urlpath[strlen(urlpath)-1] == '/') {
+                    snprintf(index_path, sizeof(index_path), "%sindex.html", urlpath);
+                    file_path = index_path;
+                } else {
+                    file_path = urlpath;
+                }
+                
+                // Try to serve the file from this mount
+                char* saved_root = server->static_root;
+                server->static_root = mount->root;
+                bool served = http_server_serve_file(server, file_path, client_fd, req);
+                server->static_root = saved_root;
+                
+                if (served) {
+                    // Successfully served from this mount
+                    http_request_free(req);
+                    close(client_fd);
+                    return NULL;
+                }
+                
+                // File not found in this mount, check if SPA fallback applies
+                // SPA fallback: for the first mount (typically the frontend).
+                // If prefix is empty (mounted at '/'), also allow SPA fallback as long as request is not for '/api'.
+                if (mount_idx == 0 && ((mount->prefix && mount->prefix[0] != '\0') || (mount->prefix && mount->prefix[0] == '\0'))) {
+                    fprintf(stderr, "[HTTP] SPA fallback: trying index.html for %s\n", original_path);
+                    char* saved_root2 = server->static_root;
+                    server->static_root = mount->root;
+                    bool served2 = http_server_serve_file(server, "index.html", client_fd, req);
+                    server->static_root = saved_root2;
+                    if (served2) {
+                        fprintf(stderr, "[HTTP] Served index.html for SPA route: %s\n", original_path);
+                        http_request_free(req);
+                        close(client_fd);
+                        return NULL;
+                    } else {
+                        fprintf(stderr, "[HTTP] Failed to serve index.html for SPA route: %s\n", original_path);
+                    }
+                }
+                
+                // Continue to next mount if prefix matched but file not found
             }
         }
+AFTER_STATIC_CHECK:
         
-        // Check for route matches
+        // Check for dynamic route matches
         bool route_found = false;
         for (int i = 0; i < server->route_count; i++) {
             Route* route = &server->routes[i];
-            if (strcmp(method, route->method) == 0 && strcmp(decoded_path, route->path) == 0) {
-                // Route found - for now just send a success response
-                const char* response = 
-                    "HTTP/1.1 200 OK\r\n"
-                    "Content-Type: application/json\r\n"
-                    "Content-Length: 33\r\n"
-                    "\r\n"
-                    "{\"message\": \"Route handler found\"}";
-                
-                write(client_fd, response, strlen(response));
+            if (strcmp(method, route->method) == 0 && match_route_path(route->path, decoded_path, req)) {
+                // Route found - call callback if available
+                if (route->callback) {
+                    HttpResponseBuilder* res = http_response_create();
+                    
+                    // Call the route handler
+                    route->callback(req, res, route->user_data);
+                    
+                    // Build and send response
+                    size_t response_length;
+                    char* response_str = http_response_build(res, &response_length);
+                    if (response_str) {
+                        write(client_fd, response_str, response_length);
+                        free(response_str);
+                    }
+                    
+                    http_response_builder_free(res);
+                } else {
+                    // Legacy handler - send basic success response
+                    const char* response = 
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: application/json\r\n"
+                        "Content-Length: 33\r\n"
+                        "\r\n"
+                        "{\"message\": \"Route handler found\"}";
+                    
+                    write(client_fd, response, strlen(response));
+                }
                 route_found = true;
                 break;
             }
         }
         
-        // If no route found, send 404
+        // If no route found, try SPA fallback before sending 404
         if (!route_found) {
-            const char* error_404 = 
-                "HTTP/1.1 404 Not Found\r\n"
-                "Content-Type: application/json\r\n"
-                "Content-Length: 27\r\n"
-                "\r\n"
-                "{\"error\": \"Route not found\"}";
+            bool did_spa_fallback = false;
+            // Only fallback for non-API GET/HEAD requests when static mounts are present
+            if ((strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0) && server->static_mount_count > 0) {
+                const char* original_path = decoded_path;
+                // Never fallback for configured bypass prefixes
+                int is_bypass = 0;
+                for (int bp = 0; bp < server->static_bypass_count; bp++) {
+                    const char* pref = server->static_bypass_prefixes[bp];
+                    if (pref && pref[0] != '\0') {
+                        size_t plen = strlen(pref);
+                        if (strncmp(original_path, pref, plen) == 0) {
+                            is_bypass = 1;
+                            break;
+                        }
+                    }
+                }
+                if (!is_bypass) {
+                    // Serve index.html from the SPA root.
+                    // Prefer server->static_root (last configured mount), else try to find a mount with prefix "/" or empty.
+                    const char* spa_root = server->static_root;
+                    if (!spa_root) {
+                        for (int m = server->static_mount_count - 1; m >= 0; m--) {
+                            StaticMount* mm = &server->static_mounts[m];
+                            if (mm->prefix && (mm->prefix[0] == '\0' || strcmp(mm->prefix, "/") == 0)) {
+                                spa_root = mm->root;
+                                break;
+                            }
+                        }
+                        // As a last resort, use the last mount's root
+                        if (!spa_root && server->static_mount_count > 0) {
+                            spa_root = server->static_mounts[server->static_mount_count - 1].root;
+                        }
+                    }
+                    char* saved_root = server->static_root;
+                    fprintf(stderr, "[HTTP] SPA 404-fallback: serving index.html for %s\n", original_path);
+                    if (spa_root) {
+                        // Build an explicit path to avoid relying on transient server->static_root state
+                        char spa_index[1024];
+                        snprintf(spa_index, sizeof(spa_index), "%s/%s", spa_root, "index.html");
+                        server->static_root = NULL; // ensure http_server_serve_file uses provided path as-is
+                        did_spa_fallback = http_server_serve_file(server, spa_index, client_fd, req);
+                        server->static_root = saved_root;
+                    } else {
+                        // No SPA root identified; fall back to default behavior
+                        did_spa_fallback = false;
+                    }
+                    if (did_spa_fallback) {
+                        http_request_free(req);
+                        // Free dynamically allocated buffer if we used one
+                        if (buffer != initial_buffer) { free(buffer); }
+                        close(client_fd);
+                        return NULL;
+                    }
+                }
+            }
+
+            // Default 404 JSON for APIs or when SPA fallback isn't applicable
+            HttpResponseBuilder* res = http_response_create();
+            http_response_set_status(res, 404);
+            http_response_set_json(res, "{\"error\": \"Route not found\"}");
             
-            write(client_fd, error_404, strlen(error_404));
+            size_t response_length;
+            char* response_str = http_response_build(res, &response_length);
+            if (response_str) {
+                write(client_fd, response_str, response_length);
+                free(response_str);
+            }
+            
+            http_response_builder_free(res);
         }
+        
+        http_request_free(req);
+    }
+    
+    // Free dynamically allocated buffer if we used one
+    if (buffer != initial_buffer) {
+        free(buffer);
     }
     
     close(client_fd);
@@ -501,56 +1033,121 @@ HttpServer* http_server_create(int port) {
     server->route_capacity = 0;
     server->static_root = NULL;
     server->serve_static = false;
+    server->static_prefix = NULL;
+    // Initialize dynamic static mounts array with initial capacity of 16
+    server->static_mounts = malloc(sizeof(StaticMount) * 16);
+    server->static_mount_count = 0;
+    server->static_mount_capacity = 16;
+    // Initialize bypass prefixes
+    server->static_bypass_prefixes = NULL;
+    server->static_bypass_count = 0;
+    server->static_bypass_capacity = 0;
     
     return server;
 }
 
 void http_server_get(HttpServer* server, const char* path, void* handler) {
     if (server->route_count >= server->route_capacity) {
-        server->route_capacity = server->route_capacity == 0 ? 8 : server->route_capacity * 2;
-        server->routes = realloc(server->routes, sizeof(Route) * server->route_capacity);
+        int new_capacity = server->route_capacity == 0 ? 128 : server->route_capacity * 2;
+        Route* new_routes = realloc(server->routes, sizeof(Route) * new_capacity);
+        if (!new_routes) {
+            fprintf(stderr, "[HTTP] Failed to allocate memory for routes (capacity: %d)\n", new_capacity);
+            return;
+        }
+        server->routes = new_routes;
+        server->route_capacity = new_capacity;
     }
     
     Route* route = &server->routes[server->route_count++];
     route->method = strdup("GET");
     route->path = strdup(path);
     route->handler = handler;
+    route->callback = NULL;
+    route->user_data = NULL;
 }
 
 void http_server_post(HttpServer* server, const char* path, void* handler) {
     if (server->route_count >= server->route_capacity) {
-        server->route_capacity = server->route_capacity == 0 ? 8 : server->route_capacity * 2;
-        server->routes = realloc(server->routes, sizeof(Route) * server->route_capacity);
+        int new_capacity = server->route_capacity == 0 ? 128 : server->route_capacity * 2;
+        Route* new_routes = realloc(server->routes, sizeof(Route) * new_capacity);
+        if (!new_routes) {
+            fprintf(stderr, "[HTTP] Failed to allocate memory for routes (capacity: %d)\n", new_capacity);
+            return;
+        }
+        server->routes = new_routes;
+        server->route_capacity = new_capacity;
     }
     
     Route* route = &server->routes[server->route_count++];
     route->method = strdup("POST");
     route->path = strdup(path);
     route->handler = handler;
+    route->callback = NULL;
+    route->user_data = NULL;
 }
 
 void http_server_put(HttpServer* server, const char* path, void* handler) {
     if (server->route_count >= server->route_capacity) {
-        server->route_capacity = server->route_capacity == 0 ? 8 : server->route_capacity * 2;
-        server->routes = realloc(server->routes, sizeof(Route) * server->route_capacity);
+        int new_capacity = server->route_capacity == 0 ? 128 : server->route_capacity * 2;
+        Route* new_routes = realloc(server->routes, sizeof(Route) * new_capacity);
+        if (!new_routes) {
+            fprintf(stderr, "[HTTP] Failed to allocate memory for routes (capacity: %d)\n", new_capacity);
+            return;
+        }
+        server->routes = new_routes;
+        server->route_capacity = new_capacity;
     }
     
     Route* route = &server->routes[server->route_count++];
     route->method = strdup("PUT");
     route->path = strdup(path);
     route->handler = handler;
+    route->callback = NULL;
+    route->user_data = NULL;
 }
 
 void http_server_delete(HttpServer* server, const char* path, void* handler) {
     if (server->route_count >= server->route_capacity) {
-        server->route_capacity = server->route_capacity == 0 ? 8 : server->route_capacity * 2;
-        server->routes = realloc(server->routes, sizeof(Route) * server->route_capacity);
+        int new_capacity = server->route_capacity == 0 ? 128 : server->route_capacity * 2;
+        Route* new_routes = realloc(server->routes, sizeof(Route) * new_capacity);
+        if (!new_routes) {
+            fprintf(stderr, "[HTTP] Failed to allocate memory for routes (capacity: %d)\n", new_capacity);
+            return;
+        }
+        server->routes = new_routes;
+        server->route_capacity = new_capacity;
     }
     
     Route* route = &server->routes[server->route_count++];
     route->method = strdup("DELETE");
     route->path = strdup(path);
     route->handler = handler;
+    route->callback = NULL;
+    route->user_data = NULL;
+}
+
+// New callback-based route registration
+void http_server_register_route(HttpServer* server, const char* method, const char* path,
+                                 RouteHandlerFunc callback, void* user_data) {
+    if (!server || !method || !path || !callback) return;
+    
+    if (server->route_count >= server->route_capacity) {
+        int new_capacity = server->route_capacity == 0 ? 128 : server->route_capacity * 2;
+        Route* new_routes = realloc(server->routes, sizeof(Route) * new_capacity);
+        if (!new_routes) {
+            fprintf(stderr, "[HTTP] Failed to allocate memory for routes (capacity: %d)\n", new_capacity);
+            return;
+        }
+        server->routes = new_routes;
+        server->route_capacity = new_capacity;
+    }
+    
+    Route* route = &server->routes[server->route_count++];
+    route->method = strdup(method);
+    route->path = strdup(path);
+    route->handler = NULL;
+    route->callback = callback;
+    route->user_data = user_data;
 }
 
 void http_server_listen(HttpServer* server) {
@@ -629,6 +1226,24 @@ void http_server_free(HttpServer* server) {
         if (server->static_root) {
             free(server->static_root);
         }
+        if (server->static_prefix) {
+            free(server->static_prefix);
+        }
+        
+        // Free all static mounts
+        for (int i = 0; i < server->static_mount_count; i++) {
+            free(server->static_mounts[i].prefix);
+            free(server->static_mounts[i].root);
+        }
+        free(server->static_mounts);
+
+        // Free bypass prefixes
+        if (server->static_bypass_prefixes) {
+            for (int i = 0; i < server->static_bypass_count; i++) {
+                free(server->static_bypass_prefixes[i]);
+            }
+            free(server->static_bypass_prefixes);
+        }
         
         free(server);
     }
@@ -659,17 +1274,98 @@ void http_server_serve_static(HttpServer* server, const char* url_path) {
     printf("[HTTP] Static files will be served from URL path: %s\n", url_path);
 }
 
-bool http_server_serve_file(HttpServer* server, const char* file_path, int client_fd) {
-    if (!server || !file_path || client_fd < 0) return false;
+void http_server_set_static_mount(HttpServer* server, const char* url_prefix, const char* root_path) {
+    if (!server || !url_prefix || !root_path) return;
+    
+    // Add to dynamic mounts array (grows automatically)
+    http_server_add_static_mount(server, url_prefix, root_path);
+    
+    // Also update legacy fields for backward compatibility
+    if (server->static_root) free(server->static_root);
+    server->static_root = strdup(root_path);
+    if (server->static_prefix) free(server->static_prefix);
+    server->static_prefix = strdup(url_prefix);
+    server->serve_static = true;
+    printf("[HTTP] Static mount %s -> %s\n", url_prefix, root_path);
+}
+
+// Additional secondary static mount (e.g., "/api/files" -> ".")
+void http_server_add_static_mount(HttpServer* server, const char* url_prefix, const char* root_path) {
+    if (!server || !url_prefix || !root_path) return;
+    
+    // Check if we need to grow the array (double capacity when full, max 128)
+    if (server->static_mount_count >= server->static_mount_capacity) {
+        int new_capacity = server->static_mount_capacity * 2;
+        if (new_capacity > 128) new_capacity = 128;
+        if (server->static_mount_count >= 128) {
+            fprintf(stderr, "[HTTP] Static mount limit (128) reached, ignoring mount %s\n", url_prefix);
+            return;
+        }
+        StaticMount* new_mounts = realloc(server->static_mounts, sizeof(StaticMount) * new_capacity);
+        if (!new_mounts) {
+            fprintf(stderr, "[HTTP] Failed to allocate memory for static mounts\n");
+            return;
+        }
+        server->static_mounts = new_mounts;
+        server->static_mount_capacity = new_capacity;
+    }
+    
+    // Add the new mount
+    server->static_mounts[server->static_mount_count].prefix = strdup(url_prefix);
+    server->static_mounts[server->static_mount_count].root = strdup(root_path);
+    server->static_mount_count++;
+    server->serve_static = true;
+    
+    printf("[HTTP] Static mount %s -> %s (total: %d)\n", url_prefix, root_path, server->static_mount_count);
+}
+
+// Configure a URL prefix to bypass static handling and SPA fallback
+void http_server_add_static_bypass_prefix(HttpServer* server, const char* url_prefix) {
+    if (!server || !url_prefix) return;
+    // Initialize array on first use
+    if (server->static_bypass_capacity == 0) {
+        server->static_bypass_capacity = 8;
+        server->static_bypass_prefixes = (char**)malloc(sizeof(char*) * server->static_bypass_capacity);
+        server->static_bypass_count = 0;
+    }
+    // Grow if needed
+    if (server->static_bypass_count >= server->static_bypass_capacity) {
+        int new_cap = server->static_bypass_capacity * 2;
+        if (new_cap > 256) new_cap = 256; // reasonable guard
+        char** new_arr = (char**)realloc(server->static_bypass_prefixes, sizeof(char*) * new_cap);
+        if (!new_arr) return;
+        server->static_bypass_prefixes = new_arr;
+        server->static_bypass_capacity = new_cap;
+    }
+    server->static_bypass_prefixes[server->static_bypass_count++] = strdup(url_prefix);
+    fprintf(stderr, "[HTTP] Static bypass prefix added: %s (total: %d)\n", url_prefix, server->static_bypass_count);
+}
+
+void http_server_clear_static_bypass_prefixes(HttpServer* server) {
+    if (!server) return;
+    if (server->static_bypass_prefixes) {
+        for (int i = 0; i < server->static_bypass_count; i++) {
+            free(server->static_bypass_prefixes[i]);
+        }
+        free(server->static_bypass_prefixes);
+        server->static_bypass_prefixes = NULL;
+    }
+    server->static_bypass_count = 0;
+    server->static_bypass_capacity = 0;
+    fprintf(stderr, "[HTTP] Static bypass prefixes cleared\n");
+}
+
+bool http_server_serve_file(HttpServer* server, const char* file_path, int client_fd, HttpRequest* req) {
+    if (!server || !file_path || client_fd < 0) {
+        fprintf(stderr, "[HTTP] serve_file: invalid params (server=%p, path=%s, fd=%d)\n", 
+                (void*)server, file_path ? file_path : "NULL", client_fd);
+        return false;
+    }
     
     // Security check
     if (!http_is_safe_path(file_path)) {
-        const char* error_403 = "HTTP/1.1 403 Forbidden\r\n"
-                                "Content-Type: text/plain\r\n"
-                                "Content-Length: 9\r\n"
-                                "\r\n"
-                                "Forbidden";
-        write(client_fd, error_403, strlen(error_403));
+        fprintf(stderr, "[HTTP] serve_file: unsafe path: %s\n", file_path);
+        // Do not write a response here; let the caller decide (enables SPA fallback)
         return false;
     }
     
@@ -682,56 +1378,170 @@ bool http_server_serve_file(HttpServer* server, const char* file_path, int clien
         full_path[sizeof(full_path) - 1] = '\0';
     }
     
+    fprintf(stderr, "[HTTP] serve_file: trying to serve %s\n", full_path);
+    
     // Check if file exists and is readable
     struct stat file_stat;
     if (stat(full_path, &file_stat) != 0 || !S_ISREG(file_stat.st_mode)) {
-        const char* error_404 = "HTTP/1.1 404 Not Found\r\n"
-                                "Content-Type: text/plain\r\n"
-                                "Content-Length: 9\r\n"
-                                "\r\n"
-                                "Not Found";
-        write(client_fd, error_404, strlen(error_404));
+        fprintf(stderr, "[HTTP] serve_file: file not found or not regular: %s\n", full_path);
+        // Do not write a response here; caller may perform SPA fallback
         return false;
     }
     
     // Open file
     FILE* file = fopen(full_path, "rb");
     if (!file) {
-        const char* error_500 = "HTTP/1.1 500 Internal Server Error\r\n"
-                                "Content-Type: text/plain\r\n"
-                                "Content-Length: 21\r\n"
-                                "\r\n"
-                                "Internal Server Error";
-        write(client_fd, error_500, strlen(error_500));
+        fprintf(stderr, "[HTTP] serve_file: failed to open file: %s\n", full_path);
+        // Defer error response to caller (avoid double headers)
         return false;
     }
     
     // Get MIME type
     const char* mime_type = http_get_mime_type(full_path);
     
-    // Send HTTP headers
-    char headers[1024];
-    snprintf(headers, sizeof(headers),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: %s\r\n"
-        "Content-Length: %ld\r\n"
-        "Cache-Control: public, max-age=3600\r\n"
-        "Connection: close\r\n"
-        "\r\n",
-        mime_type, file_stat.st_size);
+    // Determine method and Range header
+    int is_head = 0;
+    const char* method = NULL;
+    if (req && req->method) {
+        method = req->method;
+        if (strcasecmp(method, "HEAD") == 0) {
+            is_head = 1;
+        }
+    }
+    const char* range_hdr = req ? http_request_get_header(req, "Range") : NULL;
+    long long total_size = (long long)file_stat.st_size;
+    long long start = 0;
+    long long end = total_size > 0 ? (total_size - 1) : 0;
+    int use_range = 0;
     
-    write(client_fd, headers, strlen(headers));
-    
-    // Send file content
-    char buffer[8192];
-    size_t bytes_read;
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        write(client_fd, buffer, bytes_read);
+    // Parse simple Range header: bytes=START-END | bytes=START- | bytes=-SUFFIX
+    if (range_hdr && strncasecmp(range_hdr, "bytes=", 6) == 0) {
+        const char* spec = range_hdr + 6;
+        // Only support single range
+        const char* comma = strchr(spec, ',');
+        if (comma) {
+            // Multiple ranges not supported -> respond with 200 ignoring Range per simplicity
+        } else {
+            const char* dash = strchr(spec, '-');
+            if (dash) {
+                if (dash == spec) {
+                    // bytes=-SUFFIX
+                    long long suffix = atoll(dash + 1);
+                    if (suffix > 0) {
+                        if (suffix >= total_size) {
+                            start = 0;
+                        } else {
+                            start = total_size - suffix;
+                        }
+                        end = total_size > 0 ? (total_size - 1) : 0;
+                        use_range = 1;
+                    }
+                } else {
+                    // bytes=START- or bytes=START-END
+                    long long s = atoll(spec);
+                    if (*(dash + 1) == '\0') {
+                        // open-ended
+                        if (s >= 0 && s < total_size) {
+                            start = s;
+                            end = total_size > 0 ? (total_size - 1) : 0;
+                            use_range = 1;
+                        }
+                    } else {
+                        long long e = atoll(dash + 1);
+                        if (s >= 0 && s < total_size && e >= s) {
+                            if (e >= total_size) e = total_size - 1;
+                            start = s;
+                            end = e;
+                            use_range = 1;
+                        }
+                    }
+                }
+            }
+        }
     }
     
-    fclose(file);
-    printf("[HTTP] Served static file: %s (MIME: %s, Size: %ld bytes)\n", 
-           full_path, mime_type, file_stat.st_size);
+    // If invalid range (e.g., start >= total), return 416
+    if (range_hdr && !use_range) {
+        char headers[1024];
+        int n = snprintf(headers, sizeof(headers),
+            "HTTP/1.1 416 Range Not Satisfiable\r\n"
+            "Content-Range: bytes */%lld\r\n"
+            "Accept-Ranges: bytes\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            total_size);
+        write(client_fd, headers, n);
+        fclose(file);
+        fprintf(stderr, "[HTTP] Invalid Range requested for %s: %s\n", full_path, range_hdr);
+        return true;
+    }
     
-    return true;
+    // Build headers and optionally send body
+    char headers[1024];
+    if (use_range) {
+        long long content_len = (end >= start) ? (end - start + 1) : 0;
+        int n = snprintf(headers, sizeof(headers),
+            "HTTP/1.1 206 Partial Content\r\n"
+            "Content-Type: %s\r\n"
+            "Content-Length: %lld\r\n"
+            "Accept-Ranges: bytes\r\n"
+            "Content-Range: bytes %lld-%lld/%lld\r\n"
+            "Cache-Control: public, max-age=3600\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            mime_type, content_len, start, end, total_size);
+        write(client_fd, headers, n);
+        
+        if (!is_head && content_len > 0) {
+            // Send only the requested range
+            if (fseeko(file, (off_t)start, SEEK_SET) != 0) {
+                // Fallback: read and discard until start
+                long long skip = start;
+                char discard[4096];
+                while (skip > 0) {
+                    size_t r = fread(discard, 1, (skip > (long long)sizeof(discard)) ? sizeof(discard) : (size_t)skip, file);
+                    if (r == 0) break;
+                    skip -= r;
+                }
+            }
+            long long remaining = content_len;
+            char buffer[8192];
+            while (remaining > 0) {
+                size_t to_read = (remaining > (long long)sizeof(buffer)) ? sizeof(buffer) : (size_t)remaining;
+                size_t r = fread(buffer, 1, to_read, file);
+                if (r == 0) break;
+                write(client_fd, buffer, r);
+                remaining -= r;
+            }
+        }
+        fclose(file);
+        printf("[HTTP] Served static file (range): %s (MIME: %s, Range: %lld-%lld/%lld)\n",
+               full_path, mime_type, start, end, total_size);
+        return true;
+    } else {
+        int n = snprintf(headers, sizeof(headers),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: %s\r\n"
+            "Content-Length: %lld\r\n"
+            "Accept-Ranges: bytes\r\n"
+            "Cache-Control: public, max-age=3600\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            mime_type, total_size);
+        write(client_fd, headers, n);
+        
+        if (!is_head) {
+            // Send full file content
+            char buffer[8192];
+            size_t bytes_read;
+            while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+                write(client_fd, buffer, bytes_read);
+            }
+        }
+        fclose(file);
+        printf("[HTTP] Served static file: %s (MIME: %s, Size: %lld bytes)%s\n", 
+               full_path, mime_type, total_size, is_head ? " [HEAD]" : "");
+        return true;
+    }
 }

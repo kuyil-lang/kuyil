@@ -1,0 +1,7 @@
+struct X {
+  a
+}
+
+let x = X { a: 1 }
+print("ok: ")
+print(x)

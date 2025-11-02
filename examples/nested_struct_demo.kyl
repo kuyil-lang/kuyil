@@ -1,0 +1,157 @@
+print("=== Nested Struct Demo ===")
+
+// Define Address struct
+struct Address {
+  street,
+  city,
+  zipcode,
+}
+
+// Define Person struct that contains Address
+struct Person {
+  name,
+  age,
+  address,  // This will hold an Address struct
+}
+
+// Define Company struct that contains an array of Person structs
+struct Company {
+  name,
+  ceo,      // A Person struct
+  employees, // Array of Person structs
+}
+
+// Create an Address instance
+let addr1 = Address {
+  street: "123 Main St",
+  city: "San Francisco",
+  zipcode: "94102",
+}
+
+print("Address created:")
+print("  Street:", addr1.street)
+print("  City:", addr1.city)
+print("  Zip:", addr1.zipcode)
+
+// Create a Person with nested Address
+let person1 = Person {
+  name: "Alice Johnson",
+  age: 30,
+  address: addr1,  // Nested struct
+}
+
+print("\nPerson with nested address:")
+print("  Name:", person1.name)
+print("  Age:", person1.age)
+print("  Lives at:", person1.address.street, person1.address.city)
+
+// Create another address inline
+let addr2 = Address {
+  street: "456 Oak Ave",
+  city: "New York",
+  zipcode: "10001",
+}
+
+let person2 = Person {
+  name: "Bob Smith",
+  age: 35,
+  address: addr2,
+}
+
+// Create a CEO
+let ceoAddr = Address {
+  street: "789 Executive Blvd",
+  city: "Seattle",
+  zipcode: "98101",
+}
+
+let ceo = Person {
+  name: "Carol Williams",
+  age: 45,
+  address: ceoAddr,
+}
+
+// Create employees array
+let employees = [person1, person2]
+
+// Create Company with nested structs
+let company = Company {
+  name: "Tech Corp",
+  ceo: ceo,
+  employees: employees,
+}
+
+print("\n=== Company Structure ===")
+print("Company:", company.name)
+print("CEO:", company.ceo.name, "aged", company.ceo.age)
+print("CEO Address:", company.ceo.address.city)
+print("Number of employees:", array_length(company.employees))
+
+print("\nEmployees:")
+let i = 0
+while (i < array_length(company.employees)) {
+  let emp = company.employees[i]
+  print("  -", emp.name, "aged", emp.age, "from", emp.address.city)
+  i = i + 1
+}
+
+// Test JSON serialization with nested structs
+print("\n=== JSON Serialization ===")
+print("Address JSON:")
+print(addr1.toJSON())
+
+print("\nPerson JSON (with nested address):")
+print(person1.toJSON())
+
+// Deserialize and reconstruct
+print("\n=== Deserialization Test ===")
+let personData = Person {
+  name: "David Lee",
+  age: 28,
+  address: Address {
+    street: "321 Elm St",
+    city: "Boston",
+    zipcode: "02101",
+  },
+}
+
+let reconstructed = Person_fromJSON(personData)
+print("Reconstructed person:", reconstructed.name)
+print("Reconstructed address:", reconstructed.address.street, reconstructed.address.city)
+
+// Update nested struct fields
+print("\n=== Updating Nested Fields ===")
+person1.address.street = "999 New Street"
+person1.address.city = "Los Angeles"
+print("Updated address:", person1.address.street, person1.address.city)
+
+// Demonstrate struct composition patterns
+print("\n=== Struct Composition Patterns ===")
+
+struct Point {
+  x,
+  y,
+}
+
+struct Rectangle {
+  topLeft,
+  bottomRight,
+}
+
+let p1 = Point { x: 0, y: 0 }
+let p2 = Point { x: 10, y: 5 }
+
+let rect = Rectangle {
+  topLeft: p1,
+  bottomRight: p2,
+}
+
+print("Rectangle from", rect.topLeft.x, rect.topLeft.y, "to", rect.bottomRight.x, rect.bottomRight.y)
+
+// Calculate area using nested struct access
+let width = rect.bottomRight.x - rect.topLeft.x
+let height = rect.bottomRight.y - rect.topLeft.y
+let area = width * height
+print("Rectangle area:", area)
+
+print("\n=== Demo Complete ===")

@@ -178,6 +178,57 @@ Value kyl_str_replace(int arg_count, Value* args) {
     return result;
 }
 
+// String split function - returns array as string with | separator
+Value kyl_str_split(int arg_count, Value* args) {
+    if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        Value result = {VALUE_NIL};
+        return result;
+    }
+    
+    const char* str = args[0].as.string;
+    const char* delimiter = args[1].as.string;
+    
+    if (strlen(delimiter) == 0) {
+        // Empty delimiter, return original string
+        Value result;
+        result.type = VALUE_STRING;
+        result.as.string = strdup(str);
+        return result;
+    }
+    
+    // Count how many parts we'll have
+    int count = 1;
+    const char* temp = str;
+    while ((temp = strstr(temp, delimiter)) != NULL) {
+        count++;
+        temp += strlen(delimiter);
+    }
+    
+    // Build result as pipe-separated string
+    char* result_str = malloc(strlen(str) + count * 10); // Extra space for metadata
+    result_str[0] = '\0';
+    
+    char* str_copy = strdup(str);
+    char* token = strtok(str_copy, delimiter);
+    int first = 1;
+    
+    while (token != NULL) {
+        if (!first) {
+            strcat(result_str, "|");
+        }
+        strcat(result_str, token);
+        first = 0;
+        token = strtok(NULL, delimiter);
+    }
+    
+    free(str_copy);
+    
+    Value result;
+    result.type = VALUE_STRING;
+    result.as.string = result_str;
+    return result;
+}
+
 // Number conversion function
 Value kyl_str_to_number(int arg_count, Value* args) {
     if (arg_count != 1) {
@@ -228,8 +279,15 @@ Value kyl_str_to_string(int arg_count, Value* args) {
             result.as.string = strdup(args[0].as.string);
             break;
         case VALUE_NUMBER: {
-            char* str = malloc(32);
-            snprintf(str, 32, "%g", args[0].as.number);
+            char* str = malloc(64);  // Increased size for large integers
+            // Check if number is an integer (no decimal part)
+            if (args[0].as.number == (long long)args[0].as.number) {
+                // Integer: use fixed format to avoid scientific notation
+                snprintf(str, 64, "%.0f", args[0].as.number);
+            } else {
+                // Float: use %g but ensure no scientific notation for reasonable numbers
+                snprintf(str, 64, "%.15g", args[0].as.number);
+            }
             result.as.string = str;
             break;
         }

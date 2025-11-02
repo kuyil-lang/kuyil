@@ -19,6 +19,11 @@
 #include <ctype.h>
 #include <time.h>
 #ifndef _WIN32
+    #include <signal.h>
+    #include <execinfo.h>
+    #include <unistd.h>
+#endif
+#ifndef _WIN32
     #include <sys/time.h>
 #else
     #include <windows.h>
@@ -49,20 +54,67 @@ static void reset_stack(VM* vm) {
     vm->frame_count = 0;
 }
 
+// Print a compact C backtrace for native crashes (SIGSEGV, etc.)
+#ifndef _WIN32
+static void kuyil_print_c_backtrace(void) {
+    void* buffer[64];
+    int nptrs = backtrace(buffer, 64);
+    fprintf(stderr, "[KUYIL][C-Backtrace] frames=%d\n", nptrs);
+    backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO);
+}
+
+static void kuyil_signal_handler(int sig) {
+    const char* name = strsignal(sig);
+    fprintf(stderr, "\n[KUYIL] Caught fatal signal %d (%s)\n", sig, name ? name : "?");
+    kuyil_print_c_backtrace();
+    // Re-raise with default handler to allow core dump if enabled
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+#endif
+
 static void runtime_error(VM* vm, const char* format, ...) {
     va_list args;
     va_start(args, format);
+    fprintf(stderr, "[KUYIL][RuntimeError] ");
     vfprintf(stderr, format, args);
     va_end(args);
     fputs("\n", stderr);
     
-    // Print stack trace
+    // Print a brief location summary for the top frame
+    if (vm->frame_count > 0) {
+        CallFrame* top = &vm->frames[vm->frame_count - 1];
+        if (top && top->function) {
+            Function* tfn = top->function;
+            int line = -1;
+            if (top->ip && tfn->chunk.code && tfn->chunk.count > 0) {
+                size_t tip = (size_t)(top->ip - tfn->chunk.code);
+                if (tip > 0) tip -= 1; // last executed instruction
+                if (tip < (size_t)tfn->chunk.count) {
+                    line = tfn->chunk.lines[tip];
+                }
+            }
+            const char* fname = (tfn->name ? tfn->name : "script");
+            const char* src = tfn->source_path ? tfn->source_path : (vm->current_source_path ? vm->current_source_path : "<unknown>");
+            fprintf(stderr, "[location] %s:%d in %s()\n", src, line, fname);
+        }
+    }
+
+    // Print stack trace (Kuyil)
     for (int i = vm->frame_count - 1; i >= 0; i--) {
         CallFrame* frame = &vm->frames[i];
+        if (!frame || !frame->function) continue;
         Function* function = frame->function;
-        size_t instruction = frame->ip - function->chunk.code - 1;
-        fprintf(stderr, "[line %d] in ", 
-            function->chunk.lines[instruction]);
+        int line = -1;
+        if (frame->ip && function->chunk.code && function->chunk.count > 0) {
+            size_t instruction = (size_t)(frame->ip - function->chunk.code);
+            if (instruction > 0) instruction -= 1;
+            if (instruction < (size_t)function->chunk.count) {
+                line = function->chunk.lines[instruction];
+            }
+        }
+        const char* src = function->source_path ? function->source_path : (vm->current_source_path ? vm->current_source_path : "<unknown>");
+        fprintf(stderr, "  at %s:%d in ", src, line);
         if (function->name == NULL) {
             fprintf(stderr, "script\n");
         } else {
@@ -285,6 +337,7 @@ static Value native_print(int arg_count, Value* args) {
         if (i < arg_count - 1) printf(" ");
     }
     printf("\n");
+    fflush(stdout);  // Ensure output is written immediately
     
     Value result;
     result.type = VALUE_NIL;
@@ -342,8 +395,15 @@ static Value native_to_string(int arg_count, Value* args) {
             result.as.string = strdup(args[0].as.string);
             break;
         case VALUE_NUMBER: {
-            char* str = malloc(32);
-            snprintf(str, 32, "%g", args[0].as.number);
+            char* str = malloc(64);  // Increased size for large integers
+            // Check if number is an integer (no decimal part)
+            if (args[0].as.number == (long long)args[0].as.number) {
+                // Integer: use fixed format to avoid scientific notation
+                snprintf(str, 64, "%.0f", args[0].as.number);
+            } else {
+                // Float: use %g but ensure no scientific notation for reasonable numbers
+                snprintf(str, 64, "%.15g", args[0].as.number);
+            }
             result.as.string = str;
             break;
         }
@@ -400,6 +460,32 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
     }
     
     if (callee.type == VALUE_STRING) {
+        // Method dispatch: if first arg is an object with __type, try TypeName_methodName
+        if (arg_count >= 1) {
+            Value* args = vm->stack_top - arg_count - 1; // args[0] is first argument (receiver for methods)
+            if (args[0].type == VALUE_OBJECT) {
+                // Look for "__type" key
+                const char* type_name = NULL;
+                for (int i = 0; i < args[0].as.object.count; i++) {
+                    if (strcmp(args[0].as.object.keys[i], "__type") == 0 &&
+                        args[0].as.object.values[i].type == VALUE_STRING) {
+                        type_name = args[0].as.object.values[i].as.string;
+                        break;
+                    }
+                }
+                if (type_name != NULL) {
+                    char qualified[256];
+                    snprintf(qualified, sizeof(qualified), "%s_%s", type_name, callee.as.string);
+                    Value fn_value;
+                    if (get_global(vm, qualified, &fn_value) && fn_value.type == VALUE_FUNCTION) {
+                        // Replace callee string with resolved function and call it
+                        vm_pop(vm); // pop callee string
+                        vm_push(vm, fn_value);
+                        return call_value(vm, fn_value, arg_count);
+                    }
+                }
+            }
+        }
         // Test assertions (enabled in test mode)
         if (vm->test_mode) {
             if (strcmp(callee.as.string, "assert_true") == 0) {
@@ -491,6 +577,20 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             }
         }
 
+        // Resolve user-defined function by exact name if exists
+        {
+            Value fn_value;
+            if (get_global(vm, callee.as.string, &fn_value) && fn_value.type == VALUE_FUNCTION) {
+                // Replace callee string with function and call it
+                // Pop the callee string
+                vm_pop(vm);
+                // Push function value
+                vm_push(vm, fn_value);
+                // Delegate to function call path
+                return call_value(vm, fn_value, arg_count);
+            }
+        }
+
         // Check dynamic functions loaded by modular library system FIRST
         if (is_dynamic_function(callee.as.string)) {
             Value* args = vm->stack_top - arg_count -1;
@@ -505,6 +605,17 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             Value* args = vm->stack_top - arg_count -1;
             Value result = native_print(arg_count, args);
             vm->stack_top -= arg_count + 1; // Pop args and function
+            vm_push(vm, result);
+            return true;
+        }
+        if (strcmp(callee.as.string, "array_length") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            double len = 0.0;
+            if (arg_count >= 1 && args[0].type == VALUE_ARRAY) {
+                len = (double)args[0].as.array.count;
+            }
+            vm->stack_top -= arg_count + 1; // Pop args and function
+            Value result = { VALUE_NUMBER, .as.number = len };
             vm_push(vm, result);
             return true;
         }
@@ -1691,6 +1802,19 @@ InterpretResult vm_run(VM* vm) {
                 vm_push(vm, constant);
                 break;
             }
+            case OP_CONSTANT_LONG: {
+                uint8_t high = READ_BYTE();
+                uint8_t low = READ_BYTE();
+                uint16_t constant_index = (high << 8) | low;
+                Chunk* chunk = &vm->frames[vm->frame_count - 1].function->chunk;
+                if (constant_index >= chunk->constant_count) {
+                    fprintf(stderr, "[VM] ERROR: Constant index %d out of bounds (max %d)\n", constant_index, chunk->constant_count - 1);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                Value constant = chunk->constants[constant_index];
+                vm_push(vm, constant);
+                break;
+            }
             case OP_NIL: {
                 Value nil;
                 nil.type = VALUE_NIL;
@@ -1714,8 +1838,27 @@ InterpretResult vm_run(VM* vm) {
             case OP_POP: 
                 vm_pop(vm); 
                 break;
+            case OP_DUP: {
+                Value value = vm_peek(vm, 0);
+                vm_push(vm, value);
+                break;
+            }
             case OP_DEFINE_GLOBAL: {
                 const char* name = READ_STRING();
+                define_global(vm, name, vm_peek(vm, 0));
+                vm_pop(vm);
+                break;
+            }
+            case OP_DEFINE_GLOBAL_LONG: {
+                uint8_t high = READ_BYTE();
+                uint8_t low = READ_BYTE();
+                uint16_t constant_index = (high << 8) | low;
+                Chunk* chunk = &vm->frames[vm->frame_count - 1].function->chunk;
+                if (constant_index >= chunk->constant_count) {
+                    fprintf(stderr, "[VM] ERROR: Constant index %d out of bounds in OP_DEFINE_GLOBAL_LONG\n", constant_index);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                const char* name = chunk->constants[constant_index].as.string;
                 define_global(vm, name, vm_peek(vm, 0));
                 vm_pop(vm);
                 break;
@@ -1730,8 +1873,42 @@ InterpretResult vm_run(VM* vm) {
                 vm_push(vm, value);
                 break;
             }
+            case OP_GET_GLOBAL_LONG: {
+                uint8_t high = READ_BYTE();
+                uint8_t low = READ_BYTE();
+                uint16_t constant_index = (high << 8) | low;
+                Chunk* chunk = &vm->frames[vm->frame_count - 1].function->chunk;
+                if (constant_index >= chunk->constant_count) {
+                    fprintf(stderr, "[VM] ERROR: Constant index %d out of bounds in OP_GET_GLOBAL_LONG\n", constant_index);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                const char* name = chunk->constants[constant_index].as.string;
+                Value value;
+                if (!get_global(vm, name, &value)) {
+                    runtime_error(vm, "Undefined variable '%s'.", name);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                vm_push(vm, value);
+                break;
+            }
             case OP_SET_GLOBAL: {
                 const char* name = READ_STRING();
+                if (!set_global(vm, name, vm_peek(vm, 0))) {
+                    runtime_error(vm, "Undefined variable '%s'.", name);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
+            case OP_SET_GLOBAL_LONG: {
+                uint8_t high = READ_BYTE();
+                uint8_t low = READ_BYTE();
+                uint16_t constant_index = (high << 8) | low;
+                Chunk* chunk = &vm->frames[vm->frame_count - 1].function->chunk;
+                if (constant_index >= chunk->constant_count) {
+                    fprintf(stderr, "[VM] ERROR: Constant index %d out of bounds in OP_SET_GLOBAL_LONG\n", constant_index);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                const char* name = chunk->constants[constant_index].as.string;
                 if (!set_global(vm, name, vm_peek(vm, 0))) {
                     runtime_error(vm, "Undefined variable '%s'.", name);
                     return INTERPRET_RUNTIME_ERROR;
@@ -1998,7 +2175,12 @@ InterpretResult vm_run(VM* vm) {
             }
             case OP_CLOSURE: {
                 uint8_t constant_index = READ_BYTE();
-                Value function_value = vm->frames[vm->frame_count - 1].function->chunk.constants[constant_index];
+                Chunk* chunk = &vm->frames[vm->frame_count - 1].function->chunk;
+                if (constant_index >= chunk->constant_count) {
+                    fprintf(stderr, "[VM] ERROR: Constant index %d out of bounds in OP_CLOSURE (max %d)\n", constant_index, chunk->constant_count - 1);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                Value function_value = chunk->constants[constant_index];
                 vm_push(vm, function_value);
                 break;
             }
@@ -2111,6 +2293,93 @@ InterpretResult vm_run(VM* vm) {
                 vm_push(vm, value); // Assignment expression returns the value
                 break;
             }
+            case OP_OBJECT_GET: {
+                Value key = vm_pop(vm);
+                Value object = vm_pop(vm);
+                
+        // Debug logging removed for cleanliness
+                
+                if (object.type != VALUE_OBJECT) {
+                    runtime_error(vm, "Can only access properties on objects.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (key.type != VALUE_STRING) {
+                    runtime_error(vm, "Object property key must be a string.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                // Search for the key in the object
+                bool found = false;
+                for (int i = 0; i < object.as.object.count; i++) {
+                    if (strcmp(object.as.object.keys[i], key.as.string) == 0) {
+                        vm_push(vm, object.as.object.values[i]);
+                        found = true;
+                        break;
+                    }
+                }
+                
+                if (!found) {
+                    // Push nil for missing properties (like JavaScript)
+                    Value nil_val;
+                    nil_val.type = VALUE_NIL;
+                    vm_push(vm, nil_val);
+                }
+                break;
+            }
+            case OP_OBJECT_NEW: {
+                Value obj;
+                obj.type = VALUE_OBJECT;
+                obj.as.object.count = 0;
+                obj.as.object.keys = NULL;
+                obj.as.object.values = NULL;
+                vm_push(vm, obj);
+                break;
+            }
+            case OP_OBJECT_SET: {
+                // New operand order: stack (bottom->top) is object, key, value
+                // We pop in reverse: value, key, object
+                Value value = vm_pop(vm);
+                Value key = vm_pop(vm);
+                Value object = vm_pop(vm);
+                
+        // Debug logging removed for cleanliness
+                
+                if (object.type != VALUE_OBJECT) {
+                    runtime_error(vm, "Can only set properties on objects.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (key.type != VALUE_STRING) {
+                    runtime_error(vm, "Object property key must be a string.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                // Search for existing key
+                bool found = false;
+                for (int i = 0; i < object.as.object.count; i++) {
+                    if (strcmp(object.as.object.keys[i], key.as.string) == 0) {
+                        object.as.object.values[i] = value;
+                        found = true;
+                        break;
+                    }
+                }
+                
+                // If key doesn't exist, add it (dynamic property addition)
+                if (!found) {
+                    object.as.object.count++;
+                    object.as.object.keys = realloc(object.as.object.keys, 
+                                                    sizeof(char*) * object.as.object.count);
+                    object.as.object.values = realloc(object.as.object.values, 
+                                                      sizeof(Value) * object.as.object.count);
+                    object.as.object.keys[object.as.object.count - 1] = strdup(key.as.string);
+                    object.as.object.values[object.as.object.count - 1] = value;
+                }
+                
+                // Push the mutated object back so it can be stored in the local
+                vm_push(vm, object);
+                break;
+            }
             case OP_HALT:
                 return INTERPRET_OK;
             default:
@@ -2185,25 +2454,38 @@ int vm_compile_script(const char* source, LibraryFlags required_libraries) {
         return -1;
     }
     
-    // Tokenize
+    // Tokenize (dynamic buffer)
     Lexer lexer;
     lexer_init(&lexer, source);
-    
-    Token tokens[1000]; // Fixed size buffer
+
+    int capacity = 2048;
     int token_count = 0;
+    Token* tokens = (Token*)malloc(sizeof(Token) * capacity);
+    if (!tokens) {
+        fprintf(stderr, "Compile error: Out of memory while tokenizing\n");
+        script->is_valid = 0;
+        return -1;
+    }
     
     for (;;) {
-        if (token_count >= 999) {
-            fprintf(stderr, "Compile error: Script too large (max 999 tokens)\n");
-            script->is_valid = 0;
-            return -1;
-        }
-        
         Token token = lexer_scan_token(&lexer);
+        if (token_count >= capacity) {
+            int new_capacity = capacity * 2;
+            Token* grown = (Token*)realloc(tokens, sizeof(Token) * new_capacity);
+            if (!grown) {
+                fprintf(stderr, "Compile error: Script too large (exceeds %d tokens)\n", capacity);
+                free(tokens);
+                script->is_valid = 0;
+                return -1;
+            }
+            tokens = grown;
+            capacity = new_capacity;
+        }
         tokens[token_count++] = token;
         
         if (token.type == TOKEN_ERROR) {
             fprintf(stderr, "Compile lexical error at line %d: %.*s\n", token.line, token.length, token.start);
+            free(tokens);
             script->is_valid = 0;
             return -1;
         }
@@ -2219,6 +2501,7 @@ int vm_compile_script(const char* source, LibraryFlags required_libraries) {
     if (parser.had_error) {
         fprintf(stderr, "Compile parse error\n");
         ast_node_free(ast);
+        free(tokens);
         script->is_valid = 0;
         return -1;
     }
@@ -2226,12 +2509,16 @@ int vm_compile_script(const char* source, LibraryFlags required_libraries) {
     // Compile to bytecode
     Function* function = compiler_compile(ast);
     ast_node_free(ast);
+    free(tokens);
     
     if (function == NULL) {
         fprintf(stderr, "Compile bytecode error\n");
         script->is_valid = 0;
         return -1;
     }
+    
+    // Wire source path for future error reporting
+    function->source_path = "<dynamic>";
     
     // Store compiled function and metadata
     script->function = function;
@@ -2317,6 +2604,9 @@ static void vm_init_limited(VM* vm, LibraryFlags allowed_libraries) {
     if (allowed_libraries & LIBRARY_CORE) {
         Value print_val = {VALUE_STRING, {.string = strdup("print")}};
         define_global(vm, "print", print_val);
+        // Core utility: array_length
+        Value array_length_val = (Value){VALUE_STRING, {.string = strdup("array_length")}};
+        define_global(vm, "array_length", array_length_val);
     }
     
     // Legacy hardcoded library functions removed - now handled by modular library system
@@ -2379,31 +2669,43 @@ InterpretResult vm_execute_dynamic(VM* vm, const char* source,
     Value param_count_val = {VALUE_NUMBER, {.number = (double)param_count}};
     define_global(vm, "param_count", param_count_val);
     
-    // Tokenize with error handling
+    // Tokenize with error handling (dynamic buffer)
     Lexer lexer;
     lexer_init(&lexer, source);
-    
-    Token tokens[1000]; // Fixed size buffer
+
+    int capacity = 1024;
     int token_count = 0;
-    
+    Token* tokens = (Token*)malloc(sizeof(Token) * capacity);
+    if (!tokens) {
+        fprintf(stderr, "Dynamic execution error: Out of memory while tokenizing\n");
+        return INTERPRET_COMPILE_ERROR;
+    }
+
     for (;;) {
-        if (token_count >= 999) { // Leave space for EOF token
-            fprintf(stderr, "Dynamic execution error: Script too large\n");
-            return INTERPRET_COMPILE_ERROR;
-        }
-        
         Token token = lexer_scan_token(&lexer);
+        if (token_count >= capacity) {
+            int new_capacity = capacity * 2;
+            Token* grown = (Token*)realloc(tokens, sizeof(Token) * new_capacity);
+            if (!grown) {
+                fprintf(stderr, "Dynamic execution error: Script too large (exceeds %d tokens)\n", capacity);
+                free(tokens);
+                return INTERPRET_COMPILE_ERROR;
+            }
+            tokens = grown;
+            capacity = new_capacity;
+        }
         tokens[token_count++] = token;
-        
+
         if (token.type == TOKEN_ERROR) {
             fprintf(stderr, "Dynamic execution lexical error at line %d: %.*s\n", 
                     token.line, token.length, token.start);
+            free(tokens);
             return INTERPRET_COMPILE_ERROR;
         }
-        
+
         if (token.type == TOKEN_EOF) break;
     }
-    
+
     // Parse with error handling
     Parser parser;
     parser_init(&parser, tokens, token_count);
@@ -2412,17 +2714,23 @@ InterpretResult vm_execute_dynamic(VM* vm, const char* source,
     if (parser.had_error) {
         fprintf(stderr, "Dynamic execution parse error\n");
         ast_node_free(ast);
+        free(tokens);
         return INTERPRET_COMPILE_ERROR;
     }
     
     // Compile with error handling
     Function* function = compiler_compile(ast);
     ast_node_free(ast);
+    // tokens are no longer needed after parsing
+    free(tokens);
     
     if (function == NULL) {
         fprintf(stderr, "Dynamic execution compile error\n");
         return INTERPRET_COMPILE_ERROR;
     }
+    
+    // Wire source path for error reporting
+    function->source_path = vm->current_source_path ? vm->current_source_path : "<dynamic>";
     
     // Set up execution frame
     vm->frames[0].function = function;
@@ -2463,6 +2771,19 @@ void vm_init(VM* vm) {
     vm->coverage.count = 0;
     vm->current_source_path = NULL;
     
+#ifndef _WIN32
+    // Install basic crash handlers to improve diagnostics on segfaults
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = kuyil_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGABRT, &sa, NULL);
+    sigaction(SIGFPE,  &sa, NULL);
+    sigaction(SIGILL,  &sa, NULL);
+#endif
+    
     // Initialize logging system
     log_init(LOG_DEBUG);
     LOG_INFO("Kuyil VM initialized");
@@ -2472,6 +2793,9 @@ void vm_init(VM* vm) {
     print_val.type = VALUE_STRING;
     print_val.as.string = strdup("print");
     define_global(vm, "print", print_val);
+    // Core utility: array_length (allow bare identifier calls)
+    Value array_length_val = (Value){VALUE_STRING, {.string = strdup("array_length")}};
+    define_global(vm, "array_length", array_length_val);
     
     // Register logging functions
     Value log_fatal_val = {VALUE_STRING, {.string = strdup("log_fatal")}};
@@ -2623,6 +2947,9 @@ void vm_init(VM* vm) {
     // Initialize modular library system
     vm_init_library_system(vm);
     
+    // Set global VM for library access
+    set_current_vm(vm);
+    
     LOG_INFO("FFI system initialized with %d functions", 53);
 }
 
@@ -2652,25 +2979,43 @@ void vm_free(VM* vm) {
 }
 
 InterpretResult vm_interpret(VM* vm, const char* source) {
-    // Tokenize
+    // Tokenize with dynamic buffer (removes 10K token limit)
     Lexer lexer;
     lexer_init(&lexer, source);
-    
-    Token tokens[1000]; // Fixed size for simplicity
+
+    int capacity = 4096;
     int token_count = 0;
-    
+    Token* tokens = (Token*)malloc(sizeof(Token) * capacity);
+    if (!tokens) {
+        fprintf(stderr, "Memory allocation failure while tokenizing.\n");
+        return INTERPRET_RUNTIME_ERROR;
+    }
+
     for (;;) {
         Token token = lexer_scan_token(&lexer);
+        if (token_count >= capacity) {
+            int new_capacity = capacity * 2;
+            Token* grown = (Token*)realloc(tokens, sizeof(Token) * new_capacity);
+            if (!grown) {
+                fprintf(stderr, "❌ Lexical Error: script too large (exceeds %d tokens). Increase token buffer or split the file.\n",
+                        capacity);
+                free(tokens);
+                return INTERPRET_COMPILE_ERROR;
+            }
+            tokens = grown;
+            capacity = new_capacity;
+        }
         tokens[token_count++] = token;
-        
+
         if (token.type == TOKEN_ERROR) {
             print_lexical_error_with_context(source, token);
+            free(tokens);
             return INTERPRET_COMPILE_ERROR;
         }
-        
+
         if (token.type == TOKEN_EOF) break;
     }
-    
+
     // Parse
     Parser parser;
     parser_init(&parser, tokens, token_count);
@@ -2678,14 +3023,19 @@ InterpretResult vm_interpret(VM* vm, const char* source) {
     
     if (parser.had_error) {
         ast_node_free(ast);
+        free(tokens);
         return INTERPRET_COMPILE_ERROR;
     }
     
     // Compile
     Function* function = compiler_compile(ast);
     ast_node_free(ast);
+    free(tokens);
     
     if (function == NULL) return INTERPRET_COMPILE_ERROR;
+    
+    // Wire source path into compiled function for stack traces
+    function->source_path = vm->current_source_path;
     
     // Call startup functions before execution
     if (g_ffi_context) {
@@ -2865,6 +3215,8 @@ InterpretResult vm_interpret_bytecode(VM* vm, const char* bytecode_path) {
     
     function->name = NULL; // Main function
     function->arity = 0;
+    function->is_native = false;
+    function->source_path = NULL;  // Bytecode files don't have source path info
     
     // Initialize chunk with loaded bytecode
     chunk_init(&function->chunk);

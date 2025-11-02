@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <stdio.h>
 
 static bool is_alpha(char c) {
     return (c >= 'a' && c <= 'z') ||
@@ -151,7 +152,15 @@ static KuyilTokenType check_keyword(int start, int length, const char* rest, Kuy
 static KuyilTokenType identifier_type(Lexer* lexer) {
     switch (lexer->start[0]) {
         case 'b': return check_keyword(1, 4, "reak", TOKEN_BREAK, lexer);
-        case 'c': return check_keyword(1, 7, "ontinue", TOKEN_CONTINUE, lexer);
+        case 'c': 
+            if (lexer->current - lexer->start > 1) {
+                switch (lexer->start[1]) {
+                    case 'a': return check_keyword(2, 2, "se", TOKEN_CASE, lexer);
+                    case 'o': return check_keyword(1, 7, "ontinue", TOKEN_CONTINUE, lexer);
+                }
+            }
+            break;
+        case 'd': return check_keyword(1, 6, "efault", TOKEN_DEFAULT, lexer);
         case 'e': return check_keyword(1, 3, "lse", TOKEN_ELSE, lexer);
         case 'f': 
             if (lexer->current - lexer->start > 1) {
@@ -167,10 +176,25 @@ static KuyilTokenType identifier_type(Lexer* lexer) {
                 }
             }
             break;
-        case 'i': return check_keyword(1, 1, "f", TOKEN_IF, lexer);
+        case 'i': 
+            if (lexer->current - lexer->start > 1) {
+                switch (lexer->start[1]) {
+                    case 'f': return check_keyword(0, 2, "if", TOKEN_IF, lexer);
+                    case 'n': return check_keyword(1, 8, "nterface", TOKEN_INTERFACE, lexer);
+                }
+            }
+            return check_keyword(1, 1, "f", TOKEN_IF, lexer);
         case 'l': return check_keyword(1, 2, "et", TOKEN_LET, lexer);
         case 'n': return check_keyword(1, 2, "il", TOKEN_NIL, lexer);
         case 'r': return check_keyword(1, 5, "eturn", TOKEN_RETURN, lexer);
+        case 's': 
+            if (lexer->current - lexer->start > 1) {
+                switch (lexer->start[1]) {
+                    case 't': return check_keyword(1, 5, "truct", TOKEN_STRUCT, lexer);
+                    case 'w': return check_keyword(1, 5, "witch", TOKEN_SWITCH, lexer);
+                }
+            }
+            break;
         case 't': return check_keyword(1, 3, "rue", TOKEN_TRUE, lexer);
         case 'w': return check_keyword(1, 4, "hile", TOKEN_WHILE, lexer);
     }

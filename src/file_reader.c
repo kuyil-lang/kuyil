@@ -109,7 +109,10 @@ Value* file_reader_parse_csv_line(const char* line, const CSVConfig* config) {
     row->as.array.values = NULL;
     
     char* line_copy = strdup(line);
-    char* token = strtok(line_copy, &config->delimiter);
+    char delim[2];
+    delim[0] = config->delimiter ? config->delimiter : ',';
+    delim[1] = '\0';
+    char* token = strtok(line_copy, delim);
     
     while (token) {
         // Trim whitespace
@@ -126,7 +129,7 @@ Value* file_reader_parse_csv_line(const char* line, const CSVConfig* config) {
         cell->type = VALUE_STRING;
         cell->as.string = strdup(token);
         
-        token = strtok(NULL, &config->delimiter);
+    token = strtok(NULL, delim);
     }
     
     free(line_copy);

@@ -26,6 +26,11 @@ typedef enum {
     TOKEN_RETURN,
     TOKEN_BREAK,
     TOKEN_CONTINUE,
+    TOKEN_STRUCT,
+    TOKEN_INTERFACE,
+    TOKEN_SWITCH,
+    TOKEN_CASE,
+    TOKEN_DEFAULT,
 
     // Operators
     TOKEN_PLUS,

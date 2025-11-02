@@ -5,7 +5,31 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <pthread.h>
 // dlfcn.h is already handled in library_loader.h with Windows compatibility
+
+// Global VM pointer for library access
+static VM* g_current_vm = NULL;
+// Global source path for error reporting across callbacks
+static const char* g_current_source_path = NULL;
+// Serialize re-entrant VM calls from libraries (e.g., HTTP threads)
+static pthread_mutex_t g_vm_call_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void set_current_vm(VM* vm) {
+    g_current_vm = vm;
+}
+
+VM* get_current_vm(void) {
+    return g_current_vm;
+}
+
+void set_current_source_path(const char* path) {
+    g_current_source_path = path;
+}
+
+const char* get_current_source_path(void) {
+    return g_current_source_path;
+}
 
 // Dynamic function registration system
 typedef struct {
@@ -250,6 +274,7 @@ static void register_default_library_functions(void) {
         void* trim_fn = dlsym(str_lib, "kyl_str_trim");
         void* contains_fn = dlsym(str_lib, "kyl_str_contains");
         void* replace_fn = dlsym(str_lib, "kyl_str_replace");
+        void* split_fn = dlsym(str_lib, "kyl_str_split");
         void* to_number_fn = dlsym(str_lib, "kyl_str_to_number");
         void* to_string_fn = dlsym(str_lib, "kyl_str_to_string");
         
@@ -260,6 +285,7 @@ static void register_default_library_functions(void) {
         if (trim_fn) register_dynamic_function("str_trim", trim_fn, FUNC_SIG_VALUE_ARGS);
         if (contains_fn) register_dynamic_function("str_contains", contains_fn, FUNC_SIG_VALUE_ARGS);
         if (replace_fn) register_dynamic_function("str_replace", replace_fn, FUNC_SIG_VALUE_ARGS);
+        if (split_fn) register_dynamic_function("split", split_fn, FUNC_SIG_VALUE_ARGS);
         if (to_number_fn) register_dynamic_function("to_number", to_number_fn, FUNC_SIG_VALUE_ARGS);
         if (to_string_fn) register_dynamic_function("to_string", to_string_fn, FUNC_SIG_VALUE_ARGS);
         LOG_INFO("Loaded string library functions");
@@ -270,6 +296,15 @@ static void register_default_library_functions(void) {
     // HTTP library functions - load directly with dlopen
     void* http_lib = dlopen("./libs/libkylhttp.so", RTLD_LAZY);
     if (http_lib) {
+        // Provide VM callback bridge to HTTP library
+        void (*http_set_kuyil_caller)(void*) = dlsym(http_lib, "http_set_kuyil_caller");
+        if (http_set_kuyil_caller) {
+            LOG_INFO("Injected Kuyil caller into HTTP library");
+            http_set_kuyil_caller((void*)call_kuyil_function);
+        } else {
+            LOG_WARNING("HTTP library does not expose http_set_kuyil_caller");
+        }
+        
         // Server functions
         void* server_fn = dlsym(http_lib, "kyl_http_server");
         void* get_fn = dlsym(http_lib, "kyl_http_get");
@@ -277,13 +312,38 @@ static void register_default_library_functions(void) {
         void* put_fn = dlsym(http_lib, "kyl_http_put");
         void* delete_fn = dlsym(http_lib, "kyl_http_delete");
         void* listen_fn = dlsym(http_lib, "kyl_http_listen");
+        void* register_route_fn = dlsym(http_lib, "kyl_http_register_route");
         
         // Client functions
         void* client_get_fn = dlsym(http_lib, "kyl_http_client_get");
         void* client_post_fn = dlsym(http_lib, "kyl_http_client_post");
         
-        // Static serving
-        void* static_fn = dlsym(http_lib, "kyl_http_static");
+        // Response builder functions
+        void* res_set_status_fn = dlsym(http_lib, "kyl_response_set_status");
+        void* res_set_body_fn = dlsym(http_lib, "kyl_response_set_body");
+        void* res_set_json_fn = dlsym(http_lib, "kyl_response_set_json");
+        void* res_add_header_fn = dlsym(http_lib, "kyl_response_add_header");
+        
+        // Request accessor functions
+        void* req_get_method_fn = dlsym(http_lib, "kyl_request_get_method");
+        void* req_get_path_fn = dlsym(http_lib, "kyl_request_get_path");
+        void* req_get_body_fn = dlsym(http_lib, "kyl_request_get_body");
+        void* req_get_param_fn = dlsym(http_lib, "kyl_request_get_param");
+        void* req_get_header_fn = dlsym(http_lib, "kyl_request_get_header");
+        void* req_parse_multipart_fn = dlsym(http_lib, "kyl_request_parse_multipart");
+        void* req_get_multipart_field_fn = dlsym(http_lib, "kyl_request_get_multipart_field");
+        void* req_parse_multipart_fields_fn = dlsym(http_lib, "kyl_request_parse_multipart_fields");
+        void* req_parse_multipart_file_fn = dlsym(http_lib, "kyl_request_parse_multipart_file");
+        void* req_save_multipart_file_fn = dlsym(http_lib, "kyl_request_save_multipart_file");
+    void* req_get_json_string_fn = dlsym(http_lib, "kyl_request_get_json_string");
+    void* req_get_json_number_fn = dlsym(http_lib, "kyl_request_get_json_number");
+    void* req_get_json_bool_fn = dlsym(http_lib, "kyl_request_get_json_bool");
+        
+    // Static serving
+    void* static_fn = dlsym(http_lib, "kyl_http_static");
+    void* static_add_fn = dlsym(http_lib, "kyl_http_static_add");
+    void* static_bypass_fn = dlsym(http_lib, "kyl_http_static_bypass");
+    void* static_bypass_clear_fn = dlsym(http_lib, "kyl_http_static_bypass_clear");
         void* cleanup_fn = dlsym(http_lib, "kyl_http_cleanup");
         
         // Register server functions
@@ -293,13 +353,38 @@ static void register_default_library_functions(void) {
         if (put_fn) register_dynamic_function("http_put", put_fn, FUNC_SIG_VALUE_ARGS);
         if (delete_fn) register_dynamic_function("http_delete", delete_fn, FUNC_SIG_VALUE_ARGS);
         if (listen_fn) register_dynamic_function("http_listen", listen_fn, FUNC_SIG_VALUE_ARGS);
+        if (register_route_fn) register_dynamic_function("http_register_route", register_route_fn, FUNC_SIG_VALUE_ARGS);
         
         // Register client functions
         if (client_get_fn) register_dynamic_function("http_client_get", client_get_fn, FUNC_SIG_VALUE_ARGS);
         if (client_post_fn) register_dynamic_function("http_client_post", client_post_fn, FUNC_SIG_VALUE_ARGS);
         
+        // Register response builder functions
+        if (res_set_status_fn) register_dynamic_function("response_set_status", res_set_status_fn, FUNC_SIG_VALUE_ARGS);
+        if (res_set_body_fn) register_dynamic_function("response_set_body", res_set_body_fn, FUNC_SIG_VALUE_ARGS);
+        if (res_set_json_fn) register_dynamic_function("response_set_json", res_set_json_fn, FUNC_SIG_VALUE_ARGS);
+        if (res_add_header_fn) register_dynamic_function("response_add_header", res_add_header_fn, FUNC_SIG_VALUE_ARGS);
+        
+        // Register request accessor functions
+        if (req_get_method_fn) register_dynamic_function("request_get_method", req_get_method_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_get_path_fn) register_dynamic_function("request_get_path", req_get_path_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_get_body_fn) register_dynamic_function("request_get_body", req_get_body_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_get_param_fn) register_dynamic_function("request_get_param", req_get_param_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_get_header_fn) register_dynamic_function("request_get_header", req_get_header_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_parse_multipart_fn) register_dynamic_function("request_parse_multipart", req_parse_multipart_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_get_multipart_field_fn) register_dynamic_function("request_get_multipart_field", req_get_multipart_field_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_parse_multipart_fields_fn) register_dynamic_function("request_parse_multipart_fields", req_parse_multipart_fields_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_parse_multipart_file_fn) register_dynamic_function("request_parse_multipart_file", req_parse_multipart_file_fn, FUNC_SIG_VALUE_ARGS);
+        if (req_save_multipart_file_fn) register_dynamic_function("request_save_multipart_file", req_save_multipart_file_fn, FUNC_SIG_VALUE_ARGS);
+    if (req_get_json_string_fn) register_dynamic_function("request_get_json_string", req_get_json_string_fn, FUNC_SIG_VALUE_ARGS);
+    if (req_get_json_number_fn) register_dynamic_function("request_get_json_number", req_get_json_number_fn, FUNC_SIG_VALUE_ARGS);
+    if (req_get_json_bool_fn) register_dynamic_function("request_get_json_bool", req_get_json_bool_fn, FUNC_SIG_VALUE_ARGS);
+        
         // Register utility functions
-        if (static_fn) register_dynamic_function("http_static", static_fn, FUNC_SIG_VALUE_ARGS);
+    if (static_fn) register_dynamic_function("http_static", static_fn, FUNC_SIG_VALUE_ARGS);
+    if (static_add_fn) register_dynamic_function("http_static_add", static_add_fn, FUNC_SIG_VALUE_ARGS);
+    if (static_bypass_fn) register_dynamic_function("http_static_bypass", static_bypass_fn, FUNC_SIG_VALUE_ARGS);
+    if (static_bypass_clear_fn) register_dynamic_function("http_static_bypass_clear", static_bypass_clear_fn, FUNC_SIG_VALUE_ARGS);
         if (cleanup_fn) register_dynamic_function("http_cleanup", cleanup_fn, FUNC_SIG_VALUE_ARGS);
         
         LOG_INFO("Loaded HTTP library functions");
@@ -336,6 +421,41 @@ static void register_default_library_functions(void) {
         LOG_INFO("Loaded datetime library functions");
     } else {
         LOG_ERROR("Failed to load datetime library: %s", dlerror());
+    }
+    
+    // SQLite wrapper library functions
+    void* sqlite_lib = dlopen("./libs/libkylsqlite.so", RTLD_LAZY);
+    if (sqlite_lib) {
+        void* open_db_fn = dlsym(sqlite_lib, "kyl_sqlite_open_database");
+        void* close_db_fn = dlsym(sqlite_lib, "kyl_sqlite_close_database");
+        void* execute_sql_fn = dlsym(sqlite_lib, "kyl_sqlite_execute_sql");
+        void* execute_query_fn = dlsym(sqlite_lib, "kyl_sqlite_execute_query");
+        void* first_row_fn = dlsym(sqlite_lib, "kyl_sqlite_result_first_row");
+        void* next_row_fn = dlsym(sqlite_lib, "kyl_sqlite_result_next_row");
+        void* get_int_fn = dlsym(sqlite_lib, "kyl_sqlite_row_get_int");
+        void* get_text_fn = dlsym(sqlite_lib, "kyl_sqlite_row_get_text");
+        void* get_real_fn = dlsym(sqlite_lib, "kyl_sqlite_row_get_real");
+        void* free_result_fn = dlsym(sqlite_lib, "kyl_sqlite_free_result");
+        void* last_error_fn = dlsym(sqlite_lib, "kyl_sqlite_get_last_error");
+        void* set_global_db_fn = dlsym(sqlite_lib, "kyl_sqlite_set_global_db");
+        void* get_global_db_fn = dlsym(sqlite_lib, "kyl_sqlite_get_global_db");
+        
+        if (open_db_fn) register_dynamic_function("sqlite_open_database", open_db_fn, FUNC_SIG_VALUE_ARGS);
+        if (close_db_fn) register_dynamic_function("sqlite_close_database", close_db_fn, FUNC_SIG_VALUE_ARGS);
+        if (execute_sql_fn) register_dynamic_function("sqlite_execute_sql", execute_sql_fn, FUNC_SIG_VALUE_ARGS);
+        if (execute_query_fn) register_dynamic_function("sqlite_execute_query", execute_query_fn, FUNC_SIG_VALUE_ARGS);
+        if (first_row_fn) register_dynamic_function("sqlite_result_first_row", first_row_fn, FUNC_SIG_VALUE_ARGS);
+        if (next_row_fn) register_dynamic_function("sqlite_result_next_row", next_row_fn, FUNC_SIG_VALUE_ARGS);
+        if (get_int_fn) register_dynamic_function("sqlite_row_get_int", get_int_fn, FUNC_SIG_VALUE_ARGS);
+        if (get_text_fn) register_dynamic_function("sqlite_row_get_text", get_text_fn, FUNC_SIG_VALUE_ARGS);
+        if (get_real_fn) register_dynamic_function("sqlite_row_get_real", get_real_fn, FUNC_SIG_VALUE_ARGS);
+        if (free_result_fn) register_dynamic_function("sqlite_free_result", free_result_fn, FUNC_SIG_VALUE_ARGS);
+        if (last_error_fn) register_dynamic_function("sqlite_get_last_error", last_error_fn, FUNC_SIG_VALUE_ARGS);
+        if (set_global_db_fn) register_dynamic_function("sqlite_set_global_db", set_global_db_fn, FUNC_SIG_VALUE_ARGS);
+        if (get_global_db_fn) register_dynamic_function("sqlite_get_global_db", get_global_db_fn, FUNC_SIG_VALUE_ARGS);
+        LOG_INFO("Loaded SQLite library functions");
+    } else {
+        LOG_ERROR("Failed to load SQLite wrapper library: %s", dlerror());
     }
     
     LOG_INFO("Finished registering default library functions");
@@ -388,6 +508,25 @@ Value create_dynamic_function_value(const char* name) {
     result.type = VALUE_STRING;
     result.as.string = strdup(name); // This will be freed properly in vm_free
     return result;
+}
+
+// Look up a global variable by name in the VM (exported for library use)
+__attribute__((visibility("default")))
+Value vm_lookup_global(const char* name) {
+    VM* vm = g_current_vm;
+    if (!vm) {
+        Value nil = {VALUE_NIL};
+        return nil;
+    }
+    
+    for (int i = 0; i < vm->global_count; i++) {
+        if (vm->globals[i].name && strcmp(vm->globals[i].name, name) == 0) {
+            return vm->globals[i].value;
+        }
+    }
+    
+    Value nil = {VALUE_NIL};
+    return nil;
 }
 
 // Wrapper functions for different signatures
@@ -555,6 +694,100 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
     LOG_WARNING("Dynamic function not found: %s", name);
     Value result = {VALUE_NIL};
     return result;
+}
+
+// Call a Kuyil function from C code
+// This is used by library code (like HTTP callbacks) to invoke Kuyil functions
+bool call_kuyil_function(Value function_value, int arg_count, Value* args, Value* result_out) {
+    pthread_mutex_lock(&g_vm_call_mutex);
+    VM* vm = g_current_vm;
+    if (!vm) {
+        LOG_ERROR("Cannot call Kuyil function: VM not available");
+        pthread_mutex_unlock(&g_vm_call_mutex);
+        return false;
+    }
+
+    if (function_value.type != VALUE_FUNCTION) {
+        LOG_ERROR("Cannot call Kuyil function: value is not a function");
+        pthread_mutex_unlock(&g_vm_call_mutex);
+        return false;
+    }
+
+    Function* function = function_value.as.function.function;
+    if (!function) {
+        LOG_ERROR("Cannot call Kuyil function: function pointer is NULL");
+        pthread_mutex_unlock(&g_vm_call_mutex);
+        return false;
+    }
+
+    // Arity check (best effort)
+    if (function->arity != arg_count) {
+        LOG_WARNING("Arity mismatch calling Kuyil function: expected %d, got %d", function->arity, arg_count);
+    }
+
+    // If function has no code, simulate a no-op call returning nil
+    if (function->chunk.count == 0) {
+        Value nilv = {VALUE_NIL};
+        if (result_out) *result_out = nilv;
+        pthread_mutex_unlock(&g_vm_call_mutex);
+        return true;
+    }
+
+    // Save current VM execution state
+    // For HTTP callbacks, we're being called AFTER the main script has finished execution
+    // So frame_count should be 0 at this point
+    int saved_frame_count = vm->frame_count;
+    Value* saved_stack_top = vm->stack_top;
+
+    // Reset VM to clean state for callback execution
+    // The main script has already finished, so we start fresh
+    vm->frame_count = 0;
+    vm->stack_top = vm->stack;
+
+    // Push args then function
+    for (int i = 0; i < arg_count; i++) vm_push(vm, args[i]);
+    vm_push(vm, function_value);
+
+    // Create a call frame
+    if (vm->frame_count >= FRAMES_MAX) {
+        LOG_ERROR("VM frame overflow during callback");
+        vm->stack_top = saved_stack_top;
+        vm->frame_count = saved_frame_count;
+        pthread_mutex_unlock(&g_vm_call_mutex);
+        return false;
+    }
+
+    CallFrame* frame = &vm->frames[vm->frame_count++];
+    frame->function = function;
+    frame->ip = function->chunk.code;
+    frame->slots = vm->stack_top - arg_count - 1;
+    vm->stack_top = frame->slots + arg_count;
+
+    // Ensure source path is set for stack traces during callbacks
+    if (vm->current_source_path == NULL) {
+        const char* src = get_current_source_path();
+        if (src) vm->current_source_path = src;
+    }
+
+    // Run the VM - it will execute until OP_RETURN brings frame_count back to 0
+    InterpretResult r = vm_run(vm);
+
+    bool ok = (r == INTERPRET_OK);
+    if (ok && result_out) {
+        // The result should be on the stack
+        if (vm->stack_top > vm->stack) {
+            *result_out = *(vm->stack_top - 1);
+        } else {
+            result_out->type = VALUE_NIL;
+        }
+    }
+
+    // Restore VM state (though for HTTP callbacks this is mostly a no-op)
+    vm->stack_top = saved_stack_top;
+    vm->frame_count = saved_frame_count;
+
+    pthread_mutex_unlock(&g_vm_call_mutex);
+    return ok;
 }
 
 void vm_cleanup_library_system(void) {

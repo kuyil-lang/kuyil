@@ -5,7 +5,7 @@ CFLAGS = -Wall -Wextra -std=c11 -fPIC -O2
 INCLUDES = -I../.. -I../../src -I..
 LIBS = 
 # LIBS = -lyaml  # Uncomment if YAML support is desired
-TARGET = ../../libs/libfileio_utils.so
+TARGET = ../../libs/libkylfileio.so
 SOURCES = fileio_utils.c
 OBJECTS = $(SOURCES:.c=.o)
 

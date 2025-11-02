@@ -26,7 +26,7 @@ libs:
 	$(MAKE) -f Makefile.libs all
 
 $(TARGET): $(SOURCES) $(HEADERS) libs
-	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LIBS)
+	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LIBS) -rdynamic
 
 # Debug build
 debug: CFLAGS += -DDEBUG -O0

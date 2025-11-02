@@ -197,6 +197,7 @@ void load_compression_functions(SharedLibrary* lib) {
         {"decompress_gzip", "decompress_gzip", "value_args"},
         {"compress_zip", "compress_zip", "value_args"},
         {"decompress_zip", "decompress_zip", "value_args"},
+        {"unzip_to_directory", "transcode_unzip_to_directory", "value_args"},
         {NULL, NULL, NULL}
     };
     
@@ -205,11 +206,17 @@ void load_compression_functions(SharedLibrary* lib) {
 
 void load_sqlite_functions(SharedLibrary* lib) {
     const char* sqlite_functions[][3] = {
-        {"sqlite_open", "sqlite_open", "value_args"},
-        {"sqlite_close", "sqlite_close", "value_args"},
-        {"sqlite_execute", "sqlite_execute", "value_args"},
-        {"sqlite_query", "sqlite_query", "value_args"},
-        {"sqlite_prepare", "sqlite_prepare", "value_args"},
+        {"sqlite_open_database", "kyl_sqlite_open_database", "value_args"},
+        {"sqlite_close_database", "kyl_sqlite_close_database", "value_args"},
+        {"sqlite_execute_sql", "kyl_sqlite_execute_sql", "value_args"},
+        {"sqlite_execute_query", "kyl_sqlite_execute_query", "value_args"},
+        {"sqlite_result_first_row", "kyl_sqlite_result_first_row", "value_args"},
+        {"sqlite_result_next_row", "kyl_sqlite_result_next_row", "value_args"},
+        {"sqlite_row_get_int", "kyl_sqlite_row_get_int", "value_args"},
+        {"sqlite_row_get_text", "kyl_sqlite_row_get_text", "value_args"},
+        {"sqlite_row_get_real", "kyl_sqlite_row_get_real", "value_args"},
+        {"sqlite_free_result", "kyl_sqlite_free_result", "value_args"},
+        {"sqlite_get_last_error", "kyl_sqlite_get_last_error", "value_args"},
         {NULL, NULL, NULL}
     };
     
@@ -289,6 +296,7 @@ void load_fileio_functions(SharedLibrary* lib) {
         {"file_exists", "kuyil_file_exists", "value_args"},
         {"file_size", "kuyil_file_size", "value_args"},
         {"file_validate", "kuyil_file_validate", "value_args"},
+        {"file_write_text", "kuyil_file_write_text", "value_args"},
         {NULL, NULL, NULL} // Terminator
     };
     

@@ -115,6 +115,9 @@ static char* read_file(const char* path) {
 static void run_file(const char* path) {
     VM vm;
     vm_init(&vm);
+    // Record source path for better error reporting (file:line in stack traces)
+    vm.current_source_path = path;
+    set_current_source_path(path);
     
     InterpretResult result;
     
@@ -171,25 +174,43 @@ static void compile_to_bytecode(const char* input_path, const char* output_path,
     VM vm;
     vm_init(&vm);
     
-    // Tokenize
+    // Tokenize with dynamic buffer (removes 1K token limit)
     Lexer lexer;
     lexer_init(&lexer, source);
     
-    Token tokens[1000];
+    int capacity = 2048;
     int token_count = 0;
+    Token* tokens = (Token*)malloc(sizeof(Token) * capacity);
+    if (!tokens) {
+        fprintf(stderr, "Out of memory while tokenizing %s\n", input_path);
+        free(source);
+        vm_free(&vm);
+        exit(1);
+    }
     
     for (;;) {
         Token token = lexer_scan_token(&lexer);
+        if (token_count >= capacity) {
+            int new_capacity = capacity * 2;
+            Token* grown = (Token*)realloc(tokens, sizeof(Token) * new_capacity);
+            if (!grown) {
+                fprintf(stderr, "Error: Script too large (exceeds %d tokens) while compiling %s\n", capacity, input_path);
+                free(tokens);
+                free(source);
+                vm_free(&vm);
+                exit(65);
+            }
+            tokens = grown;
+            capacity = new_capacity;
+        }
         tokens[token_count++] = token;
         
         if (token.type == TOKEN_ERROR) {
-            if (token.type == TOKEN_ERROR) {
             print_lexical_error_with_context(source, token);
+            free(tokens);
             free(source);
-            exit(1);
-        }
             vm_free(&vm);
-            exit(65);
+            exit(1);
         }
         
         if (token.type == TOKEN_EOF) break;
@@ -202,6 +223,7 @@ static void compile_to_bytecode(const char* input_path, const char* output_path,
     
     if (parser.had_error) {
         ast_node_free(ast);
+        free(tokens);
         vm_free(&vm);
         exit(65);
     }
@@ -209,6 +231,7 @@ static void compile_to_bytecode(const char* input_path, const char* output_path,
     // Compile to bytecode
     Function* function = compiler_compile(ast);
     ast_node_free(ast);
+    free(tokens);
     
     if (function == NULL) {
         vm_free(&vm);
@@ -997,23 +1020,35 @@ static void check_syntax_only(const char* path) {
     
     printf("Checking syntax for: %s\n", path);
     
-    // Tokenize
+    // Tokenize with dynamic buffer
     Lexer lexer;
     lexer_init(&lexer, source);
     
-    Token tokens[1000];  // Reasonable limit for most files
+    int capacity = 2048;
     int token_count = 0;
+    Token* tokens = (Token*)malloc(sizeof(Token) * capacity);
+    if (!tokens) {
+        fprintf(stderr, "Out of memory while tokenizing %s\n", path);
+        free(source);
+        exit(1);
+    }
     bool has_lexical_errors = false;
     
     printf("Lexical analysis... ");
     for (;;) {
-        if (token_count >= 1000) {
-            fprintf(stderr, "Error: File too large (exceeds token limit)\n");
-            free(source);
-            exit(1);
-        }
-        
         Token token = lexer_scan_token(&lexer);
+        if (token_count >= capacity) {
+            int new_capacity = capacity * 2;
+            Token* grown = (Token*)realloc(tokens, sizeof(Token) * new_capacity);
+            if (!grown) {
+                fprintf(stderr, "Error: File too large (exceeds %d tokens) while checking %s\n", capacity, path);
+                free(tokens);
+                free(source);
+                exit(1);
+            }
+            tokens = grown;
+            capacity = new_capacity;
+        }
         tokens[token_count++] = token;
         
         if (token.type == TOKEN_ERROR) {
@@ -1041,6 +1076,7 @@ static void check_syntax_only(const char* path) {
     if (parser.had_error) {
         printf("❌ FAILED\n");
         ast_node_free(ast);
+        free(tokens);
         free(source);
         exit(1);
     } else {
@@ -1063,6 +1099,7 @@ static void check_syntax_only(const char* path) {
     printf("\n✅ All checks passed! File is syntactically correct.\n");
     
     ast_node_free(ast);
+    free(tokens);
     free(source);
 }
 

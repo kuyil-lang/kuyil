@@ -77,6 +77,8 @@ Value kuyil_file_read_yaml(int arg_count, Value* args);
 Value kuyil_file_exists(int arg_count, Value* args);
 Value kuyil_file_size(int arg_count, Value* args);
 Value kuyil_file_validate(int arg_count, Value* args);
+Value kuyil_file_write_text(int arg_count, Value* args);
+Value kuyil_file_write_text(int arg_count, Value* args);
 
 // Error codes
 #define FILE_SUCCESS 0

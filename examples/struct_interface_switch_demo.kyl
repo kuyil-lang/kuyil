@@ -1,0 +1,281 @@
+// Struct, Interface, and Switch-Case Examples for Kuyil
+
+// =============================================================================
+// 1. STRUCT DEFINITION AND USAGE
+// =============================================================================
+
+// Define a Person struct with fields
+struct Person {
+    name
+    age
+    email
+}
+
+// Define methods on the Person struct (Go-style)
+fn (Person) greet() {
+    print(`Hello, my name is ` + this.name)
+}
+
+fn (Person) birthday() {
+    this.age = this.age + 1
+    print(this.name, ` is now `, this.age, ` years old`)
+}
+
+// Serialize method - convert struct to JSON string
+fn (Person) toJSON() {
+    let json = `{`
+    json = json + `"name": "` + this.name + `", `
+    json = json + `"age": ` + to_string(this.age) + `, `
+    json = json + `"email": "` + this.email + `"`
+    json = json + `}`
+    return json
+}
+
+// =============================================================================
+// 2. MORE COMPLEX STRUCT WITH NESTED DATA
+// =============================================================================
+
+struct Address {
+    street
+    city
+    zip
+}
+
+struct Employee {
+    person
+    employeeId
+    department
+    address
+    salary
+}
+
+fn (Employee) getFullInfo() {
+    // Return a concise description (omit numeric formatting dependencies)
+    return `Employee: ` + this.person.name + ` (` + this.department + `)`
+}
+
+fn (Employee) toJSON() {
+    let json = `{`
+    json = json + `"person": ` + this.person.toJSON() + `, `
+    json = json + `"employeeId": ` + to_string(this.employeeId) + `, `
+    json = json + `"department": "` + this.department + `", `
+    json = json + `"salary": ` + to_string(this.salary)
+    json = json + `}`
+    return json
+}
+
+// =============================================================================
+// 3. INTERFACE DEFINITION
+// =============================================================================
+
+// Define an interface for serializable objects
+interface Serializable {
+    toJSON()
+    fromJSON()
+}
+
+// Define an interface for drawable objects
+interface Drawable {
+    draw()
+    getColor()
+    setColor()
+}
+
+// =============================================================================
+// 4. SWITCH-CASE STATEMENT (Go-style)
+// =============================================================================
+
+fn processCommand(cmd) {
+    switch cmd {
+        case `start`:
+            print(`Starting the service...`)
+            return `started`
+        
+        case `stop`:
+            print(`Stopping the service...`)
+            return `stopped`
+        
+        case `restart`:
+            print(`Restarting the service...`)
+            return `restarted`
+        
+        case `status`:
+            print(`Service is running`)
+            return `running`
+        
+        default:
+            print(`Unknown command: ` + cmd)
+            return `error`
+    }
+}
+
+fn getDayName(day) {
+    switch day {
+        case 1:
+            return `Monday`
+        case 2:
+            return `Tuesday`
+        case 3:
+            return `Wednesday`
+        case 4:
+            return `Thursday`
+        case 5:
+            return `Friday`
+        case 6:
+            return `Saturday`
+        case 7:
+            return `Sunday`
+        default:
+            return `Invalid day`
+    }
+}
+
+fn getGrade(score) {
+    // Switch can also work with ranges (using fallthrough logic)
+    switch score {
+        case 90:
+            return `A`
+        case 80:
+            return `B`
+        case 70:
+            return `C`
+        case 60:
+            return `D`
+        default:
+            return `F`
+    }
+}
+
+// =============================================================================
+// 5. MAIN DEMO
+// =============================================================================
+
+print(`=== Struct and Methods Demo ===`)
+
+// Create a Person instance (object literal syntax)
+let john = Person {
+    name: `John Doe`,
+    age: 30,
+    email: `john@example.com`
+}
+
+print(`Person created: ` + john.name)
+john.greet()
+john.birthday()
+
+print(`\nJSON representation:`)
+print(john.toJSON())
+
+print(`\n=== Employee Demo ===`)
+
+let address = Address {
+    street: `123 Main St`,
+    city: `New York`,
+    zip: `10001`
+}
+
+let person = Person {
+    name: `Jane Smith`,
+    age: 28,
+    email: `jane@company.com`
+}
+
+let emp = Employee {
+    person: person,
+    employeeId: 1001,
+    department: `Engineering`,
+    address: address,
+    salary: 85000
+}
+
+print(emp.getFullInfo())
+print(`\nEmployee JSON:`)
+print(emp.toJSON())
+
+print(`\n=== Switch-Case Demo ===`)
+
+let commands = [`start`, `stop`, `status`, `restart`, `invalid`]
+let i = 0
+while (i < array_length(commands)) {
+    let cmd = commands[i]
+    let result = processCommand(cmd)
+    print(`Command '`, cmd, `' result: `, result)
+    i = i + 1
+}
+
+print(`\nDay names:`)
+let day = 1
+while (day <= 7) {
+    print(`Day `, day, `: `, getDayName(day))
+    day = day + 1
+}
+
+print(`\nGrades:`)
+let scores = [95, 85, 75, 65, 55]
+i = 0
+while (i < array_length(scores)) {
+    let score = scores[i]
+    print(`Score `, score, `: Grade `, getGrade(score))
+    i = i + 1
+}
+
+print(`\n=== Demo Complete ===`)
+
+// =============================================================================
+// 6. DRAWABLE INTERFACE DEMO (Circle and Rectangle)
+// =============================================================================
+
+print(`\n=== Drawable Demo ===`)
+
+struct Circle {
+    radius
+    color
+}
+
+fn (Circle) draw() {
+    print(`Drawing Circle - radius: `, this.radius, `, color: `, this.color)
+}
+
+fn (Circle) getColor() {
+    return this.color
+}
+
+fn (Circle) setColor(c) {
+    this.color = c
+}
+
+struct Rect {
+    width
+    height
+    color
+}
+
+fn (Rect) draw() {
+    print(`Drawing Rect `, this.width, `x`, this.height, `, color: `, this.color)
+}
+
+fn (Rect) getColor() {
+    return this.color
+}
+
+fn (Rect) setColor(c) {
+    this.color = c
+}
+
+let c1 = Circle { radius: 5, color: `red` }
+let r1 = Rect { width: 10, height: 4, color: `blue` }
+let shapes = [c1, r1]
+
+let si = 0
+while (si < array_length(shapes)) {
+    let s = shapes[si]
+    s.draw()
+    print(`Color before: `, s.getColor())
+    s.setColor(`green`)
+    print(`Color after: `, s.getColor())
+    si = si + 1
+}
+
+print(`\n=== Drawable Demo Complete ===`)
+
+print(`\n=== Drawable Demo Complete ===`)

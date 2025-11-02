@@ -1,0 +1,43 @@
+// Simple test for struct, interface, and switch parsing
+
+// Test 1: Struct definition
+struct User {
+    name
+    id
+}
+
+print(`Struct definition parsed successfully`)
+
+// Test 2: Interface definition
+interface Service {
+    start()
+    stop()
+}
+
+print(`Interface definition parsed successfully`)
+
+// Test 3: Method definition
+fn (User) getName() {
+    return this.name
+}
+
+print(`Method definition parsed successfully`)
+
+// Test 4: Switch statement
+fn testSwitch(x) {
+    switch x {
+        case 1:
+            print(`One`)
+        case 2:
+            print(`Two`)
+        default:
+            print(`Other`)
+    }
+}
+
+testSwitch(1)
+testSwitch(2)
+testSwitch(99)
+
+print(`Switch statement executed successfully`)
+print(`All tests passed!`)

@@ -12,6 +12,11 @@ shared_libs/**/*.o
 shared_libs/**/*.so
 shared_libs/**/*.a
 
+additional_libs/**/*.o
+additional_libs/**/*.so
+additional_libs/**/*.a
+
+
 # Temporary and backup files
 *~
 *.tmp

@@ -45,9 +45,9 @@ fn func2_sum(a, b) {
 // ******** Function <end> *****
 
 // ******** Anonymous Function <start> *****
-fn() {
+(fn() {
     print("Hello Anonymous function1")
-}()
+})()
 
 let anon2 = fn() {
     print("Hello Anonymous function2")

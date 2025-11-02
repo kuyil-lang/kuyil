@@ -1,0 +1,14 @@
+fn pair() {
+  return [10, 20];
+}
+
+let x = 0; let y = 0;
+x, y = pair();
+print(x);
+print(y);
+
+let arr = [1, 2, 3];
+let p = 0; let q = 0;
+p, q = arr;
+print(p);
+print(q);

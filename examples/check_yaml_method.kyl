@@ -1,0 +1,5 @@
+struct Person { name, age, email, }
+let p = Person { name: "A", age: 1, email: "a@x" }
+print("exists?", Person_toYAML != nil)
+print("call:")
+print(Person_toYAML(p))

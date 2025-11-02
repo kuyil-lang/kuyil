@@ -5,7 +5,8 @@
 #include <stdint.h>
 
 typedef enum {
-    OP_CONSTANT,      // Push constant from constant pool
+    OP_CONSTANT,      // Push constant from constant pool (1 byte index)
+    OP_CONSTANT_LONG, // Push constant from constant pool (2 byte index)
     OP_NIL,           // Push nil
     OP_TRUE,          // Push true
     OP_FALSE,         // Push false
@@ -35,11 +36,14 @@ typedef enum {
     OP_OR,
     
     // Variables
-    OP_DEFINE_GLOBAL,   // Define global variable
-    OP_GET_GLOBAL,      // Get global variable
-    OP_SET_GLOBAL,      // Set global variable
-    OP_GET_LOCAL,       // Get local variable
-    OP_SET_LOCAL,       // Set local variable
+    OP_DEFINE_GLOBAL,      // Define global variable (1 byte index)
+    OP_GET_GLOBAL,         // Get global variable (1 byte index)
+    OP_SET_GLOBAL,         // Set global variable (1 byte index)
+    OP_DEFINE_GLOBAL_LONG, // Define global variable (2 byte index)
+    OP_GET_GLOBAL_LONG,    // Get global variable (2 byte index)
+    OP_SET_GLOBAL_LONG,    // Set global variable (2 byte index)
+    OP_GET_LOCAL,          // Get local variable
+    OP_SET_LOCAL,          // Set local variable
     
     // Functions
     OP_CALL,           // Call function
@@ -61,6 +65,11 @@ typedef enum {
     OP_ARRAY,          // Create array with N elements from stack
     OP_ARRAY_GET,      // Get array element by index
     OP_ARRAY_SET,      // Set array element by index
+    
+    // Object operations
+    OP_OBJECT_NEW,     // Create a new empty object
+    OP_OBJECT_GET,     // Get object property by name (name on stack)
+    OP_OBJECT_SET,     // Set object property by name (name on stack)
     
     // Logging operations
     OP_LOG_FATAL,      // Log fatal message
@@ -89,6 +98,7 @@ typedef struct {
     int arity;
     Chunk chunk;
     bool is_native;
+    const char* source_path;  // Source file path for error reporting
 } Function;
 
 typedef struct {

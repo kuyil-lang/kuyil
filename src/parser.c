@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 // Helper functions
+static int g_destruct_temp_counter = 0; // for generating unique temp names
 static Token* current_token(Parser* parser) {
     if (parser->current >= parser->count) {
         // Return EOF token if we've reached the end
@@ -64,6 +65,13 @@ static void error(Parser* parser, const char* message) {
 
 static void error_at_current(Parser* parser, const char* message) {
     error_at(parser, current_token(parser), message);
+}
+
+// Set AST node source location from a token
+static void set_node_location(ASTNode* node, Token* token) {
+    if (!node || !token) return;
+    node->line = token->line;
+    node->column = token->column;
 }
 
 static Token* consume(Parser* parser, KuyilTokenType type, const char* message) {
@@ -210,11 +218,17 @@ static ASTNode* expression(Parser* parser);
 static ASTNode* statement(Parser* parser);
 static ASTNode* declaration(Parser* parser);
 static ASTNode* parse_anonymous_function(Parser* parser, bool is_arrow);
+static ASTNode* struct_declaration(Parser* parser);
+static ASTNode* interface_declaration(Parser* parser);
+static ASTNode* method_declaration(Parser* parser);
+static ASTNode* switch_statement(Parser* parser);
 static ASTNode* parse_array_literal(Parser* parser);
 
 // Parse array literal [1, 2, 3]
 static ASTNode* parse_array_literal(Parser* parser) {
     ASTNode* node = ast_node_new(AST_ARRAY_LITERAL);
+    // The '[' token was just consumed by the caller
+    set_node_location(node, previous_token(parser));
     node->as.array_literal.count = 0;
     node->as.array_literal.capacity = 8;
     node->as.array_literal.elements = malloc(sizeof(ASTNode*) * node->as.array_literal.capacity);
@@ -246,6 +260,7 @@ static ASTNode* parse_array_literal(Parser* parser) {
 static ASTNode* parse_interpolated_string(Parser* parser) {
     Token* token = previous_token(parser);
     ASTNode* node = ast_node_new(AST_INTERPOLATED_STRING);
+    set_node_location(node, token);
     
     // Parse the content between backticks looking for ${}
     const char* content = token->start + 1; // Skip opening backtick
@@ -318,6 +333,7 @@ static ASTNode* parse_interpolated_string(Parser* parser) {
 static ASTNode* primary(Parser* parser) {
     if (parser_match(parser, TOKEN_TRUE)) {
         ASTNode* node = ast_node_new(AST_LITERAL);
+        set_node_location(node, previous_token(parser));
         node->as.literal.type = VALUE_BOOL;
         node->as.literal.as.boolean = true;
         return node;
@@ -325,6 +341,7 @@ static ASTNode* primary(Parser* parser) {
     
     if (parser_match(parser, TOKEN_FALSE)) {
         ASTNode* node = ast_node_new(AST_LITERAL);
+        set_node_location(node, previous_token(parser));
         node->as.literal.type = VALUE_BOOL;
         node->as.literal.as.boolean = false;
         return node;
@@ -332,6 +349,7 @@ static ASTNode* primary(Parser* parser) {
     
     if (parser_match(parser, TOKEN_NIL)) {
         ASTNode* node = ast_node_new(AST_LITERAL);
+        set_node_location(node, previous_token(parser));
         node->as.literal.type = VALUE_NIL;
         return node;
     }
@@ -340,6 +358,7 @@ static ASTNode* primary(Parser* parser) {
         ASTNode* node = ast_node_new(AST_LITERAL);
         node->as.literal.type = VALUE_NUMBER;
         Token* token = previous_token(parser);
+        set_node_location(node, token);
         char* number_str = malloc(token->length + 1);
         memcpy(number_str, token->start, token->length);
         number_str[token->length] = '\0';
@@ -352,6 +371,7 @@ static ASTNode* primary(Parser* parser) {
         ASTNode* node = ast_node_new(AST_LITERAL);
         node->as.literal.type = VALUE_STRING;
         Token* token = previous_token(parser);
+        set_node_location(node, token);
         // Remove quotes and copy string
         int str_len = token->length - 2; // Remove quotes
         
@@ -372,6 +392,7 @@ static ASTNode* primary(Parser* parser) {
         ASTNode* node = ast_node_new(AST_LITERAL);
         node->as.literal.type = VALUE_STRING;
         Token* token = previous_token(parser);
+        set_node_location(node, token);
         // Remove backticks and copy string (no escape processing needed)
         int str_len = token->length - 2; // Remove backticks
         char* str = malloc(str_len + 1);
@@ -388,6 +409,7 @@ static ASTNode* primary(Parser* parser) {
     if (parser_match(parser, TOKEN_IDENTIFIER)) {
         ASTNode* node = ast_node_new(AST_IDENTIFIER);
         Token* token = previous_token(parser);
+        set_node_location(node, token);
         char* name = malloc(token->length + 1);
         memcpy(name, token->start, token->length);
         name[token->length] = '\0';
@@ -420,6 +442,8 @@ static ASTNode* call(Parser* parser) {
     while (true) {
         if (parser_match(parser, TOKEN_LEFT_PAREN)) {
             ASTNode* call_node = ast_node_new(AST_CALL);
+            // Location at '('
+            set_node_location(call_node, previous_token(parser));
             call_node->as.call.function = expr;
             call_node->as.call.args = NULL;
             call_node->as.call.arg_count = 0;
@@ -439,8 +463,81 @@ static ASTNode* call(Parser* parser) {
             
             consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
             expr = call_node;
+        } else if (!parser->suppress_struct_literal && expr->type == AST_IDENTIFIER && parser_match(parser, TOKEN_LEFT_BRACE)) {
+            // Struct literal: StructName { field: value, ... }
+            ASTNode* struct_lit = ast_node_new(AST_STRUCT_LITERAL);
+            set_node_location(struct_lit, previous_token(parser));
+            struct_lit->as.struct_literal.name = expr->as.identifier;
+            struct_lit->as.struct_literal.field_count = 0;
+            struct_lit->as.struct_literal.field_values = NULL;
+            
+            // Free the identifier node since we've captured its name
+            free(expr);
+            
+            if (!check(parser, TOKEN_RIGHT_BRACE)) {
+                int capacity = 4;
+                struct_lit->as.struct_literal.field_values = malloc(sizeof(ASTNode*) * capacity * 2); // pairs of key:value
+                
+                while (true) {
+                    // Skip any newlines before a field
+                    while (parser_match(parser, TOKEN_NEWLINE));
+                    
+                    // Allow trailing comma and break before '}'
+                    if (check(parser, TOKEN_RIGHT_BRACE)) break;
+                    
+                    // Parse field name (identifier)
+                    Token* field_name = consume(parser, TOKEN_IDENTIFIER, "Expect field name.");
+                    
+                    // Consume ':' possibly with newlines around
+                    while (parser_match(parser, TOKEN_NEWLINE));
+                    consume(parser, TOKEN_COLON, "Expect ':' after field name.");
+                    while (parser_match(parser, TOKEN_NEWLINE));
+                    
+                    // Parse field value
+                    ASTNode* value = expression(parser);
+                    
+                    // Store as pair: [field_name_as_string, value_expression]
+                    if (struct_lit->as.struct_literal.field_count >= capacity) {
+                        capacity *= 2;
+                        struct_lit->as.struct_literal.field_values = realloc(
+                            struct_lit->as.struct_literal.field_values,
+                            sizeof(ASTNode*) * capacity * 2
+                        );
+                    }
+                    
+                    // Store field name as a string literal node
+                    ASTNode* field_key = ast_node_new(AST_LITERAL);
+                    set_node_location(field_key, field_name);
+                    field_key->as.literal.type = VALUE_STRING;
+                    char* key_str = malloc(field_name->length + 1);
+                    memcpy(key_str, field_name->start, field_name->length);
+                    key_str[field_name->length] = '\0';
+                    field_key->as.literal.as.string = key_str;
+                    
+                    struct_lit->as.struct_literal.field_values[struct_lit->as.struct_literal.field_count * 2] = field_key;
+                    struct_lit->as.struct_literal.field_values[struct_lit->as.struct_literal.field_count * 2 + 1] = value;
+                    struct_lit->as.struct_literal.field_count++;
+                    
+                    // After a field, consume optional whitespace and a comma if present
+                    while (parser_match(parser, TOKEN_NEWLINE));
+                    if (parser_match(parser, TOKEN_COMMA)) {
+                        // Allow trailing comma: skip newlines and if next is '}', break
+                        while (parser_match(parser, TOKEN_NEWLINE));
+                        if (check(parser, TOKEN_RIGHT_BRACE)) break;
+                        // Otherwise continue to next field
+                        continue;
+                    }
+                    
+                    // No comma, end of fields
+                    break;
+                }
+            }
+            
+            consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after struct fields.");
+            expr = struct_lit;
         } else if (parser_match(parser, TOKEN_DOT)) {
             ASTNode* member_node = ast_node_new(AST_MEMBER_ACCESS);
+            set_node_location(member_node, previous_token(parser));
             member_node->as.member.object = expr;
             Token* name_token = consume(parser, TOKEN_IDENTIFIER, "Expect property name after '.'.");
             char* name = malloc(name_token->length + 1);
@@ -450,6 +547,7 @@ static ASTNode* call(Parser* parser) {
             expr = member_node;
         } else if (parser_match(parser, TOKEN_LEFT_BRACKET)) {
             ASTNode* array_access_node = ast_node_new(AST_ARRAY_ACCESS);
+            set_node_location(array_access_node, previous_token(parser));
             array_access_node->as.array_access.array = expr;
             array_access_node->as.array_access.index = expression(parser);
             consume(parser, TOKEN_RIGHT_BRACKET, "Expect ']' after array index.");
@@ -467,6 +565,7 @@ static ASTNode* unary(Parser* parser) {
         Token* operator = previous_token(parser);
         ASTNode* right = unary(parser);
         ASTNode* node = ast_node_new(AST_UNARY_OP);
+        set_node_location(node, operator);
         node->as.unary.operator = operator->type;
         node->as.unary.operand = right;
         return node;
@@ -482,6 +581,7 @@ static ASTNode* factor(Parser* parser) {
         Token* operator = previous_token(parser);
         ASTNode* right = unary(parser);
         ASTNode* binary_node = ast_node_new(AST_BINARY_OP);
+        set_node_location(binary_node, operator);
         binary_node->as.binary.left = expr;
         binary_node->as.binary.operator = operator->type;
         binary_node->as.binary.right = right;
@@ -498,6 +598,7 @@ static ASTNode* term(Parser* parser) {
         Token* operator = previous_token(parser);
         ASTNode* right = factor(parser);
         ASTNode* binary_node = ast_node_new(AST_BINARY_OP);
+        set_node_location(binary_node, operator);
         binary_node->as.binary.left = expr;
         binary_node->as.binary.operator = operator->type;
         binary_node->as.binary.right = right;
@@ -515,6 +616,7 @@ static ASTNode* comparison(Parser* parser) {
         Token* operator = previous_token(parser);
         ASTNode* right = term(parser);
         ASTNode* binary_node = ast_node_new(AST_BINARY_OP);
+        set_node_location(binary_node, operator);
         binary_node->as.binary.left = expr;
         binary_node->as.binary.operator = operator->type;
         binary_node->as.binary.right = right;
@@ -531,6 +633,7 @@ static ASTNode* equality(Parser* parser) {
         Token* operator = previous_token(parser);
         ASTNode* right = comparison(parser);
         ASTNode* binary_node = ast_node_new(AST_BINARY_OP);
+        set_node_location(binary_node, operator);
         binary_node->as.binary.left = expr;
         binary_node->as.binary.operator = operator->type;
         binary_node->as.binary.right = right;
@@ -547,6 +650,7 @@ static ASTNode* logical_and(Parser* parser) {
         Token* operator = previous_token(parser);
         ASTNode* right = equality(parser);
         ASTNode* binary_node = ast_node_new(AST_BINARY_OP);
+        set_node_location(binary_node, operator);
         binary_node->as.binary.left = expr;
         binary_node->as.binary.operator = operator->type;
         binary_node->as.binary.right = right;
@@ -563,6 +667,7 @@ static ASTNode* logical_or(Parser* parser) {
         Token* operator = previous_token(parser);
         ASTNode* right = logical_and(parser);
         ASTNode* binary_node = ast_node_new(AST_BINARY_OP);
+        set_node_location(binary_node, operator);
         binary_node->as.binary.left = expr;
         binary_node->as.binary.operator = operator->type;
         binary_node->as.binary.right = right;
@@ -580,6 +685,7 @@ static ASTNode* assignment(Parser* parser) {
         ASTNode* value = assignment(parser);
         
         ASTNode* assign_node = ast_node_new(AST_ASSIGNMENT);
+        set_node_location(assign_node, equals);
         assign_node->as.assignment.target = expr;
         assign_node->as.assignment.value = value;
         assign_node->as.assignment.operator = equals->type;
@@ -596,6 +702,8 @@ static ASTNode* expression(Parser* parser) {
 // Statement parsing
 static ASTNode* block_statement(Parser* parser) {
     ASTNode* block_node = ast_node_new(AST_BLOCK);
+    // Location at '{'
+    set_node_location(block_node, previous_token(parser));
     block_node->as.block.statements = NULL;
     block_node->as.block.count = 0;
     block_node->as.block.capacity = 0;
@@ -636,6 +744,7 @@ static ASTNode* block_statement(Parser* parser) {
 
 static ASTNode* if_statement(Parser* parser) {
     ASTNode* if_node = ast_node_new(AST_IF_STMT);
+    set_node_location(if_node, previous_token(parser)); // 'if'
     
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
     if_node->as.if_stmt.condition = expression(parser);
@@ -653,6 +762,7 @@ static ASTNode* if_statement(Parser* parser) {
 
 static ASTNode* while_statement(Parser* parser) {
     ASTNode* while_node = ast_node_new(AST_WHILE_STMT);
+    set_node_location(while_node, previous_token(parser)); // 'while'
     
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
     while_node->as.while_stmt.condition = expression(parser);
@@ -667,9 +777,11 @@ static ASTNode* while_statement(Parser* parser) {
 static ASTNode* var_declaration(Parser* parser);
 
 static ASTNode* for_statement(Parser* parser) {
+    Token* for_token = previous_token(parser); // 'for'
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
     
     ASTNode* for_node = ast_node_new(AST_FOR_STMT);
+    set_node_location(for_node, for_token);
     
     // Parse initializer (can be variable declaration or expression)
     if (parser_match(parser, TOKEN_LET)) {
@@ -705,11 +817,40 @@ static ASTNode* for_statement(Parser* parser) {
 
 static ASTNode* return_statement(Parser* parser) {
     ASTNode* return_node = ast_node_new(AST_RETURN_STMT);
+    set_node_location(return_node, previous_token(parser)); // 'return'
     
     if (check(parser, TOKEN_SEMICOLON) || check(parser, TOKEN_NEWLINE)) {
         return_node->as.return_stmt.value = NULL;
     } else {
-        return_node->as.return_stmt.value = expression(parser);
+        // Parse one or more expressions: support `return a, b, c` as an array literal
+        ASTNode* first = expression(parser);
+        if (!check(parser, TOKEN_COMMA)) {
+            return_node->as.return_stmt.value = first;
+        } else {
+            // Build an array literal node with collected expressions
+            ASTNode* arr = ast_node_new(AST_ARRAY_LITERAL);
+            set_node_location(arr, previous_token(parser));
+            arr->as.array_literal.elements = NULL;
+            arr->as.array_literal.count = 0;
+            arr->as.array_literal.capacity = 0;
+            // append first and subsequent expressions
+            if (arr->as.array_literal.count >= arr->as.array_literal.capacity) {
+                int old_cap = arr->as.array_literal.capacity;
+                arr->as.array_literal.capacity = old_cap < 4 ? 4 : old_cap * 2;
+                arr->as.array_literal.elements = realloc(arr->as.array_literal.elements, sizeof(ASTNode*) * arr->as.array_literal.capacity);
+            }
+            arr->as.array_literal.elements[arr->as.array_literal.count++] = first;
+            while (parser_match(parser, TOKEN_COMMA)) {
+                ASTNode* next = expression(parser);
+                if (arr->as.array_literal.count >= arr->as.array_literal.capacity) {
+                    int old_cap = arr->as.array_literal.capacity;
+                    arr->as.array_literal.capacity = old_cap < 4 ? 4 : old_cap * 2;
+                    arr->as.array_literal.elements = realloc(arr->as.array_literal.elements, sizeof(ASTNode*) * arr->as.array_literal.capacity);
+                }
+                arr->as.array_literal.elements[arr->as.array_literal.count++] = next;
+            }
+            return_node->as.return_stmt.value = arr;
+        }
     }
     
     return return_node;
@@ -720,20 +861,213 @@ static ASTNode* expression_statement(Parser* parser) {
     if (check(parser, TOKEN_SEMICOLON)) {
         // Create a nil expression for empty statements
         ASTNode* nil_expr = ast_node_new(AST_LITERAL);
+        set_node_location(nil_expr, current_token(parser));
         nil_expr->as.literal.type = VALUE_NIL;
         ASTNode* stmt = ast_node_new(AST_EXPRESSION_STMT);
+        // Best-effort: put statement at current token position
+        set_node_location(stmt, current_token(parser));
         stmt->as.expression = nil_expr;
         return stmt;
     }
     
     ASTNode* expr = expression(parser);
     ASTNode* stmt = ast_node_new(AST_EXPRESSION_STMT);
+    // Propagate the expression location to the statement for better error reporting
+    stmt->line = expr ? expr->line : stmt->line;
+    stmt->column = expr ? expr->column : stmt->column;
     stmt->as.expression = expr;
     return stmt;
 }
 
+static ASTNode* switch_statement(Parser* parser) {
+    Token* switch_token = previous_token(parser); // 'switch'
+    
+    ASTNode* switch_node = ast_node_new(AST_SWITCH_STMT);
+    set_node_location(switch_node, switch_token);
+    
+    // Prevent struct literal parsing in the switch value expression
+    bool old_suppress = parser->suppress_struct_literal;
+    parser->suppress_struct_literal = true;
+    
+    // Parse the value to switch on
+    switch_node->as.switch_stmt.value = expression(parser);
+    
+    // Restore context
+    parser->suppress_struct_literal = old_suppress;
+    
+    consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after switch expression.");
+    
+    // Parse cases
+    switch_node->as.switch_stmt.case_values = NULL;
+    switch_node->as.switch_stmt.case_bodies = NULL;
+    switch_node->as.switch_stmt.case_count = 0;
+    switch_node->as.switch_stmt.default_body = NULL;
+    
+    int capacity = 4;
+    switch_node->as.switch_stmt.case_values = malloc(sizeof(ASTNode*) * capacity);
+    switch_node->as.switch_stmt.case_bodies = malloc(sizeof(ASTNode*) * capacity);
+    
+    while (!check(parser, TOKEN_RIGHT_BRACE) && !parser_is_at_end(parser)) {
+        // Skip newlines
+        while (parser_match(parser, TOKEN_NEWLINE));
+        
+        if (check(parser, TOKEN_RIGHT_BRACE)) break;
+        
+        if (parser_match(parser, TOKEN_CASE)) {
+            // Parse case value
+            ASTNode* case_value = expression(parser);
+            
+            consume(parser, TOKEN_COLON, "Expect ':' after case value.");
+            
+            // Skip newlines after colon
+            while (parser_match(parser, TOKEN_NEWLINE));
+            
+            // Parse case body (statements until next case/default/})
+            ASTNode* case_body = ast_node_new(AST_BLOCK);
+            case_body->as.block.statements = NULL;
+            case_body->as.block.count = 0;
+            case_body->as.block.capacity = 0;
+            
+            while (!check(parser, TOKEN_CASE) && !check(parser, TOKEN_DEFAULT) && !check(parser, TOKEN_RIGHT_BRACE) && !parser_is_at_end(parser)) {
+                // Skip newlines
+                while (parser_match(parser, TOKEN_NEWLINE));
+                
+                if (check(parser, TOKEN_CASE) || check(parser, TOKEN_DEFAULT) || check(parser, TOKEN_RIGHT_BRACE)) break;
+                
+                ASTNode* stmt = statement(parser);
+                if (stmt != NULL) {
+                    if (case_body->as.block.count >= case_body->as.block.capacity) {
+                        int old_cap = case_body->as.block.capacity;
+                        case_body->as.block.capacity = old_cap < 4 ? 4 : old_cap * 2;
+                        case_body->as.block.statements = realloc(case_body->as.block.statements, sizeof(ASTNode*) * case_body->as.block.capacity);
+                    }
+                    case_body->as.block.statements[case_body->as.block.count++] = stmt;
+                }
+            }
+            
+            // Add case to switch
+            if (switch_node->as.switch_stmt.case_count >= capacity) {
+                capacity *= 2;
+                switch_node->as.switch_stmt.case_values = realloc(switch_node->as.switch_stmt.case_values, sizeof(ASTNode*) * capacity);
+                switch_node->as.switch_stmt.case_bodies = realloc(switch_node->as.switch_stmt.case_bodies, sizeof(ASTNode*) * capacity);
+            }
+            
+            switch_node->as.switch_stmt.case_values[switch_node->as.switch_stmt.case_count] = case_value;
+            switch_node->as.switch_stmt.case_bodies[switch_node->as.switch_stmt.case_count] = case_body;
+            switch_node->as.switch_stmt.case_count++;
+            
+        } else if (parser_match(parser, TOKEN_DEFAULT)) {
+            consume(parser, TOKEN_COLON, "Expect ':' after default.");
+            
+            // Skip newlines after colon
+            while (parser_match(parser, TOKEN_NEWLINE));
+            
+            // Parse default body
+            ASTNode* default_body = ast_node_new(AST_BLOCK);
+            default_body->as.block.statements = NULL;
+            default_body->as.block.count = 0;
+            default_body->as.block.capacity = 0;
+            
+            while (!check(parser, TOKEN_CASE) && !check(parser, TOKEN_DEFAULT) && !check(parser, TOKEN_RIGHT_BRACE) && !parser_is_at_end(parser)) {
+                // Skip newlines
+                while (parser_match(parser, TOKEN_NEWLINE));
+                
+                if (check(parser, TOKEN_CASE) || check(parser, TOKEN_DEFAULT) || check(parser, TOKEN_RIGHT_BRACE)) break;
+                
+                ASTNode* stmt = statement(parser);
+                if (stmt != NULL) {
+                    if (default_body->as.block.count >= default_body->as.block.capacity) {
+                        int old_cap = default_body->as.block.capacity;
+                        default_body->as.block.capacity = old_cap < 4 ? 4 : old_cap * 2;
+                        default_body->as.block.statements = realloc(default_body->as.block.statements, sizeof(ASTNode*) * default_body->as.block.capacity);
+                    }
+                    default_body->as.block.statements[default_body->as.block.count++] = stmt;
+                }
+            }
+            
+            switch_node->as.switch_stmt.default_body = default_body;
+        } else {
+            error_at(parser, current_token(parser), "Expect 'case' or 'default' in switch statement.");
+            break;
+        }
+    }
+    
+    consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after switch body.");
+    
+    return switch_node;
+}
+
 static ASTNode* statement(Parser* parser) {
+    // Destructuring assignment at statement start: a, b, c = expr
+    // Lookahead to detect pattern IDENT (',' IDENT)+ '='
+    int save_pos = parser->current;
+    if (check(parser, TOKEN_IDENTIFIER)) {
+        int la_pos = parser->current;
+        int names_seen = 0;
+        bool has_comma = false;
+        // Consume first ident
+        la_pos++;
+        names_seen++;
+        // Repeated (',' IDENT)
+        while (la_pos < parser->count && parser->tokens[la_pos].type == TOKEN_COMMA) {
+            has_comma = true;
+            la_pos++; // skip comma
+            if (la_pos < parser->count && parser->tokens[la_pos].type == TOKEN_IDENTIFIER) {
+                la_pos++; // skip identifier
+                names_seen++;
+            } else {
+                break;
+            }
+        }
+        if (has_comma && la_pos < parser->count && parser->tokens[la_pos].type == TOKEN_ASSIGN) {
+            // Parse destructuring assignment into a single assignment with array-literal LHS
+            // Collect identifiers into an array-literal node
+            ASTNode* lhs_array = ast_node_new(AST_ARRAY_LITERAL);
+            set_node_location(lhs_array, current_token(parser));
+            lhs_array->as.array_literal.elements = NULL;
+            lhs_array->as.array_literal.count = 0;
+            lhs_array->as.array_literal.capacity = 0;
+            
+            // helper to append identifier into lhs_array
+            #define APPEND_LHS_ID(nodePtr) \
+                do { \
+                    if (lhs_array->as.array_literal.count >= lhs_array->as.array_literal.capacity) { \
+                        int old_cap = lhs_array->as.array_literal.capacity; \
+                        lhs_array->as.array_literal.capacity = old_cap < 4 ? 4 : old_cap * 2; \
+                        lhs_array->as.array_literal.elements = realloc(lhs_array->as.array_literal.elements, sizeof(ASTNode*) * lhs_array->as.array_literal.capacity); \
+                    } \
+                    lhs_array->as.array_literal.elements[lhs_array->as.array_literal.count++] = (nodePtr); \
+                } while (0)
+            
+            do {
+                Token* ident = consume(parser, TOKEN_IDENTIFIER, "Expect identifier in destructuring assignment.");
+                ASTNode* id_node = ast_node_new(AST_IDENTIFIER);
+                set_node_location(id_node, ident);
+                char* n = malloc(ident->length + 1);
+                memcpy(n, ident->start, ident->length);
+                n[ident->length] = '\0';
+                id_node->as.identifier = n;
+                APPEND_LHS_ID(id_node);
+            } while (parser_match(parser, TOKEN_COMMA));
+            consume(parser, TOKEN_ASSIGN, "Expect '=' in destructuring assignment.");
+            ASTNode* rhs = expression(parser);
+
+            ASTNode* assign_node = ast_node_new(AST_ASSIGNMENT);
+            set_node_location(assign_node, previous_token(parser));
+            assign_node->as.assignment.target = lhs_array;
+            assign_node->as.assignment.value = rhs;
+            assign_node->as.assignment.operator = TOKEN_ASSIGN;
+            // Wrap as expression statement for consistency
+            ASTNode* stmt = ast_node_new(AST_EXPRESSION_STMT);
+            set_node_location(stmt, previous_token(parser));
+            stmt->as.expression = assign_node;
+            return stmt;
+        }
+        // not destructuring; reset
+        parser->current = save_pos;
+    }
     if (parser_match(parser, TOKEN_IF)) return if_statement(parser);
+    if (parser_match(parser, TOKEN_SWITCH)) return switch_statement(parser);
     if (parser_match(parser, TOKEN_WHILE)) return while_statement(parser);
     if (parser_match(parser, TOKEN_FOR)) return for_statement(parser);
     if (parser_match(parser, TOKEN_RETURN)) return return_statement(parser);
@@ -743,9 +1077,11 @@ static ASTNode* statement(Parser* parser) {
 }
 
 static ASTNode* var_declaration(Parser* parser) {
+    Token* let_token = previous_token(parser); // 'let'
     Token* name = consume(parser, TOKEN_IDENTIFIER, "Expect variable name.");
     
     ASTNode* var_node = ast_node_new(AST_VAR_DECL);
+    set_node_location(var_node, let_token);
     char* var_name = malloc(name->length + 1);
     memcpy(var_name, name->start, name->length);
     var_name[name->length] = '\0';
@@ -764,9 +1100,11 @@ static ASTNode* var_declaration(Parser* parser) {
 }
 
 static ASTNode* function_declaration(Parser* parser) {
+    Token* fn_token = previous_token(parser); // 'fn'
     Token* name = consume(parser, TOKEN_IDENTIFIER, "Expect function name.");
     
     ASTNode* fn_node = ast_node_new(AST_FUNCTION_DECL);
+    set_node_location(fn_node, fn_token);
     char* fn_name = malloc(name->length + 1);
     memcpy(fn_name, name->start, name->length);
     fn_name[name->length] = '\0';
@@ -812,6 +1150,7 @@ static ASTNode* function_declaration(Parser* parser) {
 // Parse anonymous function: fn(params) { body }
 static ASTNode* parse_anonymous_function(Parser* parser, bool is_arrow) {
     ASTNode* fn_node = ast_node_new(AST_ANONYMOUS_FUNCTION);
+    set_node_location(fn_node, previous_token(parser)); // 'fn'
     fn_node->as.anonymous_function.is_arrow = is_arrow;
     
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'fn'.");
@@ -857,8 +1196,192 @@ static ASTNode* parse_anonymous_function(Parser* parser, bool is_arrow) {
     return fn_node;
 }
 
+static ASTNode* struct_declaration(Parser* parser) {
+    Token* struct_token = previous_token(parser); // 'struct'
+    Token* name = consume(parser, TOKEN_IDENTIFIER, "Expect struct name.");
+    
+    ASTNode* struct_node = ast_node_new(AST_STRUCT_DECL);
+    set_node_location(struct_node, struct_token);
+    
+    char* struct_name = malloc(name->length + 1);
+    memcpy(struct_name, name->start, name->length);
+    struct_name[name->length] = '\0';
+    struct_node->as.struct_decl.name = struct_name;
+    
+    consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after struct name.");
+    
+    // Parse field names
+    struct_node->as.struct_decl.fields = NULL;
+    struct_node->as.struct_decl.field_count = 0;
+    
+    if (!check(parser, TOKEN_RIGHT_BRACE)) {
+        int capacity = 4;
+        struct_node->as.struct_decl.fields = malloc(sizeof(char*) * capacity);
+        
+        do {
+            // Skip optional newlines
+            while (parser_match(parser, TOKEN_NEWLINE));
+            
+            if (check(parser, TOKEN_RIGHT_BRACE)) break;
+            
+            if (struct_node->as.struct_decl.field_count >= capacity) {
+                capacity *= 2;
+                struct_node->as.struct_decl.fields = realloc(struct_node->as.struct_decl.fields, sizeof(char*) * capacity);
+            }
+            
+            Token* field = consume(parser, TOKEN_IDENTIFIER, "Expect field name.");
+            char* field_name = malloc(field->length + 1);
+            memcpy(field_name, field->start, field->length);
+            field_name[field->length] = '\0';
+            struct_node->as.struct_decl.fields[struct_node->as.struct_decl.field_count++] = field_name;
+            
+            // Skip optional newlines after field
+            while (parser_match(parser, TOKEN_NEWLINE));
+            
+            // Comma or newline can separate fields
+            if (!check(parser, TOKEN_RIGHT_BRACE)) {
+                if (!parser_match(parser, TOKEN_COMMA)) {
+                    // Newline already handled above
+                }
+            }
+        } while (!check(parser, TOKEN_RIGHT_BRACE));
+    }
+    
+    consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after struct fields.");
+    
+    return struct_node;
+}
+
+static ASTNode* interface_declaration(Parser* parser) {
+    Token* interface_token = previous_token(parser); // 'interface'
+    Token* name = consume(parser, TOKEN_IDENTIFIER, "Expect interface name.");
+    
+    ASTNode* interface_node = ast_node_new(AST_INTERFACE_DECL);
+    set_node_location(interface_node, interface_token);
+    
+    char* interface_name = malloc(name->length + 1);
+    memcpy(interface_name, name->start, name->length);
+    interface_name[name->length] = '\0';
+    interface_node->as.interface_decl.name = interface_name;
+    
+    consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after interface name.");
+    
+    // Parse method signatures (just names for now)
+    interface_node->as.interface_decl.method_names = NULL;
+    interface_node->as.interface_decl.method_count = 0;
+    
+    if (!check(parser, TOKEN_RIGHT_BRACE)) {
+        int capacity = 4;
+        interface_node->as.interface_decl.method_names = malloc(sizeof(char*) * capacity);
+        
+        do {
+            // Skip optional newlines
+            while (parser_match(parser, TOKEN_NEWLINE));
+            
+            if (check(parser, TOKEN_RIGHT_BRACE)) break;
+            
+            if (interface_node->as.interface_decl.method_count >= capacity) {
+                capacity *= 2;
+                interface_node->as.interface_decl.method_names = realloc(interface_node->as.interface_decl.method_names, sizeof(char*) * capacity);
+            }
+            
+            Token* method = consume(parser, TOKEN_IDENTIFIER, "Expect method name.");
+            char* method_name = malloc(method->length + 1);
+            memcpy(method_name, method->start, method->length);
+            method_name[method->length] = '\0';
+            interface_node->as.interface_decl.method_names[interface_node->as.interface_decl.method_count++] = method_name;
+            
+            // Expect () after method name
+            consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after method name.");
+            consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after method name.");
+            
+            // Skip optional newlines after method
+            while (parser_match(parser, TOKEN_NEWLINE));
+            
+            // Comma or newline can separate methods
+            if (!check(parser, TOKEN_RIGHT_BRACE)) {
+                parser_match(parser, TOKEN_COMMA);
+            }
+        } while (!check(parser, TOKEN_RIGHT_BRACE));
+    }
+    
+    consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after interface methods.");
+    
+    return interface_node;
+}
+
+static ASTNode* method_declaration(Parser* parser) {
+    Token* fn_token = previous_token(parser); // 'fn'
+    
+    // Expect (TypeName)
+    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'fn' for method declaration.");
+    Token* receiver_type = consume(parser, TOKEN_IDENTIFIER, "Expect receiver type name.");
+    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after receiver type.");
+    
+    Token* method_name = consume(parser, TOKEN_IDENTIFIER, "Expect method name.");
+    
+    ASTNode* method_node = ast_node_new(AST_METHOD_DECL);
+    set_node_location(method_node, fn_token);
+    
+    char* receiver_type_str = malloc(receiver_type->length + 1);
+    memcpy(receiver_type_str, receiver_type->start, receiver_type->length);
+    receiver_type_str[receiver_type->length] = '\0';
+    method_node->as.method_decl.receiver_type = receiver_type_str;
+    
+    char* method_name_str = malloc(method_name->length + 1);
+    memcpy(method_name_str, method_name->start, method_name->length);
+    method_name_str[method_name->length] = '\0';
+    method_node->as.method_decl.method_name = method_name_str;
+    
+    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after method name.");
+    
+    // Parse parameters
+    method_node->as.method_decl.params = NULL;
+    method_node->as.method_decl.param_count = 0;
+    
+    if (!check(parser, TOKEN_RIGHT_PAREN)) {
+        int capacity = 4;
+        method_node->as.method_decl.params = malloc(sizeof(char*) * capacity);
+        
+        do {
+            if (method_node->as.method_decl.param_count >= capacity) {
+                capacity *= 2;
+                method_node->as.method_decl.params = realloc(method_node->as.method_decl.params, sizeof(char*) * capacity);
+            }
+            
+            Token* param = consume(parser, TOKEN_IDENTIFIER, "Expect parameter name.");
+            char* param_name = malloc(param->length + 1);
+            memcpy(param_name, param->start, param->length);
+            param_name[param->length] = '\0';
+            method_node->as.method_decl.params[method_node->as.method_decl.param_count++] = param_name;
+        } while (parser_match(parser, TOKEN_COMMA));
+    }
+    
+    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+    consume(parser, TOKEN_LEFT_BRACE, "Expect '{' before method body.");
+    
+    // Parse the block
+    ASTNode* block_node = block_statement(parser);
+    method_node->as.method_decl.body = malloc(sizeof(Block));
+    method_node->as.method_decl.body->statements = block_node->as.block.statements;
+    method_node->as.method_decl.body->count = block_node->as.block.count;
+    method_node->as.method_decl.body->capacity = block_node->as.block.capacity;
+    
+    return method_node;
+}
+
 static ASTNode* declaration(Parser* parser) {
+    if (parser_match(parser, TOKEN_STRUCT)) {
+        return struct_declaration(parser);
+    }
+    if (parser_match(parser, TOKEN_INTERFACE)) {
+        return interface_declaration(parser);
+    }
     if (parser_match(parser, TOKEN_FN)) {
+        // Check if it's a method declaration fn (Type) method()
+        if (check(parser, TOKEN_LEFT_PAREN)) {
+            return method_declaration(parser);
+        }
         // Check if it's a function declaration (fn name(...)) or anonymous function expression (fn(...))
         if (check(parser, TOKEN_IDENTIFIER)) {
             return function_declaration(parser);
@@ -880,6 +1403,7 @@ void parser_init(Parser* parser, Token* tokens, int count) {
     parser->count = count;
     parser->had_error = false;
     parser->panic_mode = false;
+    parser->suppress_struct_literal = false;
 }
 
 ASTNode* parser_parse(Parser* parser) {

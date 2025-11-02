@@ -15,6 +15,20 @@ typedef struct {
 bool vm_init_library_system(VM* vm);
 void vm_cleanup_library_system(void);
 
+// Global VM access for libraries
+void set_current_vm(VM* vm);
+VM* get_current_vm(void);
+
+// Source path propagation for better error reporting
+void set_current_source_path(const char* path);
+const char* get_current_source_path(void);
+
+// Invoke a Kuyil function value from C (re-entrant). Returns true on success.
+bool call_kuyil_function(Value function_value, int arg_count, Value* args, Value* result_out);
+
+// Look up a global variable by name in the VM (exported for library use)
+Value vm_lookup_global(const char* name);
+
 // Dynamic function calling
 Value call_dynamic_function(const char* name, int arg_count, Value* args);
 bool is_dynamic_function(const char* name);

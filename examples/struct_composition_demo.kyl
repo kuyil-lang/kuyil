@@ -1,0 +1,244 @@
+print("=== Advanced Struct Composition Demo ===")
+
+// Example 1: Order Management System with nested structs
+
+struct Product {
+  id,
+  name,
+  price,
+  category,
+}
+
+struct OrderItem {
+  product,
+  quantity,
+  discount,
+}
+
+struct Customer {
+  id,
+  name,
+  email,
+  loyaltyPoints,
+}
+
+struct Order {
+  orderId,
+  customer,
+  items,
+  totalAmount,
+  status,
+}
+
+// Create products
+let product1 = Product {
+  id: "P001",
+  name: "Laptop",
+  price: 1200,
+  category: "Electronics",
+}
+
+let product2 = Product {
+  id: "P002",
+  name: "Mouse",
+  price: 25,
+  category: "Electronics",
+}
+
+let product3 = Product {
+  id: "P003",
+  name: "Keyboard",
+  price: 75,
+  category: "Electronics",
+}
+
+print("Products created:")
+print("  1.", product1.name, "-", product1.price)
+print("  2.", product2.name, "-", product2.price)
+print("  3.", product3.name, "-", product3.price)
+
+// Create order items
+let item1 = OrderItem {
+  product: product1,
+  quantity: 1,
+  discount: 0.1,  // 10% discount
+}
+
+let item2 = OrderItem {
+  product: product2,
+  quantity: 2,
+  discount: 0,
+}
+
+let item3 = OrderItem {
+  product: product3,
+  quantity: 1,
+  discount: 0.05,  // 5% discount
+}
+
+// Create customer
+let customer = Customer {
+  id: "C001",
+  name: "John Doe",
+  email: "john@example.com",
+  loyaltyPoints: 150,
+}
+
+  print("\nCustomer:", customer.name, "(", customer.email, ")")
+print("Loyalty Points:", customer.loyaltyPoints)
+
+// Calculate order total
+let item1Total = item1.product.price * item1.quantity * (1 - item1.discount)
+let item2Total = item2.product.price * item2.quantity * (1 - item2.discount)
+let item3Total = item3.product.price * item3.quantity * (1 - item3.discount)
+let subtotal = item1Total + item2Total + item3Total
+
+print("\nOrder Calculation:")
+print("  Item 1:", item1.product.name, "x", item1.quantity, "=", item1Total)
+print("  Item 2:", item2.product.name, "x", item2.quantity, "=", item2Total)
+print("  Item 3:", item3.product.name, "x", item3.quantity, "=", item3Total)
+print("  Subtotal:", subtotal)
+
+// Create complete order
+let order = Order {
+  orderId: "ORD-2025-001",
+  customer: customer,
+  items: [item1, item2, item3],
+  totalAmount: subtotal,
+  status: "pending",
+}
+
+print("\n=== Order Details ===")
+print("Order ID:", order.orderId)
+print("Customer:", order.customer.name)
+print("Status:", order.status)
+print("Total Amount:", order.totalAmount)
+print("Number of items:", array_length(order.items))
+
+print("\nOrder Items:")
+let i = 0
+while (i < array_length(order.items)) {
+  let item = order.items[i]
+  print("  -", item.product.name, "x", item.quantity, "@", item.product.price, "each")
+  i = i + 1
+}
+
+// Example 2: Tree structure with self-referencing
+
+struct TreeNode {
+  value,
+  left,
+  right,
+}
+
+print("\n=== Binary Tree Example ===")
+
+// Create leaf nodes
+let leaf1 = TreeNode { value: 1, left: nil, right: nil }
+let leaf2 = TreeNode { value: 3, left: nil, right: nil }
+let leaf3 = TreeNode { value: 6, left: nil, right: nil }
+let leaf4 = TreeNode { value: 9, left: nil, right: nil }
+
+// Create intermediate nodes
+let node1 = TreeNode { value: 2, left: leaf1, right: leaf2 }
+let node2 = TreeNode { value: 7, left: leaf3, right: leaf4 }
+
+// Create root
+let root = TreeNode { value: 5, left: node1, right: node2 }
+
+print("Tree structure:")
+print("Root:", root.value)
+if (root.left != nil) {
+  print("  Left child:", root.left.value)
+  if (root.left.left != nil) {
+    print("    Left-Left:", root.left.left.value)
+  }
+  if (root.left.right != nil) {
+    print("    Left-Right:", root.left.right.value)
+  }
+}
+if (root.right != nil) {
+  print("  Right child:", root.right.value)
+  if (root.right.left != nil) {
+    print("    Right-Left:", root.right.left.value)
+  }
+  if (root.right.right != nil) {
+    print("    Right-Right:", root.right.right.value)
+  }
+}
+
+// Example 3: Configuration with nested options
+
+struct DatabaseConfig {
+  host,
+  port,
+  database,
+  username,
+}
+
+struct CacheConfig {
+  enabled,
+  ttl,
+  maxSize,
+}
+
+struct ServerConfig {
+  port,
+  host,
+  timeout,
+}
+
+struct AppConfig {
+  appName,
+  version,
+  database,
+  cache,
+  server,
+}
+
+print("\n=== Application Configuration ===")
+
+let dbConfig = DatabaseConfig {
+  host: "localhost",
+  port: 5432,
+  database: "myapp",
+  username: "admin",
+}
+
+let cacheConfig = CacheConfig {
+  enabled: true,
+  ttl: 3600,
+  maxSize: 1000,
+}
+
+let serverConfig = ServerConfig {
+  port: 8080,
+  host: "0.0.0.0",
+  timeout: 30,
+}
+
+let appConfig = AppConfig {
+  appName: "MyApplication",
+  version: "1.0.0",
+  database: dbConfig,
+  cache: cacheConfig,
+  server: serverConfig,
+}
+
+print("Application:", appConfig.appName, "v", appConfig.version)
+print("Database:", appConfig.database.database, "@", appConfig.database.host, ":", appConfig.database.port)
+print("Cache:", appConfig.cache.enabled, "- TTL:", appConfig.cache.ttl, "Max:", appConfig.cache.maxSize)
+print("Server:", appConfig.server.host, ":", appConfig.server.port)
+
+// Test JSON serialization of deeply nested structures
+print("\n=== JSON Serialization of Nested Structures ===")
+print("Product JSON:")
+print(product1.toJSON())
+
+print("\nOrder Item JSON (contains Product):")
+print(item1.toJSON())
+
+print("\nDatabase Config JSON:")
+print(dbConfig.toJSON())
+
+print("\n=== Demo Complete ===")

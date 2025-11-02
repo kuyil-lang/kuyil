@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "bytecode.h"
 #include "logging.h"
+#include "vm_library_integration.h" // for get_current_source_path()
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -65,6 +66,7 @@ int chunk_add_constant(Chunk* chunk, Value value) {
 
 // Compiler state
 static Compiler* current = NULL;
+static int current_line = 0;  // Track current source line for bytecode emission
 
 static void error_at_node(ASTNode* node, const char* message) {
     fprintf(stderr, "[line %d] Error: %s\n", node->line, message);
@@ -72,7 +74,7 @@ static void error_at_node(ASTNode* node, const char* message) {
 }
 
 static void emit_byte(uint8_t byte) {
-    chunk_write(current->chunk, byte, 0); // TODO: proper line tracking
+    chunk_write(current->chunk, byte, current_line);
 }
 
 static void emit_bytes(uint8_t byte1, uint8_t byte2) {
@@ -109,18 +111,31 @@ static void emit_loop(int loop_start) {
     emit_byte(offset & 0xff);
 }
 
-static uint8_t make_constant(Value value) {
+static int make_constant(Value value) {
     int constant = chunk_add_constant(current->chunk, value);
-    if (constant > UINT8_MAX) {
+    if (constant > UINT16_MAX) {
         error_at_node(NULL, "Too many constants in one chunk.");
         return 0;
     }
     
-    return (uint8_t)constant;
+    return constant;
 }
 
 static void emit_constant(Value value) {
-    emit_bytes(OP_CONSTANT, make_constant(value));
+    int constant = chunk_add_constant(current->chunk, value);
+    if (constant > UINT16_MAX) {
+        error_at_node(NULL, "Too many constants in one chunk.");
+        return;
+    }
+    
+    if (constant <= UINT8_MAX) {
+        emit_bytes(OP_CONSTANT, (uint8_t)constant);
+    } else {
+        // Use 16-bit constant index
+        emit_byte(OP_CONSTANT_LONG);
+        emit_byte((constant >> 8) & 0xff);
+        emit_byte(constant & 0xff);
+    }
 }
 
 // Variable management
@@ -159,7 +174,7 @@ static int resolve_local(const char* name) {
     return -1;
 }
 
-static uint8_t identifier_constant(const char* name) {
+static int identifier_constant(const char* name) {
     Value value;
     value.type = VALUE_STRING;
     value.as.string = strdup(name);
@@ -170,6 +185,17 @@ static uint8_t identifier_constant(const char* name) {
 static void compile_expression(ASTNode* node);
 static void compile_statement(ASTNode* node);
 static void compile_anonymous_function(ASTNode* node);
+static void compile_block(ASTNode* node);
+static void compile_var_decl(ASTNode* node);
+static void compile_function_decl(ASTNode* node);
+static void compile_struct_decl(ASTNode* node);
+static void compile_interface_decl(ASTNode* node);
+static void compile_method_decl(ASTNode* node);
+static void compile_if_stmt(ASTNode* node);
+static void compile_while_stmt(ASTNode* node);
+static void compile_for_stmt(ASTNode* node);
+static void compile_switch_stmt(ASTNode* node);
+static void compile_return_stmt(ASTNode* node);
 
 static void compile_literal(ASTNode* node) {
     switch (node->as.literal.type) {
@@ -201,8 +227,14 @@ static void compile_identifier(ASTNode* node) {
     if (local != -1) {
         emit_bytes(OP_GET_LOCAL, (uint8_t)local);
     } else {
-        uint8_t name = identifier_constant(node->as.identifier);
-        emit_bytes(OP_GET_GLOBAL, name);
+        int name = identifier_constant(node->as.identifier);
+        if (name <= UINT8_MAX) {
+            emit_bytes(OP_GET_GLOBAL, (uint8_t)name);
+        } else {
+            emit_byte(OP_GET_GLOBAL_LONG);
+            emit_byte((name >> 8) & 0xff);
+            emit_byte(name & 0xff);
+        }
     }
 }
 
@@ -277,6 +309,22 @@ static void compile_unary_op(ASTNode* node) {
 }
 
 static void compile_call(ASTNode* node) {
+    // Method call support: obj.method(a, b) compiles to call of "method" with receiver as first arg
+    if (node->as.call.function->type == AST_MEMBER_ACCESS) {
+        // Receiver first
+        compile_expression(node->as.call.function->as.member.object);
+        // Then other arguments
+        for (int i = 0; i < node->as.call.arg_count; i++) {
+            compile_expression(node->as.call.args[i]);
+        }
+        // Callee as string name (dispatch via dynamic or global by name)
+        Value method_name;
+        method_name.type = VALUE_STRING;
+        method_name.as.string = node->as.call.function->as.member.property;
+        emit_constant(method_name);
+        emit_bytes(OP_CALL, node->as.call.arg_count + 1);
+        return;
+    }
     // Check if this is a logging function call
     if (node->as.call.function->type == AST_IDENTIFIER) {
         const char* func_name = node->as.call.function->as.identifier;
@@ -316,23 +364,84 @@ static void compile_call(ASTNode* node) {
 }
 
 static void compile_assignment(ASTNode* node) {
-    compile_expression(node->as.assignment.value);
-    
+    // Destructuring assignment: [a, b, c] = expr
+    if (node->as.assignment.target->type == AST_ARRAY_LITERAL && node->as.assignment.operator == TOKEN_ASSIGN) {
+        ArrayLiteral* lhs = &node->as.assignment.target->as.array_literal;
+        // Compile RHS once (should evaluate to an array)
+        compile_expression(node->as.assignment.value);
+        // For each identifier on LHS, extract element and assign
+        for (int i = 0; i < lhs->count; i++) {
+            ASTNode* el = lhs->elements[i];
+            if (el->type != AST_IDENTIFIER) {
+                error_at_node(el, "Destructuring target must be identifiers.");
+                return;
+            }
+            // Duplicate RHS array on stack
+            emit_byte(OP_DUP);
+            // Push index constant
+            Value idxv; idxv.type = VALUE_NUMBER; idxv.as.number = (double)i;
+            emit_constant(idxv);
+            // Get element
+            emit_byte(OP_ARRAY_GET);
+            // Assign to identifier
+            const char* name = el->as.identifier;
+            int local = resolve_local(name);
+            if (local != -1) {
+                emit_bytes(OP_SET_LOCAL, (uint8_t)local);
+            } else {
+                int name_constant = identifier_constant(name);
+                if (name_constant <= UINT8_MAX) {
+                    emit_bytes(OP_SET_GLOBAL, (uint8_t)name_constant);
+                } else {
+                    emit_byte(OP_SET_GLOBAL_LONG);
+                    emit_byte((name_constant >> 8) & 0xff);
+                    emit_byte(name_constant & 0xff);
+                }
+            }
+            // Pop assigned value, leave RHS array for next iteration
+            emit_byte(OP_POP);
+        }
+        // After destructuring, leave RHS array on stack as the assignment expression result
+        return;
+    }
+
+    // Normal assignment (supports identifiers, array[index], and object.member)
     if (node->as.assignment.target->type == AST_IDENTIFIER) {
+        // <name> = <value>
+        compile_expression(node->as.assignment.value);
         const char* name = node->as.assignment.target->as.identifier;
         int local = resolve_local(name);
-        
         if (local != -1) {
             emit_bytes(OP_SET_LOCAL, (uint8_t)local);
         } else {
-            uint8_t name_constant = identifier_constant(name);
-            emit_bytes(OP_SET_GLOBAL, name_constant);
+            int name_constant = identifier_constant(name);
+            if (name_constant <= UINT8_MAX) {
+                emit_bytes(OP_SET_GLOBAL, (uint8_t)name_constant);
+            } else {
+                emit_byte(OP_SET_GLOBAL_LONG);
+                emit_byte((name_constant >> 8) & 0xff);
+                emit_byte(name_constant & 0xff);
+            }
         }
     } else if (node->as.assignment.target->type == AST_ARRAY_ACCESS) {
-        // For array[index] = value, we need: array, index, value
+        // For array[index] = value, we need stack: ..., value, array, index
+        compile_expression(node->as.assignment.value);
         compile_expression(node->as.assignment.target->as.array_access.array);
         compile_expression(node->as.assignment.target->as.array_access.index);
         emit_byte(OP_ARRAY_SET);
+    } else if (node->as.assignment.target->type == AST_MEMBER_ACCESS) {
+        // For object.prop = value, we need stack: ..., object, key, value
+        ASTNode* obj = node->as.assignment.target->as.member.object;
+        const char* prop = node->as.assignment.target->as.member.property;
+        // Push object
+        compile_expression(obj);
+        // Push key (as string constant)
+        Value keyv; keyv.type = VALUE_STRING; keyv.as.string = (char*)prop;
+        emit_constant(keyv);
+        // Now push value
+        compile_expression(node->as.assignment.value);
+        // Set property
+        emit_byte(OP_OBJECT_SET);
     } else {
         error_at_node(node, "Invalid assignment target.");
     }
@@ -359,8 +468,56 @@ static void compile_array_access(ASTNode* node) {
     emit_byte(OP_ARRAY_GET);
 }
 
+static void compile_member_access(ASTNode* node) {
+    // Compile object expression
+    compile_expression(node->as.member.object);
+    
+    // Push property name as a constant string
+    Value property_name;
+    property_name.type = VALUE_STRING;
+    property_name.as.string = node->as.member.property;
+    emit_constant(property_name);
+    
+    // Emit OP_OBJECT_GET
+    emit_byte(OP_OBJECT_GET);
+}
+
+static void compile_struct_literal(ASTNode* node) {
+    // Create a new empty object and leave it on the stack
+    emit_byte(OP_OBJECT_NEW);
+
+    // Attach hidden type tag for method dispatch: __type = "StructName"
+    if (node->as.struct_literal.name) {
+        // Push key "__type"
+        Value type_key; type_key.type = VALUE_STRING; type_key.as.string = "__type";
+        emit_constant(type_key);
+        // Push value struct name as string
+        Value type_val; type_val.type = VALUE_STRING; type_val.as.string = node->as.struct_literal.name;
+        emit_constant(type_val);
+        // Set property; leaves the mutated object on top
+        emit_byte(OP_OBJECT_SET);
+    }
+
+    // For each field, set the property on the object.
+    // VM expects for OP_OBJECT_SET to see (from bottom to top): object, key, value
+    // and will pop value, key, object (in that order), mutate, and push the object back.
+    for (int i = 0; i < node->as.struct_literal.field_count; i++) {
+        // Push key (a string literal node created by the parser)
+        compile_expression(node->as.struct_literal.field_values[i * 2]);
+
+        // Push value expression
+        compile_expression(node->as.struct_literal.field_values[i * 2 + 1]);
+
+        // Set property; leaves the mutated object on top for the next iteration
+        emit_byte(OP_OBJECT_SET);
+    }
+}
+
 static void compile_expression(ASTNode* node) {
     if (node == NULL) return;
+    
+    // Update current line from node for accurate bytecode line tracking
+    current_line = node->line;
     
     switch (node->type) {
         case AST_LITERAL:
@@ -390,8 +547,14 @@ static void compile_expression(ASTNode* node) {
         case AST_ARRAY_LITERAL:
             compile_array_literal(node);
             break;
+        case AST_STRUCT_LITERAL:
+            compile_struct_literal(node);
+            break;
         case AST_ARRAY_ACCESS:
             compile_array_access(node);
+            break;
+        case AST_MEMBER_ACCESS:
+            compile_member_access(node);
             break;
         default:
             error_at_node(node, "Unknown expression type.");
@@ -437,9 +600,8 @@ static void compile_anonymous_function(ASTNode* node) {
     function_value.as.function.captured_vars = NULL; // No closure for now
     function_value.as.function.capture_count = 0;
     
-    uint8_t constant_index = make_constant(function_value);
-    emit_byte(OP_CONSTANT);
-    emit_byte(constant_index);
+    // Use emit_constant to handle both 8-bit and 16-bit indices
+    emit_constant(function_value);
 }
 
 static void compile_var_decl(ASTNode* node) {
@@ -454,7 +616,7 @@ static void compile_var_decl(ASTNode* node) {
         // Local variables are implicitly on the stack
     } else {
         // Global variable
-        uint8_t global = identifier_constant(node->as.var_decl.name);
+        int global = identifier_constant(node->as.var_decl.name);
         
         if (node->as.var_decl.value) {
             compile_expression(node->as.var_decl.value);
@@ -462,14 +624,25 @@ static void compile_var_decl(ASTNode* node) {
             emit_byte(OP_NIL);
         }
         
-        emit_bytes(OP_DEFINE_GLOBAL, global);
+        if (global <= UINT8_MAX) {
+            emit_bytes(OP_DEFINE_GLOBAL, (uint8_t)global);
+        } else {
+            emit_byte(OP_DEFINE_GLOBAL_LONG);
+            emit_byte((global >> 8) & 0xff);
+            emit_byte(global & 0xff);
+        }
     }
 }
 
 static void compile_function_decl(ASTNode* node) {
     // Push function context for logging
-    uint8_t name_constant = identifier_constant(node->as.function_decl.name);
-    emit_bytes(OP_LOG_PUSH_CTX, name_constant);
+    int name_constant = identifier_constant(node->as.function_decl.name);
+    // For OP_LOG_PUSH_CTX, we'll keep it as 8-bit for now (logging contexts usually don't exceed 255)
+    if (name_constant > UINT8_MAX) {
+        error_at_node(node, "Too many constants for function name in logging context");
+        return;
+    }
+    emit_bytes(OP_LOG_PUSH_CTX, (uint8_t)name_constant);
     
     // Save current compiler state
     Compiler* enclosing = current;
@@ -512,15 +685,500 @@ static void compile_function_decl(ASTNode* node) {
     function_value.as.function.captured_vars = NULL; // No closure for now
     function_value.as.function.capture_count = 0;
     
-    uint8_t constant_index = make_constant(function_value);
-    emit_byte(OP_CONSTANT);
-    emit_byte(constant_index);
+    // Use emit_constant to handle both 8-bit and 16-bit indices
+    emit_constant(function_value);
     
     // Define the function as a global variable
-    emit_bytes(OP_DEFINE_GLOBAL, name_constant);
+    if (name_constant <= UINT8_MAX) {
+        emit_bytes(OP_DEFINE_GLOBAL, (uint8_t)name_constant);
+    } else {
+        emit_byte(OP_DEFINE_GLOBAL_LONG);
+        emit_byte((name_constant >> 8) & 0xff);
+        emit_byte(name_constant & 0xff);
+    }
     
     // Pop context when function exits
     emit_byte(OP_LOG_POP_CTX);
+}
+
+// Helper to generate toJSON method for a struct
+static void generate_toJSON_method(const char* struct_name, char** field_names, int field_count) {
+    char method_name[256];
+    snprintf(method_name, sizeof(method_name), "%s_toJSON", struct_name);
+    
+    int name_constant = identifier_constant(method_name);
+    bool push_log_ctx = name_constant <= UINT8_MAX;
+    if (push_log_ctx) {
+        emit_bytes(OP_LOG_PUSH_CTX, (uint8_t)name_constant);
+    }
+    
+    Compiler* enclosing = current;
+    Compiler method_compiler;
+    compiler_init(&method_compiler, method_name);
+    
+    method_compiler.function->arity = 1; // Just 'this'
+    
+    begin_scope();
+    add_local("this");
+    
+    // Build JSON string: result = "{" + "field1": " + this.field1 + ", " + ... + "}"
+    // Start with empty string
+    emit_byte(OP_NIL);
+    int result_local = current->local_count;
+    add_local("__json_result");
+    emit_byte(OP_POP);
+    
+    // Push opening brace "{"
+    Value open_brace;
+    open_brace.type = VALUE_STRING;
+    open_brace.as.string = strdup("{");
+    emit_constant(open_brace);
+    emit_byte(OP_SET_LOCAL);
+    emit_byte(result_local);
+    emit_byte(OP_POP);
+    
+    // For each field, append: "fieldName": value,
+    for (int i = 0; i < field_count; i++) {
+        // Get current result
+        emit_byte(OP_GET_LOCAL);
+        emit_byte(result_local);
+        
+        // Add field name with quotes and colon
+        Value field_prefix;
+        field_prefix.type = VALUE_STRING;
+        char prefix_buf[128];
+        snprintf(prefix_buf, sizeof(prefix_buf), "\"%s\": ", field_names[i]);
+        field_prefix.as.string = strdup(prefix_buf);
+        emit_constant(field_prefix);
+        emit_byte(OP_ADD);
+        
+        // Get field value from this.field
+        emit_byte(OP_GET_LOCAL);
+        emit_byte(0); // 'this' is always local 0
+        
+        Value field_name_val;
+        field_name_val.type = VALUE_STRING;
+        field_name_val.as.string = strdup(field_names[i]);
+        emit_constant(field_name_val);
+        emit_byte(OP_OBJECT_GET);
+        
+        // Convert to string and wrap in quotes if needed
+        emit_byte(OP_TO_STRING);
+        
+        // Add to result
+        emit_byte(OP_ADD);
+        
+        // Add comma if not last field
+        if (i < field_count - 1) {
+            Value comma;
+            comma.type = VALUE_STRING;
+            comma.as.string = strdup(", ");
+            emit_constant(comma);
+            emit_byte(OP_ADD);
+        }
+        
+        // Store back to result
+        emit_byte(OP_SET_LOCAL);
+        emit_byte(result_local);
+        emit_byte(OP_POP);
+    }
+    
+    // Get result and append closing brace
+    emit_byte(OP_GET_LOCAL);
+    emit_byte(result_local);
+    
+    Value close_brace;
+    close_brace.type = VALUE_STRING;
+    close_brace.as.string = strdup("}");
+    emit_constant(close_brace);
+    emit_byte(OP_ADD);
+    
+    emit_byte(OP_RETURN);
+    end_scope();
+    
+    Function* function = method_compiler.function;
+    current = enclosing;
+    
+    Value function_value;
+    function_value.type = VALUE_FUNCTION;
+    function_value.as.function.function = function;
+    function_value.as.function.captured_vars = NULL;
+    function_value.as.function.capture_count = 0;
+    
+    emit_constant(function_value);
+    
+    if (name_constant <= UINT8_MAX) {
+        emit_bytes(OP_DEFINE_GLOBAL, (uint8_t)name_constant);
+    } else {
+        emit_byte(OP_DEFINE_GLOBAL_LONG);
+        emit_byte((name_constant >> 8) & 0xff);
+        emit_byte(name_constant & 0xff);
+    }
+    
+    if (push_log_ctx) emit_byte(OP_LOG_POP_CTX);
+}
+
+// Helper to generate fromJSON method for a struct
+// Signature: <Struct>_fromJSON(data: object) -> object (new instance with __type set and fields copied)
+static void generate_fromJSON_method(const char* struct_name, char** field_names, int field_count) {
+    char method_name[256];
+    snprintf(method_name, sizeof(method_name), "%s_fromJSON", struct_name);
+
+    int name_constant = identifier_constant(method_name);
+    bool push_log_ctx = name_constant <= UINT8_MAX;
+    if (push_log_ctx) {
+        emit_bytes(OP_LOG_PUSH_CTX, (uint8_t)name_constant);
+    }
+
+    Compiler* enclosing = current;
+    Compiler method_compiler;
+    compiler_init(&method_compiler, method_name);
+
+    // fromJSON takes one parameter: data (the plain object/map parsed from JSON)
+    method_compiler.function->arity = 1;
+
+    begin_scope();
+    add_local("data"); // local 0
+
+    // Construct a new instance object
+    emit_byte(OP_OBJECT_NEW);
+
+    // __type = "StructName"
+    {
+        Value type_key; type_key.type = VALUE_STRING; type_key.as.string = "__type";
+        emit_constant(type_key);
+        Value type_val; type_val.type = VALUE_STRING; type_val.as.string = (char*)struct_name;
+        emit_constant(type_val);
+        emit_byte(OP_OBJECT_SET);
+    }
+
+    // For each field: obj[field] = data[field]
+    for (int i = 0; i < field_count; i++) {
+        // Push destination key
+        Value keyv; keyv.type = VALUE_STRING; keyv.as.string = field_names[i];
+        emit_constant(keyv);
+
+        // Compute value: data[field]
+        emit_byte(OP_GET_LOCAL); // push 'data'
+        emit_byte(0);
+        Value keyv2; keyv2.type = VALUE_STRING; keyv2.as.string = field_names[i];
+        emit_constant(keyv2);
+        emit_byte(OP_OBJECT_GET); // leaves value on stack
+
+        // Set: consumes value, key, object; pushes object back
+        emit_byte(OP_OBJECT_SET);
+    }
+
+    // Return the constructed object (on top of the stack)
+    emit_byte(OP_RETURN);
+
+    end_scope();
+
+    Function* function = method_compiler.function;
+    current = enclosing;
+
+    Value function_value;
+    function_value.type = VALUE_FUNCTION;
+    function_value.as.function.function = function;
+    function_value.as.function.captured_vars = NULL;
+    function_value.as.function.capture_count = 0;
+
+    emit_constant(function_value);
+
+    if (name_constant <= UINT8_MAX) {
+        emit_bytes(OP_DEFINE_GLOBAL, (uint8_t)name_constant);
+    } else {
+        emit_byte(OP_DEFINE_GLOBAL_LONG);
+        emit_byte((name_constant >> 8) & 0xff);
+        emit_byte(name_constant & 0xff);
+    }
+
+    if (push_log_ctx) emit_byte(OP_LOG_POP_CTX);
+}
+
+// Helper to generate toYAML method for a struct
+// Signature: <Struct>_toYAML(this) -> string
+static void generate_toYAML_method(const char* struct_name, char** field_names, int field_count) {
+    char method_name[256];
+    snprintf(method_name, sizeof(method_name), "%s_toYAML", struct_name);
+
+    int name_constant = identifier_constant(method_name);
+    bool push_log_ctx = name_constant <= UINT8_MAX;
+    if (push_log_ctx) {
+        emit_bytes(OP_LOG_PUSH_CTX, (uint8_t)name_constant);
+    }
+
+    Compiler* enclosing = current;
+    Compiler method_compiler;
+    compiler_init(&method_compiler, method_name);
+
+    method_compiler.function->arity = 1; // 'this'
+
+    begin_scope();
+    add_local("this");
+
+    // Build YAML by concatenating per-field lines on the stack
+    bool first_done = false; // compile-time flag to structure emission
+    for (int i = 0; i < field_count; i++) {
+        // Push "key: "
+        Value prefix; prefix.type = VALUE_STRING;
+        char buf[128]; snprintf(buf, sizeof(buf), "%s: ", field_names[i]);
+        prefix.as.string = strdup(buf);
+        emit_constant(prefix);
+        
+        // Append value: this.field
+        emit_byte(OP_GET_LOCAL); emit_byte(0);
+        Value key; key.type = VALUE_STRING; key.as.string = strdup(field_names[i]);
+        emit_constant(key);
+        emit_byte(OP_OBJECT_GET);
+        emit_byte(OP_TO_STRING);
+        emit_byte(OP_ADD);
+        
+        // Append newline
+        Value nl; nl.type = VALUE_STRING; nl.as.string = strdup("\n");
+        emit_constant(nl);
+        emit_byte(OP_ADD);
+        
+        if (i > 0) {
+            // Combine: accumulator (below) + current line (top)
+            emit_byte(OP_ADD);
+        }
+    }
+
+    // Return the accumulated string (top of stack)
+    emit_byte(OP_RETURN);
+
+    end_scope();
+
+    Function* function = method_compiler.function;
+    current = enclosing;
+
+    Value function_value; function_value.type = VALUE_FUNCTION;
+    function_value.as.function.function = function;
+    function_value.as.function.captured_vars = NULL;
+    function_value.as.function.capture_count = 0;
+    emit_constant(function_value);
+
+    if (name_constant <= UINT8_MAX) {
+        emit_bytes(OP_DEFINE_GLOBAL, (uint8_t)name_constant);
+    } else {
+        emit_byte(OP_DEFINE_GLOBAL_LONG);
+        emit_byte((name_constant >> 8) & 0xff);
+        emit_byte(name_constant & 0xff);
+    }
+
+    if (push_log_ctx) emit_byte(OP_LOG_POP_CTX);
+}
+
+// Helper to generate fromYAML (same as fromJSON: from a plain object/map)
+static void generate_fromYAML_method(const char* struct_name, char** field_names, int field_count) {
+    char method_name[256];
+    snprintf(method_name, sizeof(method_name), "%s_fromYAML", struct_name);
+
+    int name_constant = identifier_constant(method_name);
+    bool push_log_ctx = name_constant <= UINT8_MAX;
+    if (push_log_ctx) {
+        emit_bytes(OP_LOG_PUSH_CTX, (uint8_t)name_constant);
+    }
+
+    Compiler* enclosing = current;
+    Compiler method_compiler;
+    compiler_init(&method_compiler, method_name);
+
+    method_compiler.function->arity = 1; // data
+
+    begin_scope();
+    add_local("data"); // 0
+
+    emit_byte(OP_OBJECT_NEW);
+    // __type
+    {
+        Value type_key; type_key.type = VALUE_STRING; type_key.as.string = "__type";
+        emit_constant(type_key);
+        Value type_val; type_val.type = VALUE_STRING; type_val.as.string = (char*)struct_name;
+        emit_constant(type_val);
+        emit_byte(OP_OBJECT_SET);
+    }
+    for (int i = 0; i < field_count; i++) {
+        Value k; k.type = VALUE_STRING; k.as.string = field_names[i];
+        emit_constant(k);
+        emit_byte(OP_GET_LOCAL); emit_byte(0);
+        Value k2; k2.type = VALUE_STRING; k2.as.string = field_names[i];
+        emit_constant(k2);
+        emit_byte(OP_OBJECT_GET);
+        emit_byte(OP_OBJECT_SET);
+    }
+    emit_byte(OP_RETURN);
+    end_scope();
+
+    Function* function = method_compiler.function;
+    current = enclosing;
+    Value function_value; function_value.type = VALUE_FUNCTION;
+    function_value.as.function.function = function;
+    function_value.as.function.captured_vars = NULL;
+    function_value.as.function.capture_count = 0;
+    emit_constant(function_value);
+    if (name_constant <= UINT8_MAX) {
+        emit_bytes(OP_DEFINE_GLOBAL, (uint8_t)name_constant);
+    } else {
+        emit_byte(OP_DEFINE_GLOBAL_LONG);
+        emit_byte((name_constant >> 8) & 0xff);
+        emit_byte(name_constant & 0xff);
+    }
+    if (push_log_ctx) emit_byte(OP_LOG_POP_CTX);
+}
+
+static void compile_struct_decl(ASTNode* node) {
+    // Automatically generate toJSON method for the struct
+    generate_toJSON_method(
+        node->as.struct_decl.name,
+        node->as.struct_decl.fields,
+        node->as.struct_decl.field_count
+    );
+    
+    // Also generate fromJSON method to construct instances from plain objects
+    generate_fromJSON_method(
+        node->as.struct_decl.name,
+        node->as.struct_decl.fields,
+        node->as.struct_decl.field_count
+    );
+    
+    // Generate YAML helpers (toYAML stringifier and fromYAML constructor)
+    generate_toYAML_method(
+        node->as.struct_decl.name,
+        node->as.struct_decl.fields,
+        node->as.struct_decl.field_count
+    );
+    generate_fromYAML_method(
+        node->as.struct_decl.name,
+        node->as.struct_decl.fields,
+        node->as.struct_decl.field_count
+    );
+    
+    // TODO: Store struct definition in type registry for runtime reflection
+}
+
+static void compile_interface_decl(ASTNode* node) {
+    // Interfaces are compile-time only for type checking
+    // No runtime bytecode is needed
+    
+    (void)node; // Suppress unused parameter warning
+    // No bytecode emission - interface definitions are compile-time only
+}
+
+static void compile_method_decl(ASTNode* node) {
+    // Methods are compiled like functions but stored with type association
+    // For now, we'll name them as "TypeName_methodName" to simulate method binding
+    
+    char method_full_name[256];
+    snprintf(method_full_name, sizeof(method_full_name), "%s_%s",
+             node->as.method_decl.receiver_type,
+             node->as.method_decl.method_name);
+    
+    int name_constant = identifier_constant(method_full_name);
+    if (name_constant > UINT8_MAX) {
+        error_at_node(node, "Too many constants for method name");
+        return;
+    }
+    emit_bytes(OP_LOG_PUSH_CTX, (uint8_t)name_constant);
+    
+    Compiler* enclosing = current;
+    Compiler method_compiler;
+    compiler_init(&method_compiler, method_full_name);
+    
+    method_compiler.function->arity = node->as.method_decl.param_count + 1; // +1 for 'this'
+    
+    begin_scope();
+    
+    // Add 'this' as first parameter
+    add_local("this");
+    
+    // Add regular parameters
+    for (int i = 0; i < node->as.method_decl.param_count; i++) {
+        add_local(node->as.method_decl.params[i]);
+    }
+    
+    // Compile method body
+    if (node->as.method_decl.body) {
+        for (int i = 0; i < node->as.method_decl.body->count; i++) {
+            compile_statement(node->as.method_decl.body->statements[i]);
+        }
+    }
+    
+    emit_byte(OP_NIL);
+    emit_byte(OP_RETURN);
+    
+    end_scope();
+    
+    Function* function = method_compiler.function;
+    current = enclosing;
+    
+    Value function_value;
+    function_value.type = VALUE_FUNCTION;
+    function_value.as.function.function = function;
+    function_value.as.function.captured_vars = NULL;
+    function_value.as.function.capture_count = 0;
+    
+    emit_constant(function_value);
+    
+    if (name_constant <= UINT8_MAX) {
+        emit_bytes(OP_DEFINE_GLOBAL, (uint8_t)name_constant);
+    } else {
+        emit_byte(OP_DEFINE_GLOBAL_LONG);
+        emit_byte((name_constant >> 8) & 0xff);
+        emit_byte(name_constant & 0xff);
+    }
+    
+    emit_byte(OP_LOG_POP_CTX);
+}
+
+static void compile_switch_stmt(ASTNode* node) {
+    // Compile the switch value once
+    compile_expression(node->as.switch_stmt.value);
+    
+    int case_count = node->as.switch_stmt.case_count;
+    int* end_jumps = malloc(sizeof(int) * (case_count + 1));
+    int end_jump_count = 0;
+    
+    // For each case, test equality and skip to next test if not equal
+    for (int i = 0; i < case_count; i++) {
+        // Duplicate switch value for comparison
+        emit_byte(OP_DUP);
+        
+        // Compile case value
+        compile_expression(node->as.switch_stmt.case_values[i]);
+        
+        // Compare
+        emit_byte(OP_EQUAL);
+        
+        // If not equal, jump to next case test
+        int skip_jump = emit_jump(OP_JUMP_IF_FALSE);
+        emit_byte(OP_POP); // Pop comparison result (true)
+        emit_byte(OP_POP); // Pop original switch value
+        
+        // Compile case body
+        compile_statement(node->as.switch_stmt.case_bodies[i]);
+        
+        // Jump to end (no fallthrough)
+        end_jumps[end_jump_count++] = emit_jump(OP_JUMP);
+        
+        // Patch skip to next case
+        patch_jump(skip_jump);
+        emit_byte(OP_POP); // Pop comparison result (false)
+    }
+    
+    // If no cases matched and we have a default, execute it
+    emit_byte(OP_POP); // Pop original switch value
+    if (node->as.switch_stmt.default_body != NULL) {
+        compile_statement(node->as.switch_stmt.default_body);
+    }
+    
+    // Patch all end jumps to here
+    for (int i = 0; i < end_jump_count; i++) {
+        patch_jump(end_jumps[i]);
+    }
+    
+    free(end_jumps);
 }
 
 static void compile_if_stmt(ASTNode* node) {
@@ -615,30 +1273,28 @@ static void compile_return_stmt(ASTNode* node) {
     emit_byte(OP_RETURN);
 }
 
-static void compile_block(ASTNode* node) {
-    begin_scope();
-    
-    for (int i = 0; i < node->as.block.count; i++) {
-        compile_statement(node->as.block.statements[i]);
-    }
-    
-    end_scope();
-}
-
-static void compile_expression_stmt(ASTNode* node) {
-    compile_expression(node->as.expression);
-    emit_byte(OP_POP); // Pop expression result
-}
-
+// Top-level statement dispatcher
 static void compile_statement(ASTNode* node) {
     if (node == NULL) return;
-    
+    current_line = node->line;
     switch (node->type) {
+        case AST_BLOCK:
+            compile_block(node);
+            break;
         case AST_VAR_DECL:
             compile_var_decl(node);
             break;
         case AST_FUNCTION_DECL:
             compile_function_decl(node);
+            break;
+        case AST_STRUCT_DECL:
+            compile_struct_decl(node);
+            break;
+        case AST_INTERFACE_DECL:
+            compile_interface_decl(node);
+            break;
+        case AST_METHOD_DECL:
+            compile_method_decl(node);
             break;
         case AST_IF_STMT:
             compile_if_stmt(node);
@@ -649,19 +1305,34 @@ static void compile_statement(ASTNode* node) {
         case AST_FOR_STMT:
             compile_for_stmt(node);
             break;
+        case AST_SWITCH_STMT:
+            compile_switch_stmt(node);
+            break;
         case AST_RETURN_STMT:
             compile_return_stmt(node);
             break;
-        case AST_BLOCK:
-            compile_block(node);
-            break;
         case AST_EXPRESSION_STMT:
-            compile_expression_stmt(node);
+            compile_expression(node->as.expression);
+            emit_byte(OP_POP); // discard expression result in statement context
             break;
         default:
-            error_at_node(node, "Unknown statement type.");
+            // Fallback: treat as expression statement
+            compile_expression(node);
+            emit_byte(OP_POP);
+            break;
     }
 }
+
+static void compile_block(ASTNode* node) {
+    begin_scope();
+    
+    for (int i = 0; i < node->as.block.count; i++) {
+        compile_statement(node->as.block.statements[i]);
+    }
+    
+    end_scope();
+}
+
 
 void compiler_init(Compiler* compiler, const char* name) {
     compiler->had_error = false;
@@ -674,6 +1345,9 @@ void compiler_init(Compiler* compiler, const char* name) {
     compiler->function->arity = 0;
     chunk_init(&compiler->function->chunk);
     compiler->function->is_native = false;
+    // Propagate source file path into every function object at creation time
+    // so nested functions also carry their origin for error reporting.
+    compiler->function->source_path = get_current_source_path();
     
     compiler->chunk = &compiler->function->chunk;
     
@@ -739,6 +1413,29 @@ static int byte_instruction(const char* name, Chunk* chunk, int offset) {
     return offset + 2;
 }
 
+static int long_constant_instruction(const char* name, Chunk* chunk, int offset) {
+    uint16_t constant = (chunk->code[offset + 1] << 8) | chunk->code[offset + 2];
+    printf("%-16s %4d '", name, constant);
+    
+    if (constant >= chunk->constant_count) {
+        printf("<OUT OF BOUNDS>");
+    } else {
+        Value value = chunk->constants[constant];
+        switch (value.type) {
+            case VALUE_NIL: printf("nil"); break;
+            case VALUE_BOOL: printf(value.as.boolean ? "true" : "false"); break;
+            case VALUE_NUMBER: printf("%g", value.as.number); break;
+            case VALUE_STRING: printf("%s", value.as.string); break;
+            case VALUE_ARRAY: printf("[Array]"); break;
+            case VALUE_OBJECT: printf("{Object}"); break;
+            case VALUE_FUNCTION: printf("<function>"); break;
+        }
+    }
+    
+    printf("'\n");
+    return offset + 3;
+}
+
 static int jump_instruction(const char* name, int sign, Chunk* chunk, int offset) {
     uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
     jump |= chunk->code[offset + 2];
@@ -759,6 +1456,11 @@ int disassemble_instruction(Chunk* chunk, int offset) {
     switch (instruction) {
         case OP_CONSTANT:
             return constant_instruction("OP_CONSTANT", chunk, offset);
+        case OP_CONSTANT_LONG: {
+            uint16_t constant = (chunk->code[offset + 1] << 8) | chunk->code[offset + 2];
+            printf("%-16s %4d\n", "OP_CONSTANT_LONG", constant);
+            return offset + 3;
+        }
         case OP_NIL:
             return simple_instruction("OP_NIL", offset);
         case OP_TRUE:
@@ -767,6 +1469,8 @@ int disassemble_instruction(Chunk* chunk, int offset) {
             return simple_instruction("OP_FALSE", offset);
         case OP_POP:
             return simple_instruction("OP_POP", offset);
+        case OP_DUP:
+            return simple_instruction("OP_DUP", offset);
         case OP_ADD:
             return simple_instruction("OP_ADD", offset);
         case OP_SUBTRACT:
@@ -787,10 +1491,16 @@ int disassemble_instruction(Chunk* chunk, int offset) {
             return simple_instruction("OP_NOT", offset);
         case OP_DEFINE_GLOBAL:
             return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset);
+        case OP_DEFINE_GLOBAL_LONG:
+            return long_constant_instruction("OP_DEFINE_GLOBAL_LONG", chunk, offset);
         case OP_GET_GLOBAL:
             return constant_instruction("OP_GET_GLOBAL", chunk, offset);
+        case OP_GET_GLOBAL_LONG:
+            return long_constant_instruction("OP_GET_GLOBAL_LONG", chunk, offset);
         case OP_SET_GLOBAL:
             return constant_instruction("OP_SET_GLOBAL", chunk, offset);
+        case OP_SET_GLOBAL_LONG:
+            return long_constant_instruction("OP_SET_GLOBAL_LONG", chunk, offset);
         case OP_GET_LOCAL:
             return byte_instruction("OP_GET_LOCAL", chunk, offset);
         case OP_SET_LOCAL:
@@ -805,6 +1515,12 @@ int disassemble_instruction(Chunk* chunk, int offset) {
             return byte_instruction("OP_CALL", chunk, offset);
         case OP_RETURN:
             return simple_instruction("OP_RETURN", offset);
+        case OP_OBJECT_NEW:
+            return simple_instruction("OP_OBJECT_NEW", offset);
+        case OP_OBJECT_GET:
+            return simple_instruction("OP_OBJECT_GET", offset);
+        case OP_OBJECT_SET:
+            return simple_instruction("OP_OBJECT_SET", offset);
         case OP_HALT:
             return simple_instruction("OP_HALT", offset);
         default:
@@ -828,6 +1544,7 @@ Function* function_new() {
     function->arity = 0;
     chunk_init(&function->chunk);
     function->is_native = false;
+    function->source_path = NULL;
     return function;
 }
 

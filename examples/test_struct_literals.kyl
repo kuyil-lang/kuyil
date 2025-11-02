@@ -1,0 +1,58 @@
+// Test struct literal syntax and serialization
+
+print("=== Testing Struct Literals and Serialization ===")
+print("")
+
+// Define structs
+struct Person {
+    name
+    age
+    email
+}
+
+struct Product {
+    id
+    title
+    price
+}
+
+// Create struct instances using literal syntax
+print("Creating struct instances...")
+
+let alice = Person { name: "Alice", age: 30, email: "alice@example.com" }
+print("Created alice:")
+print(alice)
+
+let bob = Person { name: "Bob", age: 25, email: "bob@example.com" }
+print("\nCreated bob:")
+print(bob)
+
+let laptop = Product { id: 101, title: "Laptop", price: 999.99 }
+print("\nCreated laptop:")
+print(laptop)
+
+// Test property access
+print("\nTesting property access:")
+print("alice.name = " + alice.name)
+print("alice.age = " + to_string(alice.age))
+print("bob.email = " + bob.email)
+print("laptop.title = " + laptop.title)
+
+// Test auto-generated toJSON serialization
+print("\n=== Testing Auto-Generated Serialization ===")
+
+let alice_json = Person_toJSON(alice)
+print("\nAlice as JSON:")
+print(alice_json)
+
+let bob_json = Person_toJSON(bob)
+print("\nBob as JSON:")
+print(bob_json)
+
+let laptop_json = Product_toJSON(laptop)
+print("\nLaptop as JSON:")
+print(laptop_json)
+
+print("\n=== All Tests Passed! ===")
+print("Struct literals work!")
+print("Auto-serialization works!")
