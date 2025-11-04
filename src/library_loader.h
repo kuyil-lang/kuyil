@@ -74,6 +74,9 @@ void* get_library_function(const char* library_name, const char* function_name);
 bool register_library_functions(VM* vm);
 void library_loader_cleanup(void);
 
+// Optional: VM can provide a function pointer for libraries that accept a Kuyil caller bridge
+void library_loader_set_kuyil_caller(void* callback_ptr);
+
 // Library-specific function loaders
 void load_webview_functions(SharedLibrary* lib);
 void load_crypto_functions(SharedLibrary* lib);

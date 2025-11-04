@@ -1,0 +1,16 @@
+// SQLite Interface Demo
+import("../interfaces/interface_sqlite.kyl")
+
+print("=== SQLite Demo ===")
+// 0 = default flags (library will interpret as read/write create if supported)
+let db = open_database("examples/demo.db", 0)
+if (db) {
+  print("Opened DB")
+  execute_sql(db, "DROP TABLE IF EXISTS t;")
+  execute_sql(db, "CREATE TABLE t (x INT);")
+  execute_sql(db, "INSERT INTO t(x) VALUES (42);")
+  print("Inserted row.")
+  close_database(db)
+} else {
+  print("Failed to open DB")
+}

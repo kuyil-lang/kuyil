@@ -1,0 +1,21 @@
+// File I/O Example using interface
+import("../interfaces/interface_fileio.kyl")
+
+print("=== File I/O Demo ===")
+
+// Write some text to a file
+let content = "Hello from Kuyil!\nThis is a test file.\n"
+print("Writing to test.txt...")
+file_write_text("test.txt", content)
+
+// Read it back
+print("\nReading test.txt...")
+let read_content = read_text("test.txt")
+print("Content:", read_content)
+
+// Check if file exists
+print("\nFile exists:", exists("test.txt"))
+print("File size:", size("test.txt"), "bytes")
+
+// Validate file
+print("File is valid:", validate("test.txt"))

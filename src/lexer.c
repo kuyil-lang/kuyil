@@ -151,6 +151,7 @@ static KuyilTokenType check_keyword(int start, int length, const char* rest, Kuy
 
 static KuyilTokenType identifier_type(Lexer* lexer) {
     switch (lexer->start[0]) {
+        case 'a': return check_keyword(1, 1, "s", TOKEN_AS, lexer);
         case 'b': return check_keyword(1, 4, "reak", TOKEN_BREAK, lexer);
         case 'c': 
             if (lexer->current - lexer->start > 1) {
@@ -337,6 +338,7 @@ Token lexer_scan_token(Lexer* lexer) {
         case ':': return make_token(lexer, TOKEN_COLON);
         case '"': return string(lexer);
         case '`': return backtick_string(lexer);
+        case '@': return make_token(lexer, TOKEN_AT);
         case '\n':
             lexer->line++;
             lexer->column = 1;
@@ -396,6 +398,7 @@ const char* token_type_string(KuyilTokenType type) {
         case TOKEN_RETURN: return "RETURN";
         case TOKEN_BREAK: return "BREAK";
         case TOKEN_CONTINUE: return "CONTINUE";
+        case TOKEN_AS: return "AS";
         case TOKEN_PLUS: return "PLUS";
         case TOKEN_MINUS: return "MINUS";
         case TOKEN_MULTIPLY: return "MULTIPLY";
@@ -426,6 +429,7 @@ const char* token_type_string(KuyilTokenType type) {
         case TOKEN_DOT: return "DOT";
         case TOKEN_COLON: return "COLON";
         case TOKEN_ARROW: return "ARROW";
+        case TOKEN_AT: return "AT";
         case TOKEN_NEWLINE: return "NEWLINE";
         case TOKEN_EOF: return "EOF";
         case TOKEN_ERROR: return "ERROR";

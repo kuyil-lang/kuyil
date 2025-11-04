@@ -1,0 +1,38 @@
+// Demonstrates importing and using typed interface files for clean FFI access
+// Each interface file provides @loadlib + typed method signatures
+
+// Import string library interface
+import("../interfaces/interface_str.kyl")
+
+// Import math library interface  
+import("../interfaces/interface_math.kyl")
+
+// Import datetime library interface
+import("../interfaces/interface_datetime.kyl")
+
+// Now you can use the functions with clean aliases
+print("=== String Operations ===")
+let text = "Kuyil Language"
+print("Original:", text)
+print("Length:", length(text))
+print("Uppercase:", upper(text))
+print("Lowercase:", lower(text))
+print("Substring:", substring(text, 0, 5))
+
+print("\n=== Math Operations ===")
+let x = -42.7
+print("abs(", x, ") =", abs(x))
+print("floor(", x, ") =", floor(x))
+print("ceil(", x, ") =", ceil(x))
+print("round(", x, ") =", round(x))
+print("sqrt(16) =", sqrt(16))
+print("pow(2, 8) =", pow(2, 8))
+
+print("\n=== DateTime Operations ===")
+print("Current timestamp:", date_now())
+print("ISO format:", date_iso(date_now()))
+
+// You can also use the prefixed versions
+print("\n=== Using Prefixed Names ===")
+print("str_length:", str_length("test"))
+print("math_abs:", math_abs(-10))

@@ -1,3 +1,7 @@
+import("../../interfaces/interface_str.kyl")
+import("../../interfaces/interface_math.kyl")
+import("../../interfaces/interface_datetime.kyl")
+
 function test_datetime_functions() {
     print("Testing datetime functions...")
     

@@ -1,0 +1,16 @@
+// Interface for String library
+@loadlib("./libs/libkylstr.so");
+
+interface str {
+  number length(input: string)
+  string substring(input: string, start: number, end: number)
+  string upper(input: string)
+  string lower(input: string)
+  string trim(input: string)
+  bool contains(haystack: string, needle: string)
+  string replace(input: string, from: string, to: string)
+  string split(input: string, delimiter: string)
+  number to_number(input: string)
+  string to_string(value: number)
+}
+

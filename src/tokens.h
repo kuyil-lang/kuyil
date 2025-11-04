@@ -31,6 +31,7 @@ typedef enum {
     TOKEN_SWITCH,
     TOKEN_CASE,
     TOKEN_DEFAULT,
+    TOKEN_AS,
 
     // Operators
     TOKEN_PLUS,
@@ -71,6 +72,7 @@ typedef enum {
     TOKEN_ARROW,
 
     // Special
+    TOKEN_AT,
     TOKEN_NEWLINE,
     TOKEN_EOF,
     TOKEN_ERROR

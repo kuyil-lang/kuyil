@@ -1,0 +1,57 @@
+// FFmpeg Audio Processing Example
+// Demonstrates audio file analysis using FFmpeg
+
+import("../interfaces/interface_ffmpeg.kyl") as ffmpeg
+
+print("=== FFmpeg Audio Analysis Example ===")
+print("")
+
+// Audio file to analyze (you'll need to provide a real audio file)
+let audioFile = "sample.mp3"
+
+print("Analyzing audio file:", audioFile)
+print("")
+
+// Get audio duration
+print("--- Audio Properties ---")
+let duration = ffmpeg.get_duration_kyl(audioFile)
+if (duration >= 0) {
+    print("Duration:", duration, "seconds")
+} else {
+    print("Error getting duration")
+    let error = ffmpeg.get_last_error_kyl()
+    print("Error message:", error)
+}
+
+// Get sample rate
+let sampleRate = ffmpeg.get_sample_rate_kyl(audioFile)
+if (sampleRate >= 0) {
+    print("Sample Rate:", sampleRate, "Hz")
+} else {
+    print("Error getting sample rate")
+}
+
+// Get number of channels
+let channels = ffmpeg.get_channels_kyl(audioFile)
+if (channels >= 0) {
+    if (channels == 1) {
+        print("Channels: 1 (Mono)")
+    } else if (channels == 2) {
+        print("Channels: 2 (Stereo)")
+    } else {
+        print("Channels:", channels)
+    }
+} else {
+    print("Error getting channel count")
+}
+
+print("")
+print("=== Audio Analysis Complete ===")
+print("")
+print("Note: To test this example, you need:")
+print("1. A valid audio file (MP3, WAV, FLAC, etc.)")
+print("2. FFmpeg library built: cd additional_libs/ffmpeg && make")
+print("3. Update 'audioFile' variable with your file path")
+print("")
+print("Example with a real file:")
+print("  let audioFile = '/path/to/your/music.mp3'")

@@ -10,7 +10,19 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Test categories
+# If legacy tests directory is missing, delegate to the unit test runner
+if [ ! -d "tests" ]; then
+    echo "Legacy tests/ directory not found; delegating to unittest runner..."
+    if [ -x "./unittest/run_tests.sh" ]; then
+        ./unittest/run_tests.sh
+        exit $?
+    else
+        echo "unittest/run_tests.sh not found or not executable."
+        exit 1
+    fi
+fi
+
+# Test categories (legacy)
 BASIC_TESTS="simple_test comprehensive_test victory_test"
 STRING_TESTS="simple_string_test string_functions_test interpolation_test"
 DYNAMIC_TESTS="dynamic_execution_test simple_compile_once_test"

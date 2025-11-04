@@ -1,0 +1,21 @@
+// Interface for Compression/Transcoder library
+@loadlib("./libs/libkyltranscoder.so");
+
+// Compression functions (prefix 'compress_')
+// gzip now returns an object { data: array<byte-as-number>, length: number }
+interface compress {
+  object gzip(input: string)
+  string zip(input: string)
+}
+
+// Decompression functions (prefix 'decompress_')
+// gzip now accepts the object { data, length } and returns original string
+interface decompress {
+  string gzip(input: object)
+  string zip(input: string)
+}
+
+// Unzip helper (prefix 'unzip_')
+interface unzip {
+  bool to_directory(zipPath: string)
+}

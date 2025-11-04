@@ -1,3 +1,7 @@
+import("../../interfaces/interface_fileio.kyl")
+import("../../interfaces/interface_str.kyl")
+import("../../interfaces/interface_math.kyl")
+
 function test_file_operations() {
     print("Testing file operations...")
     

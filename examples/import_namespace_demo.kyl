@@ -1,0 +1,26 @@
+// Demo for import with namespace to avoid conflicts
+
+// Import with namespace
+import("../interfaces/interface_str.kyl") as strlib
+import("../interfaces/interface_math.kyl") as mathlib
+
+// Now methods are accessed via namespace
+print("=== Namespace Demo ===")
+
+// String operations via str namespace
+let text = "Kuyil Language"
+print("Text:", text)
+print("Length:", strlib.length(text))
+print("Uppercase:", strlib.upper(text))
+
+// Math operations via math namespace
+let num = -42.7
+print("\nNumber:", num)
+print("Absolute:", mathlib.abs(num))
+print("Floor:", mathlib.floor(num))
+print("Sqrt of 16:", mathlib.sqrt(16))
+
+// Demonstrate conflict resolution
+print("\n=== No Conflicts ===")
+print("strlib.length and mathlib functions coexist")
+print("Each method accessed via its namespace")

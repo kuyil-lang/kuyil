@@ -283,6 +283,12 @@ let result = multiply(4, 7)
 ## Control Flow
 
 ### Conditional Statements
+Parentheses around conditions are optional in Kuyil. Both of the following are valid:
+
+```kuyil
+if (age >= 18) { print("You can vote!") }
+if age >= 18 { print("You can vote!") }
+```
 ```kuyil
 let age = 18
 
@@ -305,6 +311,11 @@ if age >= 21 {
 ### Loops
 
 #### While Loops
+Parentheses are also optional for while loop conditions:
+```kuyil
+while (i <= 5) { i = i + 1 }
+while i <= 5 { i = i + 1 }
+```
 ```kuyil
 let i = 1
 while i <= 5 {
@@ -313,7 +324,14 @@ while i <= 5 {
 }
 ```
 
-#### For Loops (Future)
+#### For Loops (classic C-style)
+You can write classic three-clause for loops with or without parentheses:
+```kuyil
+for (let i = 0; i < 10; i = i + 1) { print(i) }
+for let i = 0; i < 10; i = i + 1 { print(i) }
+```
+
+For-in loops are planned for future versions.
 ```kuyil
 for let i = 0; i < 10; i = i + 1 {
     print(i)
@@ -588,3 +606,42 @@ if user {
     print("User not found")
 }
 ```
+
+## FFI and Interfaces
+
+Kuyil can call functions from native shared libraries (.so) and expose them as simple script functions.
+
+### Loading a library
+Use the directive form or the function form:
+
+```kuyil
+// Directive (parses to a function call)
+@loadlib("./libs/libkylstr.so")
+
+// Or direct function call
+loadlib("./libs/libkylstr.so")
+```
+
+### Declaring an interface
+Interfaces document available functions and automatically bind clean aliases (both unqualified and dotted forms) to underlying native functions. This also enables arity and basic runtime type checks when calling aliases.
+
+```kuyil
+interface str {
+    number length(input: string)
+    string substring(inputStr: string, indexStart: number, indexEnd: number)
+    string upper(input: string)
+    string lower(input: string)
+}
+
+// After the interface is processed, you can use:
+print("len=", str_length("hello"))
+print("sub=", str_substring("kuyil", 1, 3))
+// Or call the clean aliases bound by the interface:
+print("sub2=", substring("kuyil", 1, 3))      // unqualified alias
+print("sub3=", str.substring("kuyil", 1, 3))  // dotted alias
+```
+
+Notes:
+- Parameter specs use the form `name: type`. The type is informational and used for runtime checks. Use broad types like `string`, `number`, `bool`, `nil`, `array`, `object`.
+- Union types with `|` (e.g., `number|int32`) are not yet lexed; prefer the broader type for now (e.g., `number`).
+- Return types are optional. When provided, the runtime will warn if the actual return value doesn’t match.

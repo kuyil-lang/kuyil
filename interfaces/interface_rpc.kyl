@@ -1,0 +1,8 @@
+// Interface for RPC library (subset)
+@loadlib("./libs/libkylrpc.so");
+
+interface rpc {
+  string get_version()
+  bool set_log_level(level: number)
+  string get_last_error()
+}

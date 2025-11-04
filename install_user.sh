@@ -23,11 +23,12 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SRC_ROOT="$SCRIPT_DIR"
 SRC_BIN="$SRC_ROOT/kuyil"
 SRC_LIBS_DIR="$SRC_ROOT/libs"
-SRC_LIB_CONF="$SRC_ROOT/libraries.conf"
+SRC_INTERFACES_DIR="$SRC_ROOT/interfaces"
 
 INSTALL_BASE=${1:-"$HOME/.kuyil"}
 INSTALL_BIN_DIR="$INSTALL_BASE/bin"
 INSTALL_LIBS_DIR="$INSTALL_BASE/libs"
+INSTALL_INTERFACES_DIR="$INSTALL_BASE/interfaces"
 INSTALL_WRAPPED_BIN="$INSTALL_BIN_DIR/kuyil"
 INSTALL_REAL_BIN="$INSTALL_BASE/kuyil"
 INSTALL_ENV_FILE="$INSTALL_BASE/kuyil-env.sh"
@@ -43,9 +44,9 @@ if [[ ! -d "$SRC_LIBS_DIR" ]]; then
   warn "libs/ directory not found at $SRC_LIBS_DIR. Creating empty libs directory."
 fi
 
-mkdir -p "$INSTALL_BIN_DIR" "$INSTALL_LIBS_DIR"
+mkdir -p "$INSTALL_BIN_DIR" "$INSTALL_LIBS_DIR" "$INSTALL_INTERFACES_DIR"
 
-# Copy binary into base dir so relative ./libs and ./libraries.conf resolve after cd
+# Copy binary into base dir so relative ./libs and ./interfaces resolve after cd
 info "Copying binary to $INSTALL_REAL_BIN"
 install -m 0755 "$SRC_BIN" "$INSTALL_REAL_BIN"
 
@@ -55,12 +56,12 @@ if [[ -d "$SRC_LIBS_DIR" ]]; then
   rsync -a --delete "$SRC_LIBS_DIR/" "$INSTALL_LIBS_DIR/" || cp -a "$SRC_LIBS_DIR/." "$INSTALL_LIBS_DIR/" || true
 fi
 
-# Copy libraries.conf if present (loader looks for ./libraries.conf)
-if [[ -f "$SRC_LIB_CONF" ]]; then
-  info "Copying libraries.conf to $INSTALL_BASE"
-  install -m 0644 "$SRC_LIB_CONF" "$INSTALL_BASE/libraries.conf"
+# Copy interfaces (if any)
+if [[ -d "$SRC_INTERFACES_DIR" ]]; then
+  info "Syncing interfaces to $INSTALL_INTERFACES_DIR"
+  rsync -a --delete "$SRC_INTERFACES_DIR/" "$INSTALL_INTERFACES_DIR/" || cp -a "$SRC_INTERFACES_DIR/." "$INSTALL_INTERFACES_DIR/" || true
 else
-  warn "libraries.conf not found. Some libraries may not auto-load."
+  warn "interfaces/ directory not found at $SRC_INTERFACES_DIR."
 fi
 
 # Create wrapper that cd's into install base then execs real binary
@@ -96,11 +97,12 @@ EOF
 
 say ""
 info "Installed Kuyil user-local runtime"
-say "  Home:   $INSTALL_BASE"
-say "  Binary: $INSTALL_WRAPPED_BIN (wrapper)"
-say "  Real:   $INSTALL_REAL_BIN"
-say "  Libs:   $INSTALL_LIBS_DIR"
-say "  Env:    $INSTALL_ENV_FILE"
+say "  Home:       $INSTALL_BASE"
+say "  Binary:     $INSTALL_WRAPPED_BIN (wrapper)"
+say "  Real:       $INSTALL_REAL_BIN"
+say "  Libs:       $INSTALL_LIBS_DIR"
+say "  Interfaces: $INSTALL_INTERFACES_DIR"
+say "  Env:        $INSTALL_ENV_FILE"
 
 say ""
 info "Next steps"

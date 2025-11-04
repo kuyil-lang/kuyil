@@ -1,0 +1,17 @@
+// Demonstrates script-level FFI loading via @loadlib and using an interface declaration for clarity
+
+@loadlib("./libs/libkylstr.so");
+
+// Optional: declare the interface to document available functions
+interface str {
+  number length(input: string)
+  // Note: union types like number|int32 aren't lexed yet; use the broader type for now
+  string substring(inputStr: string, indexStart: number, indexEnd: number)
+  string upper(input: string)
+  string lower(input: string)
+}
+
+print("len=", str_length("hello"))
+print("sub=", str_substring("kuyil", 1, 3))
+// After interface binding, you can call using just the method name
+print("sub2=", substring("kuyil", 1, 3))

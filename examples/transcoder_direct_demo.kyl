@@ -1,0 +1,9 @@
+@loadlib("./libs/libkyltranscoder.so")
+import("../interfaces/interface_str.kyl")
+
+print("=== Transcoder Direct Demo ===")
+let input = "abcabcabcabcabcabc"
+let gz = compress_gzip(input)
+print("gz size:", length(gz))
+let out = decompress_gzip(gz)
+print("ok:", out == input)

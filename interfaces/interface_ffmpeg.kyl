@@ -1,0 +1,15 @@
+// Interface for FFmpeg library
+@loadlib("./libs/libkylffmpeg.so");
+
+// General ffmpeg helpers
+interface ffmpeg {
+  string get_last_error_kyl()
+  bool clear_error_kyl()
+}
+
+// Audio-related functions (prefix 'audio_')
+interface audio {
+  number get_duration_kyl(path: string)
+  number get_sample_rate_kyl(path: string)
+  number get_channels_kyl(path: string)
+}

@@ -1,0 +1,21 @@
+// Transcoder/Compression Interface Demo
+import("../interfaces/interface_transcoder.kyl")
+import("../interfaces/interface_str.kyl")
+
+print("=== Transcoder (Compression) Demo ===")
+
+let input = "The quick brown fox jumps over the lazy dog"
+
+print("Original: ", input)
+
+// Compress using gzip (now returns object {data, length})
+let gz = gzip(input)
+print("Gzip compressed bytes: ", gz.length)
+
+// Decompress using gzip (accepts the object)
+let out = decompress_gzip(gz)
+print("Roundtrip ok: ", out == input)
+
+// Optional: unzip helper demo (expects a real zip file; skipped here)
+// let ok = to_directory("examples/sample.zip")
+// print("Unzip to directory ok: ", ok)

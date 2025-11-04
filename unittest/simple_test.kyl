@@ -1,3 +1,6 @@
+import("../interfaces/interface_str.kyl")
+import("../interfaces/interface_math.kyl")
+
 function test_basic_arithmetic() {
     print("Testing basic arithmetic...")
     

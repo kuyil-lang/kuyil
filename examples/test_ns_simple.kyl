@@ -1,0 +1,8 @@
+// Simple test of namespace object creation
+import("../interfaces/interface_str.kyl") as ns
+
+print("ns type check:")
+print("ns value:", ns)
+print("Trying ns.length:")
+let result = ns.length("test")
+print("Result:", result)

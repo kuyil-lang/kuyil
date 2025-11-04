@@ -1,0 +1,19 @@
+// Interface for Crypto library
+@loadlib("./libs/libkylcrypto.so");
+
+interface crypto {
+  string md5(input: string)
+  string sha256(input: string)
+  string sha512(input: string)
+  string blake2b(input: string)
+
+  string base64_encode(input: string)
+  string base64_decode(input: string)
+
+  // Random helpers
+  bool random_init()
+  string random_hex(length: number)
+  number random_int(min: number, max: number)
+  string generate_uuid()
+  string generate_token(length: number)
+}

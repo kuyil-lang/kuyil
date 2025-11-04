@@ -1,0 +1,14 @@
+// Interface for Math library
+@loadlib("./libs/libkylmath.so");
+
+interface math {
+  number abs(x: number)
+  number floor(x: number)
+  number ceil(x: number)
+  number round(x: number)
+  number sqrt(x: number)
+  number pow(x: number, y: number)
+  number sin(x: number)
+  number cos(x: number)
+  number tan(x: number)
+}

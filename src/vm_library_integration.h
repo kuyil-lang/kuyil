@@ -59,6 +59,7 @@ Value vm_clear_libraries(int arg_count, Value* args);
 
 // Module import functions
 Value vm_import_module(int arg_count, Value* args);
+Value vm_import_as(int arg_count, Value* args);
 Value vm_export_function(int arg_count, Value* args);
 
 // Internal functions (implemented in .c file)

@@ -15,6 +15,12 @@ void load_generic_functions(SharedLibrary* lib, const char* functions[][3], cons
 
 // Global library registry
 LibraryRegistry g_library_registry = {0};
+// Optional Kuyil callback bridge for libraries that accept a VM caller (e.g., HTTP)
+static void* g_kuyil_caller_cb = NULL;
+
+void library_loader_set_kuyil_caller(void* callback_ptr) {
+    g_kuyil_caller_cb = callback_ptr;
+}
 
 bool library_loader_init(void) {
     if (g_library_registry.initialized) {
@@ -41,6 +47,25 @@ static void join_paths(char* out, size_t out_sz, const char* a, const char* b) {
     size_t la = strlen(a);
     bool slash = (la > 0 && a[la-1] == '/');
     snprintf(out, out_sz, slash ? "%s%s" : "%s/%s", a, b);
+}
+
+static void get_executable_dir(char* out, size_t out_sz) {
+#ifdef __linux__
+    char buf[1024];
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf)-1);
+    if (len > 0) {
+        buf[len] = '\0';
+        char* last = strrchr(buf, '/');
+        if (last) *last = '\0';
+        size_t copy_len = strlen(buf);
+        if (copy_len >= out_sz) copy_len = out_sz - 1;
+        memcpy(out, buf, copy_len);
+        out[copy_len] = '\0';
+        return;
+    }
+#endif
+    strncpy(out, ".", out_sz-1);
+    out[out_sz-1] = '\0';
 }
 
 bool load_library_config(const char* config_file) {
@@ -84,8 +109,10 @@ bool load_library_config(const char* config_file) {
                 // If path starts with ./ or libs/ etc., join with cfg_dir
                 join_paths(resolved, sizeof(resolved), cfg_dir, path);
                 strncpy(lib->path, resolved, MAX_PATH_LENGTH - 1);
+                lib->path[MAX_PATH_LENGTH - 1] = '\0';
             } else {
                 strncpy(lib->path, path, MAX_PATH_LENGTH - 1);
+                lib->path[MAX_PATH_LENGTH - 1] = '\0';
             }
             lib->is_optional = optional;
             lib->is_loaded = false;
@@ -121,51 +148,38 @@ bool load_library(const char* library_name) {
     if (lib->is_loaded) {
         return true; // Already loaded
     }
-    
-    // Try to load the library at configured path first
-    lib->handle = dlopen(lib->path, RTLD_LAZY);
-    if (!lib->handle) {
-        // Fallback: if path is relative and contains "/libs/", try resolving from KUYIL_HOME and executable dir
-        const char* err1 = dlerror();
+
+    // Preferred resolution order for relative paths: <exe_dir>/path first, then CWD
+    if (!is_absolute_path(lib->path)) {
         char attempt[1024];
-        bool loaded = false;
-        if (!is_absolute_path(lib->path)) {
-            const char* home = getenv("KUYIL_HOME");
-            if (home && *home) {
-                join_paths(attempt, sizeof(attempt), home, lib->path);
-                dl_handle_t h = dlopen(attempt, RTLD_LAZY);
-                if (h) { lib->handle = h; loaded = true; }
-            }
-            if (!loaded) {
-                char exe_dir[1024];
-                // reuse linux helper via /proc/self/exe
-#ifdef __linux__
-                ssize_t len = readlink("/proc/self/exe", attempt, sizeof(attempt)-1);
-                if (len > 0) {
-                    attempt[len] = '\0';
-                    char* last = strrchr(attempt, '/');
-                    if (last) *last = '\0';
-                    char base[1024]; strncpy(base, attempt, sizeof(base)); base[sizeof(base)-1] = '\0';
-                    join_paths(attempt, sizeof(attempt), base, lib->path);
-                    dl_handle_t h2 = dlopen(attempt, RTLD_LAZY);
-                    if (h2) { lib->handle = h2; loaded = true; }
-                }
-#endif
-            }
+        char exe_dir[1024];
+        get_executable_dir(exe_dir, sizeof(exe_dir));
+        join_paths(attempt, sizeof(attempt), exe_dir, lib->path);
+        dl_handle_t h1 = dlopen(attempt, RTLD_LAZY);
+        if (h1) {
+            lib->handle = h1;
         }
-        if (!loaded) {
-            if (lib->is_optional) {
-                LOG_INFO("Optional library not available: %s (%s)", library_name, err1 ? err1 : "unknown");
-                return true; // Success for optional libraries
-            } else {
-                LOG_ERROR("Failed to load required library %s: %s", library_name, err1 ? err1 : "unknown");
-                return false;
-            }
+        // If not loaded from exe_dir, try CWD with original relative path
+        if (!lib->handle) {
+            lib->handle = dlopen(lib->path, RTLD_LAZY);
+        }
+    } else {
+        lib->handle = dlopen(lib->path, RTLD_LAZY);
+    }
+    if (!lib->handle) {
+        const char* err1 = dlerror();
+        if (lib->is_optional) {
+            LOG_INFO("Optional library not available: %s (%s)", library_name, err1 ? err1 : "unknown");
+            return true; // Success for optional libraries
+        } else {
+            LOG_ERROR("Failed to load required library %s: %s", library_name, err1 ? err1 : "unknown");
+            return false;
         }
     }
     
     lib->is_loaded = true;
     LOG_INFO("Successfully loaded library: %s", library_name);
+    LOG_INFO("Enumerating functions for library switch: '%s'", library_name);
     
     // Load function symbols based on library type
     if (strcmp(library_name, "webview") == 0) {
@@ -191,6 +205,12 @@ bool load_library(const char* library_name) {
         load_fileio_functions(lib);
     } else if (strcmp(library_name, "ffmpeg") == 0) {
         load_ffmpeg_functions(lib);
+    } else if (strcmp(library_name, "transcoder") == 0) {
+        // Alias: the transcoder shared library exposes compression helpers
+        // such as compress/decompress and unzip operations.
+        // Treat it the same as the "compression" category.
+        LOG_INFO("Enumerating functions for 'transcoder' via compression loader");
+        load_compression_functions(lib);
     }
     
     return true;
@@ -280,6 +300,7 @@ void load_crypto_functions(SharedLibrary* lib) {
 }
 
 void load_compression_functions(SharedLibrary* lib) {
+    LOG_INFO("Loading compression/transcoder function symbols from shared library");
     const char* compression_functions[][3] = {
         {"compress_gzip", "compress_gzip", "value_args"},
         {"decompress_gzip", "decompress_gzip", "value_args"},
@@ -486,6 +507,14 @@ void load_http_functions(SharedLibrary* lib) {
     };
 
     load_generic_functions(lib, http_functions, "HTTP");
+    // Inject Kuyil caller bridge if provided by VM
+    if (g_kuyil_caller_cb && lib->handle) {
+        void (*http_set_kuyil_caller)(void*) = dlsym(lib->handle, "http_set_kuyil_caller");
+        if (http_set_kuyil_caller) {
+            LOG_INFO("Injected Kuyil caller into HTTP library (loader)");
+            http_set_kuyil_caller(g_kuyil_caller_cb);
+        }
+    }
 }
 
 // Math library: basic arithmetic and trigonometric functions

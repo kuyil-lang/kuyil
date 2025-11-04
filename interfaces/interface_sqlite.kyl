@@ -1,0 +1,10 @@
+// Interface for SQLite library
+@loadlib("./libs/libkylsqlite.so");
+
+interface sqlite {
+  number open_database(path: string, flags: number)
+  number close_database(handle: number)
+  number execute_sql(handle: number, sql: string)
+  // Simple query helpers
+  number execute_query(handle: number, sql: string)
+}

@@ -1,12 +1,14 @@
 // Date Operations Example - Working Functions Only
 // Demonstrates date/time functions that are confirmed working
+import("../interfaces/interface_datetime.kyl")
+import("../interfaces/interface_str.kyl")
 
 print("=== Date and Time Operations Demo ===")
 
 // Current date and time - WORKING
 print("Current Date and Time:")
 let current_date = date_now()
-print("Current timestamp: " + to_string(current_date))
+print("Current date: " + current_date)
 
 let formatted_date = date_current()
 print("Formatted date: " + formatted_date)
@@ -30,8 +32,8 @@ print("ISO format: " + iso_date)
 // Datetime functions - Let's test these
 print("")
 print("=== DateTime Functions ===")
-let datetime_stamp = datetime_now()
-print("DateTime now: " + to_string(datetime_stamp))
+let datetime_str = datetime_now()
+print("DateTime now: " + datetime_str)
 
 let datetime_formatted = datetime_current()
 print("DateTime current: " + datetime_formatted)

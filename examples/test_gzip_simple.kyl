@@ -1,0 +1,23 @@
+// Test gzip with byte array object return
+@loadlib("libkylstr.so")
+@loadlib("libkyltranscoder.so")
+
+let original = "Hello World! This is a test of gzip compression with byte arrays."
+print("Original: " + original + "\n")
+
+// Compress - returns object with {data: [bytes...], length: N}
+print("Compressing...\n")
+let compressed = gzip_compress(original)
+print("Compressed length: ")
+print(compressed.length)
+print("\n")
+
+// Decompress - takes object with {data: [bytes...], length: N}
+print("Decompressing...\n")
+let decompressed = gzip_decompress(compressed)
+print("Decompressed: " + decompressed + "\n")
+
+// Check roundtrip
+print("Roundtrip match: ")
+print(original == decompressed)
+print("\n")

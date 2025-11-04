@@ -57,21 +57,50 @@ anon2()
 // ******** Anonymous Function <end> *****
 
 // Test math library functionsf
+import("./interfaces/interface_math.kyl") as math
 print("Testing Math Library:")
 print("math_abs(-5) =", math_abs(-5))
 print("math_sqrt(16) =", math_sqrt(16))
 print("math_pow(2, 3) =", math_pow(2, 3))
 
 // Test string library functions  
+import("./interfaces/interface_str.kyl") as str
 print("Testing String Library:")
 let str1 = "Hello World"
-print("str_length('Hello World') =", str_length(str1))
-print("str_upper('Hello World') =", str_upper(str1))
+print("str_length('Hello World') =", str.length(str1))
+print("str_upper('Hello World') =", str.upper(str1))
 print("str_contains('Hello World', 'World') =", str_contains(str1, "World"))
 
 // Test date/time library functions
+import("./interfaces/interface_datetime.kyl") as datetime
 print("Testing DateTime Library:")
 print("Current date:", date_now())
 print("Current timestamp:", date_unix())
 
 print("All modular library tests completed!")
+
+let name = "Kuyil"
+let result = sqrt(pow(2, 8))
+print(upper(name), "computed:", result)
+
+import("./interfaces/interface_http.kyl") as http
+let data = client_get("https://api.example.com/data")
+print("Fetched", length(data), "bytes")
+
+if name == "Kuyil" {print("Hello")}
+
+if name == "Kuyil" {
+    print("Hello Kuyil")
+}
+
+for let i = 0; i < 10; i = i + 1 {
+    print(`${i} Hello Kuyil Users`)
+}
+
+if (name == "Kuyil") {
+    print("Hello Kuyil")
+}
+
+for (let i = 0; i < 10; i = i + 1) {
+    print(`${i} Hello Kuyil Users`)
+}

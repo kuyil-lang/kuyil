@@ -1,0 +1,15 @@
+// Interface for Date/Time library
+@loadlib("./libs/libkyldatetime.so");
+
+// Datetime-specific helpers
+interface datetime {
+  string now()
+  string current()
+}
+
+// Date helpers
+interface date {
+  string now()
+  number unix()
+  string iso(date: string)
+}

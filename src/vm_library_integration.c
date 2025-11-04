@@ -4,11 +4,15 @@
 #include "logging.h"
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/types.h>
 // dlfcn.h is already handled in library_loader.h with Windows compatibility
+
+// Forward declaration - vm_interpret is the public API for compiling and executing source
+extern InterpretResult vm_interpret(VM* vm, const char* source);
 
 // Global VM pointer for library access
 static VM* g_current_vm = NULL;
@@ -44,6 +48,48 @@ typedef struct {
 static DynamicFunction* g_dynamic_functions = NULL;
 static int g_dynamic_function_count = 0;
 static int g_dynamic_function_capacity = 0;
+
+// Alias binding metadata for interface-bound methods with type checks
+typedef struct {
+    char* alias;           // e.g., "substring" or "str.substring"
+    char* target;          // e.g., "str_substring" or raw method name like "to_string"
+    // Direct pointer to the resolved dynamic function for fast, recursion-safe dispatch
+    // Note: this pointer refers to an entry in g_dynamic_functions; do not free.
+    struct {
+        const char* name;              // cached name for diagnostics
+        void* library_func_ptr;        // underlying func ptr
+        FunctionSignature signature;   // signature for dispatch
+    } target_df;
+    int param_count;       // number of params
+    char** param_specs;    // e.g., ["inputStr:string", "indexStart:number|int32", ...]
+    char* return_spec;     // e.g., "string" (optional)
+} AliasBinding;
+
+#define MAX_ALIAS_BINDINGS 512
+static AliasBinding g_alias_bindings[MAX_ALIAS_BINDINGS];
+static int g_alias_binding_count = 0;
+
+static int find_alias_binding(const char* name) {
+    for (int i = 0; i < g_alias_binding_count; i++) {
+        if (strcmp(g_alias_bindings[i].alias, name) == 0) return i;
+    }
+    return -1;
+}
+
+static void free_alias_bindings(void) {
+    for (int i = 0; i < g_alias_binding_count; i++) {
+        free(g_alias_bindings[i].alias);
+        free(g_alias_bindings[i].target);
+        if (g_alias_bindings[i].param_specs) {
+            for (int j = 0; j < g_alias_bindings[i].param_count; j++) free(g_alias_bindings[i].param_specs[j]);
+            free(g_alias_bindings[i].param_specs);
+        }
+        if (g_alias_bindings[i].return_spec) free(g_alias_bindings[i].return_spec);
+    }
+    g_alias_binding_count = 0;
+}
+
+/* moved add_alias_binding_entry below forward declarations */
 
 // Simple mock registry for testing
 typedef struct {
@@ -102,10 +148,8 @@ int mock_get_call_count(const char* name) {
 }
 
 // Forward declarations
-static void add_default_libraries(void);
 static bool register_dynamic_functions(VM* vm);
 static void register_system_functions(VM* vm);
-static void register_default_library_functions(void);
 static void register_dynamic_function(const char* name, void* func_ptr, FunctionSignature signature);
 static Value wrapper_void_void(int arg_count, Value* args, void* func_ptr);
 static Value wrapper_int_void(int arg_count, Value* args, void* func_ptr);
@@ -114,6 +158,50 @@ static Value wrapper_int_ptr_string(int arg_count, Value* args, void* func_ptr);
 static Value wrapper_void_ptr(int arg_count, Value* args, void* func_ptr);
 static Value wrapper_ptr_void(int arg_count, Value* args, void* func_ptr);
 static Value wrapper_int_ptr(int arg_count, Value* args, void* func_ptr);
+
+// Forward declaration for loadlib runtime function
+Value vm_loadlib(int arg_count, Value* args);
+// Forward declaration for interface method binder
+Value vm_bind_interface_method(int arg_count, Value* args);
+
+// Now that register_dynamic_function is declared, define the helper
+static void add_alias_binding_entry(const char* alias_name,
+                                    const char* target,
+                                    DynamicFunction* df,
+                                    int param_count,
+                                    char** param_specs,
+                                    const char* return_spec) {
+    if (!is_dynamic_function(alias_name)) {
+        register_dynamic_function(alias_name, df->library_func_ptr, df->signature);
+    }
+    if (g_alias_binding_count < MAX_ALIAS_BINDINGS) {
+        AliasBinding* ab = &g_alias_bindings[g_alias_binding_count++];
+        ab->alias = strdup(alias_name);
+        ab->target = strdup(target);
+        // Cache resolved dynamic function details to avoid re-entry via name-based resolution
+        ab->target_df.name = df->name;
+        ab->target_df.library_func_ptr = df->library_func_ptr;
+        ab->target_df.signature = df->signature;
+        ab->param_count = param_count;
+        if (param_count > 0 && param_specs) {
+            ab->param_specs = (char**)malloc(sizeof(char*) * param_count);
+            for (int i = 0; i < param_count; i++) ab->param_specs[i] = strdup(param_specs[i] ? param_specs[i] : "");
+        } else {
+            ab->param_specs = NULL;
+        }
+        ab->return_spec = return_spec ? strdup(return_spec) : NULL;
+    }
+    LOG_INFO("Bound interface alias: %s -> %s", alias_name, target);
+}
+
+// Register a placeholder dynamic function alias (for resolution) and record
+// a type-checked alias binding that forwards to the target name.
+static void add_alias_binding_entry(const char* alias_name,
+                                    const char* target,
+                                    DynamicFunction* df,
+                                    int param_count,
+                                    char** param_specs,
+                                    const char* return_spec);
 
 static void build_path(char* out, size_t out_sz, const char* a, const char* b) {
     // join a + "/" + b with simple logic
@@ -155,54 +243,12 @@ bool vm_init_library_system(VM* vm) {
         LOG_ERROR("Failed to initialize library loader");
         return false;
     }
+    // Provide Kuyil caller bridge to loader (generic, no library-specific logic here)
+    library_loader_set_kuyil_caller((void*)call_kuyil_function);
     
-    // Load library configuration with priority:
-    // 1) $KUYIL_HOME/libraries.conf
-    // 2) <executable_dir>/libraries.conf
-    // 3) ./libraries.conf (CWD)
-    // 4) libraries.conf (CWD without ./)
-    bool config_loaded = false;
-    char candidate[1024];
-    const char* home = getenv("KUYIL_HOME");
-    if (home && *home) {
-        build_path(candidate, sizeof(candidate), home, "libraries.conf");
-        if (file_exists_simple(candidate) && load_library_config(candidate)) {
-            LOG_INFO("Loaded library config from: %s", candidate);
-            config_loaded = true;
-        }
-    }
-    if (!config_loaded) {
-        char exe_dir[1024];
-        get_executable_dir(exe_dir, sizeof(exe_dir));
-        build_path(candidate, sizeof(candidate), exe_dir, "libraries.conf");
-        if (file_exists_simple(candidate) && load_library_config(candidate)) {
-            LOG_INFO("Loaded library config from: %s", candidate);
-            config_loaded = true;
-        }
-    }
-    if (!config_loaded) {
-        if (load_library_config("./libraries.conf")) {
-            LOG_INFO("Loaded library config from: ./libraries.conf");
-            config_loaded = true;
-        }
-    }
-    if (!config_loaded) {
-        if (load_library_config("libraries.conf")) {
-            LOG_INFO("Loaded library config from: libraries.conf");
-            config_loaded = true;
-        }
-    }
-    
-    if (!config_loaded) {
-        LOG_WARNING("No library configuration file found, using default libraries");
-        // Load default libraries programmatically
-        add_default_libraries();
-    }
-    
-    // Load all configured libraries
-    if (!load_all_libraries()) {
-        LOG_WARNING("Some libraries failed to load, continuing with available libraries");
-    }
+    // Libraries are now loaded on-demand via @loadlib directives
+    // No automatic loading from libraries.conf
+    LOG_INFO("Library system ready - use @loadlib to load libraries on-demand");
     
     // Register library functions with VM
     if (!register_dynamic_functions(vm)) {
@@ -214,23 +260,6 @@ bool vm_init_library_system(VM* vm) {
     return true;
 }
 
-static void add_default_libraries(void) {
-    // Add WebView library
-    if (g_library_registry.library_count < MAX_LIBRARIES) {
-        SharedLibrary* lib = &g_library_registry.libraries[g_library_registry.library_count];
-        strncpy(lib->name, "webview", MAX_NAME_LENGTH - 1);
-        strncpy(lib->path, "./shared_libs/webview/libwebview_utils.so", MAX_PATH_LENGTH - 1);
-        lib->is_optional = true;
-        lib->is_loaded = false;
-        lib->handle = NULL;
-        lib->function_count = 0;
-        g_library_registry.library_count++;
-    }
-    
-    // Add other default libraries as needed
-    LOG_INFO("Added default library configurations");
-}
-
 static bool register_dynamic_functions(VM* vm) {
     // Allocate dynamic function array
     g_dynamic_function_capacity = 256;
@@ -240,21 +269,7 @@ static bool register_dynamic_functions(VM* vm) {
         return false;
     }
     
-    // If HTTP library is loaded via registry, inject Kuyil caller bridge
-    for (int i = 0; i < g_library_registry.library_count; i++) {
-        SharedLibrary* lib = &g_library_registry.libraries[i];
-        if (!lib->is_loaded) continue;
-        if (strcmp(lib->name, "http") == 0 && lib->handle) {
-            void (*http_set_kuyil_caller)(void*) = dlsym(lib->handle, "http_set_kuyil_caller");
-            if (http_set_kuyil_caller) {
-                LOG_INFO("Injected Kuyil caller into HTTP library (registry)");
-                http_set_kuyil_caller((void*)call_kuyil_function);
-            } else {
-                LOG_DEBUG("HTTP library missing http_set_kuyil_caller symbol in registry-loaded handle");
-            }
-            break;
-        }
-    }
+    // No library-specific injections here; handled by loader
 
     // Register functions from all loaded libraries
     for (int i = 0; i < g_library_registry.library_count; i++) {
@@ -293,314 +308,23 @@ static void register_system_functions(VM* vm) {
     register_dynamic_function("add_library", vm_add_library, FUNC_SIG_VALUE_ARGS);
     register_dynamic_function("load_library", vm_load_library_inline, FUNC_SIG_VALUE_ARGS);
     register_dynamic_function("clear_libraries", vm_clear_libraries, FUNC_SIG_VALUE_ARGS);
+    // Load a shared library dynamically by path (e.g., @loadlib("./libs/libkylstr.so"))
+    register_dynamic_function("loadlib", vm_loadlib, FUNC_SIG_VALUE_ARGS);
+    // Bind an interface method name to an underlying dynamic function
+    register_dynamic_function("bind_interface_method", vm_bind_interface_method, FUNC_SIG_VALUE_ARGS);
     
     // Register module import functions
     register_dynamic_function("import", vm_import_module, FUNC_SIG_VALUE_ARGS);
+    register_dynamic_function("import_as", vm_import_as, FUNC_SIG_VALUE_ARGS);
     register_dynamic_function("export_function", vm_export_function, FUNC_SIG_VALUE_ARGS);
     
-    // Register default core library functions
-    register_default_library_functions();
+    // Keep VM generic; avoid direct library-specific dlopen here
     
     // Dynamic functions are handled by the dispatch system, not as globals
     LOG_INFO("Registered 12 library system functions");
 }
 
-static void register_default_library_functions(void) {
-    const char* skip = getenv("KUYIL_SKIP_DEFAULT_DLOPEN");
-    if (skip && strcmp(skip, "1") == 0) {
-        LOG_INFO("Skipping default dlopen registration due to KUYIL_SKIP_DEFAULT_DLOPEN=1");
-        return;
-    }
-    LOG_INFO("Registering default library functions using direct dlopen (best-effort, non-fatal)");
-    
-    // Math library functions - load directly with dlopen only if not already loaded via registry
-    bool math_loaded_via_registry = false;
-    for (int i = 0; i < g_library_registry.library_count; i++) {
-        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "math") == 0) {
-            math_loaded_via_registry = true;
-            break;
-        }
-    }
-    void* math_lib = NULL;
-    if (!math_loaded_via_registry) {
-        math_lib = dlopen("./libs/libkylmath.so", RTLD_LAZY);
-    } else {
-        LOG_INFO("Math library already loaded via registry; skipping default dlopen for Math");
-    }
-    if (math_lib) {
-        void* abs_fn = dlsym(math_lib, "kyl_math_abs");
-        void* floor_fn = dlsym(math_lib, "kyl_math_floor");
-        void* ceil_fn = dlsym(math_lib, "kyl_math_ceil");
-        void* round_fn = dlsym(math_lib, "kyl_math_round");
-        void* sqrt_fn = dlsym(math_lib, "kyl_math_sqrt");
-        void* pow_fn = dlsym(math_lib, "kyl_math_pow");
-        void* sin_fn = dlsym(math_lib, "kyl_math_sin");
-        void* cos_fn = dlsym(math_lib, "kyl_math_cos");
-        void* tan_fn = dlsym(math_lib, "kyl_math_tan");
-        
-        if (abs_fn) register_dynamic_function("math_abs", abs_fn, FUNC_SIG_VALUE_ARGS);
-        if (floor_fn) register_dynamic_function("math_floor", floor_fn, FUNC_SIG_VALUE_ARGS);
-        if (ceil_fn) register_dynamic_function("math_ceil", ceil_fn, FUNC_SIG_VALUE_ARGS);
-        if (round_fn) register_dynamic_function("math_round", round_fn, FUNC_SIG_VALUE_ARGS);
-        if (sqrt_fn) register_dynamic_function("math_sqrt", sqrt_fn, FUNC_SIG_VALUE_ARGS);
-        if (pow_fn) register_dynamic_function("math_pow", pow_fn, FUNC_SIG_VALUE_ARGS);
-        if (sin_fn) register_dynamic_function("math_sin", sin_fn, FUNC_SIG_VALUE_ARGS);
-        if (cos_fn) register_dynamic_function("math_cos", cos_fn, FUNC_SIG_VALUE_ARGS);
-        if (tan_fn) register_dynamic_function("math_tan", tan_fn, FUNC_SIG_VALUE_ARGS);
-        LOG_INFO("Loaded math library functions");
-    } else if (!math_loaded_via_registry) {
-        // This is a best-effort fallback from CWD; safe to skip if not present
-        LOG_DEBUG("Default dlopen: math not found at ./libs/libkylmath.so (%s) — skipping (non-fatal)", dlerror());
-    }
-    
-    // String library functions - load directly with dlopen only if not already loaded via registry
-    bool str_loaded_via_registry = false;
-    for (int i = 0; i < g_library_registry.library_count; i++) {
-        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "str") == 0) {
-            str_loaded_via_registry = true;
-            break;
-        }
-    }
-    void* str_lib = NULL;
-    if (!str_loaded_via_registry) {
-        str_lib = dlopen("./libs/libkylstr.so", RTLD_LAZY);
-    } else {
-        LOG_INFO("String library already loaded via registry; skipping default dlopen for String");
-    }
-    if (str_lib) {
-        void* length_fn = dlsym(str_lib, "kyl_str_length");
-        void* substring_fn = dlsym(str_lib, "kyl_str_substring");
-        void* upper_fn = dlsym(str_lib, "kyl_str_upper");
-        void* lower_fn = dlsym(str_lib, "kyl_str_lower");
-        void* trim_fn = dlsym(str_lib, "kyl_str_trim");
-        void* contains_fn = dlsym(str_lib, "kyl_str_contains");
-        void* replace_fn = dlsym(str_lib, "kyl_str_replace");
-        void* split_fn = dlsym(str_lib, "kyl_str_split");
-        void* to_number_fn = dlsym(str_lib, "kyl_str_to_number");
-        void* to_string_fn = dlsym(str_lib, "kyl_str_to_string");
-        
-        if (length_fn) register_dynamic_function("str_length", length_fn, FUNC_SIG_VALUE_ARGS);
-        if (substring_fn) register_dynamic_function("str_substring", substring_fn, FUNC_SIG_VALUE_ARGS);
-        if (upper_fn) register_dynamic_function("str_upper", upper_fn, FUNC_SIG_VALUE_ARGS);
-        if (lower_fn) register_dynamic_function("str_lower", lower_fn, FUNC_SIG_VALUE_ARGS);
-        if (trim_fn) register_dynamic_function("str_trim", trim_fn, FUNC_SIG_VALUE_ARGS);
-        if (contains_fn) register_dynamic_function("str_contains", contains_fn, FUNC_SIG_VALUE_ARGS);
-        if (replace_fn) register_dynamic_function("str_replace", replace_fn, FUNC_SIG_VALUE_ARGS);
-        if (split_fn) register_dynamic_function("split", split_fn, FUNC_SIG_VALUE_ARGS);
-        if (to_number_fn) register_dynamic_function("to_number", to_number_fn, FUNC_SIG_VALUE_ARGS);
-        if (to_string_fn) register_dynamic_function("to_string", to_string_fn, FUNC_SIG_VALUE_ARGS);
-        LOG_INFO("Loaded string library functions");
-    } else if (!str_loaded_via_registry) {
-        // This is a best-effort fallback from CWD; safe to skip if not present
-        LOG_DEBUG("Default dlopen: string not found at ./libs/libkylstr.so (%s) — skipping (non-fatal)", dlerror());
-    }
-    
-    // HTTP library functions - load directly with dlopen only if not already loaded via registry
-    bool http_loaded_via_registry = false;
-    for (int i = 0; i < g_library_registry.library_count; i++) {
-        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "http") == 0) {
-            http_loaded_via_registry = true;
-            break;
-        }
-    }
-    void* http_lib = NULL;
-    if (!http_loaded_via_registry) {
-        http_lib = dlopen("./libs/libkylhttp.so", RTLD_LAZY);
-    } else {
-        LOG_INFO("HTTP library already loaded via registry; skipping default dlopen for HTTP");
-    }
-    if (http_lib) {
-        // Provide VM callback bridge to HTTP library
-        void (*http_set_kuyil_caller)(void*) = dlsym(http_lib, "http_set_kuyil_caller");
-        if (http_set_kuyil_caller) {
-            LOG_INFO("Injected Kuyil caller into HTTP library");
-            http_set_kuyil_caller((void*)call_kuyil_function);
-        } else {
-            LOG_WARNING("HTTP library does not expose http_set_kuyil_caller");
-        }
-        
-        // Server functions
-        void* server_fn = dlsym(http_lib, "kyl_http_server");
-        void* get_fn = dlsym(http_lib, "kyl_http_get");
-        void* post_fn = dlsym(http_lib, "kyl_http_post");
-        void* put_fn = dlsym(http_lib, "kyl_http_put");
-        void* delete_fn = dlsym(http_lib, "kyl_http_delete");
-        void* listen_fn = dlsym(http_lib, "kyl_http_listen");
-        void* register_route_fn = dlsym(http_lib, "kyl_http_register_route");
-        
-        // Client functions
-        void* client_get_fn = dlsym(http_lib, "kyl_http_client_get");
-        void* client_post_fn = dlsym(http_lib, "kyl_http_client_post");
-        
-        // Response builder functions
-        void* res_set_status_fn = dlsym(http_lib, "kyl_response_set_status");
-        void* res_set_body_fn = dlsym(http_lib, "kyl_response_set_body");
-        void* res_set_json_fn = dlsym(http_lib, "kyl_response_set_json");
-        void* res_add_header_fn = dlsym(http_lib, "kyl_response_add_header");
-        
-        // Request accessor functions
-        void* req_get_method_fn = dlsym(http_lib, "kyl_request_get_method");
-        void* req_get_path_fn = dlsym(http_lib, "kyl_request_get_path");
-        void* req_get_body_fn = dlsym(http_lib, "kyl_request_get_body");
-        void* req_get_param_fn = dlsym(http_lib, "kyl_request_get_param");
-        void* req_get_header_fn = dlsym(http_lib, "kyl_request_get_header");
-        void* req_parse_multipart_fn = dlsym(http_lib, "kyl_request_parse_multipart");
-        void* req_get_multipart_field_fn = dlsym(http_lib, "kyl_request_get_multipart_field");
-        void* req_parse_multipart_fields_fn = dlsym(http_lib, "kyl_request_parse_multipart_fields");
-        void* req_parse_multipart_file_fn = dlsym(http_lib, "kyl_request_parse_multipart_file");
-        void* req_save_multipart_file_fn = dlsym(http_lib, "kyl_request_save_multipart_file");
-    void* req_get_json_string_fn = dlsym(http_lib, "kyl_request_get_json_string");
-    void* req_get_json_number_fn = dlsym(http_lib, "kyl_request_get_json_number");
-    void* req_get_json_bool_fn = dlsym(http_lib, "kyl_request_get_json_bool");
-        
-    // Static serving
-    void* static_fn = dlsym(http_lib, "kyl_http_static");
-    void* static_add_fn = dlsym(http_lib, "kyl_http_static_add");
-    void* static_bypass_fn = dlsym(http_lib, "kyl_http_static_bypass");
-    void* static_bypass_clear_fn = dlsym(http_lib, "kyl_http_static_bypass_clear");
-        void* cleanup_fn = dlsym(http_lib, "kyl_http_cleanup");
-        
-        // Register server functions
-        if (server_fn) register_dynamic_function("http_server", server_fn, FUNC_SIG_VALUE_ARGS);
-        if (get_fn) register_dynamic_function("http_get", get_fn, FUNC_SIG_VALUE_ARGS);
-        if (post_fn) register_dynamic_function("http_post", post_fn, FUNC_SIG_VALUE_ARGS);
-        if (put_fn) register_dynamic_function("http_put", put_fn, FUNC_SIG_VALUE_ARGS);
-        if (delete_fn) register_dynamic_function("http_delete", delete_fn, FUNC_SIG_VALUE_ARGS);
-        if (listen_fn) register_dynamic_function("http_listen", listen_fn, FUNC_SIG_VALUE_ARGS);
-        if (register_route_fn) register_dynamic_function("http_register_route", register_route_fn, FUNC_SIG_VALUE_ARGS);
-        
-        // Register client functions
-        if (client_get_fn) register_dynamic_function("http_client_get", client_get_fn, FUNC_SIG_VALUE_ARGS);
-        if (client_post_fn) register_dynamic_function("http_client_post", client_post_fn, FUNC_SIG_VALUE_ARGS);
-        
-        // Register response builder functions
-        if (res_set_status_fn) register_dynamic_function("response_set_status", res_set_status_fn, FUNC_SIG_VALUE_ARGS);
-        if (res_set_body_fn) register_dynamic_function("response_set_body", res_set_body_fn, FUNC_SIG_VALUE_ARGS);
-        if (res_set_json_fn) register_dynamic_function("response_set_json", res_set_json_fn, FUNC_SIG_VALUE_ARGS);
-        if (res_add_header_fn) register_dynamic_function("response_add_header", res_add_header_fn, FUNC_SIG_VALUE_ARGS);
-        
-        // Register request accessor functions
-        if (req_get_method_fn) register_dynamic_function("request_get_method", req_get_method_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_get_path_fn) register_dynamic_function("request_get_path", req_get_path_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_get_body_fn) register_dynamic_function("request_get_body", req_get_body_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_get_param_fn) register_dynamic_function("request_get_param", req_get_param_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_get_header_fn) register_dynamic_function("request_get_header", req_get_header_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_parse_multipart_fn) register_dynamic_function("request_parse_multipart", req_parse_multipart_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_get_multipart_field_fn) register_dynamic_function("request_get_multipart_field", req_get_multipart_field_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_parse_multipart_fields_fn) register_dynamic_function("request_parse_multipart_fields", req_parse_multipart_fields_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_parse_multipart_file_fn) register_dynamic_function("request_parse_multipart_file", req_parse_multipart_file_fn, FUNC_SIG_VALUE_ARGS);
-        if (req_save_multipart_file_fn) register_dynamic_function("request_save_multipart_file", req_save_multipart_file_fn, FUNC_SIG_VALUE_ARGS);
-    if (req_get_json_string_fn) register_dynamic_function("request_get_json_string", req_get_json_string_fn, FUNC_SIG_VALUE_ARGS);
-    if (req_get_json_number_fn) register_dynamic_function("request_get_json_number", req_get_json_number_fn, FUNC_SIG_VALUE_ARGS);
-    if (req_get_json_bool_fn) register_dynamic_function("request_get_json_bool", req_get_json_bool_fn, FUNC_SIG_VALUE_ARGS);
-        
-        // Register utility functions
-    if (static_fn) register_dynamic_function("http_static", static_fn, FUNC_SIG_VALUE_ARGS);
-    if (static_add_fn) register_dynamic_function("http_static_add", static_add_fn, FUNC_SIG_VALUE_ARGS);
-    if (static_bypass_fn) register_dynamic_function("http_static_bypass", static_bypass_fn, FUNC_SIG_VALUE_ARGS);
-    if (static_bypass_clear_fn) register_dynamic_function("http_static_bypass_clear", static_bypass_clear_fn, FUNC_SIG_VALUE_ARGS);
-        if (cleanup_fn) register_dynamic_function("http_cleanup", cleanup_fn, FUNC_SIG_VALUE_ARGS);
-        
-        LOG_INFO("Loaded HTTP library functions");
-    } else if (!http_loaded_via_registry) {
-        // This is a best-effort fallback from CWD; safe to skip if not present
-        LOG_DEBUG("Default dlopen: http not found at ./libs/libkylhttp.so (%s) — skipping (non-fatal)", dlerror());
-    }
-    
-    // DateTime library functions - load directly with dlopen only if not already loaded via registry
-    bool datetime_loaded_via_registry = false;
-    for (int i = 0; i < g_library_registry.library_count; i++) {
-        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "datetime") == 0) {
-            datetime_loaded_via_registry = true;
-            break;
-        }
-    }
-    void* datetime_lib = NULL;
-    if (!datetime_loaded_via_registry) {
-        datetime_lib = dlopen("./libs/libkyldatetime.so", RTLD_LAZY);
-    } else {
-        LOG_INFO("DateTime library already loaded via registry; skipping default dlopen for DateTime");
-    }
-    if (datetime_lib) {
-        void* date_now_fn = dlsym(datetime_lib, "kyl_date_now");
-        void* date_current_fn = dlsym(datetime_lib, "kyl_date_current");
-        void* datetime_now_fn = dlsym(datetime_lib, "kyl_datetime_now");
-        void* datetime_current_fn = dlsym(datetime_lib, "kyl_datetime_current");
-        void* date_add_fn = dlsym(datetime_lib, "kyl_date_add");
-        void* date_sub_fn = dlsym(datetime_lib, "kyl_date_sub");
-        void* date_diff_fn = dlsym(datetime_lib, "kyl_date_diff");
-        void* date_unix_fn = dlsym(datetime_lib, "kyl_date_unix");
-        void* date_from_unix_fn = dlsym(datetime_lib, "kyl_date_from_unix");
-        void* date_iso_fn = dlsym(datetime_lib, "kyl_date_iso");
-        void* date_format_fn = dlsym(datetime_lib, "kyl_date_format");
-        
-        if (date_now_fn) register_dynamic_function("date_now", date_now_fn, FUNC_SIG_VALUE_ARGS);
-        if (date_current_fn) register_dynamic_function("date_current", date_current_fn, FUNC_SIG_VALUE_ARGS);
-        if (datetime_now_fn) register_dynamic_function("datetime_now", datetime_now_fn, FUNC_SIG_VALUE_ARGS);
-        if (datetime_current_fn) register_dynamic_function("datetime_current", datetime_current_fn, FUNC_SIG_VALUE_ARGS);
-        if (date_add_fn) register_dynamic_function("date_add", date_add_fn, FUNC_SIG_VALUE_ARGS);
-        if (date_sub_fn) register_dynamic_function("date_sub", date_sub_fn, FUNC_SIG_VALUE_ARGS);
-        if (date_diff_fn) register_dynamic_function("date_diff", date_diff_fn, FUNC_SIG_VALUE_ARGS);
-        if (date_unix_fn) register_dynamic_function("date_unix", date_unix_fn, FUNC_SIG_VALUE_ARGS);
-        if (date_from_unix_fn) register_dynamic_function("date_from_unix", date_from_unix_fn, FUNC_SIG_VALUE_ARGS);
-        if (date_iso_fn) register_dynamic_function("date_iso", date_iso_fn, FUNC_SIG_VALUE_ARGS);
-        if (date_format_fn) register_dynamic_function("date_format", date_format_fn, FUNC_SIG_VALUE_ARGS);
-        LOG_INFO("Loaded datetime library functions");
-    } else if (!datetime_loaded_via_registry) {
-        // This is a best-effort fallback from CWD; safe to skip if not present
-        LOG_DEBUG("Default dlopen: datetime not found at ./libs/libkyldatetime.so (%s) — skipping (non-fatal)", dlerror());
-    }
-    
-    // SQLite wrapper library functions - load directly with dlopen only if not already loaded via registry
-    bool sqlite_loaded_via_registry = false;
-    for (int i = 0; i < g_library_registry.library_count; i++) {
-        if (g_library_registry.libraries[i].is_loaded && strcmp(g_library_registry.libraries[i].name, "sqlite") == 0) {
-            sqlite_loaded_via_registry = true;
-            break;
-        }
-    }
-    void* sqlite_lib = NULL;
-    if (!sqlite_loaded_via_registry) {
-        sqlite_lib = dlopen("./libs/libkylsqlite.so", RTLD_LAZY);
-    } else {
-        LOG_INFO("SQLite library already loaded via registry; skipping default dlopen for SQLite");
-    }
-    if (sqlite_lib) {
-        void* open_db_fn = dlsym(sqlite_lib, "kyl_sqlite_open_database");
-        void* close_db_fn = dlsym(sqlite_lib, "kyl_sqlite_close_database");
-        void* execute_sql_fn = dlsym(sqlite_lib, "kyl_sqlite_execute_sql");
-        void* execute_query_fn = dlsym(sqlite_lib, "kyl_sqlite_execute_query");
-        void* first_row_fn = dlsym(sqlite_lib, "kyl_sqlite_result_first_row");
-        void* next_row_fn = dlsym(sqlite_lib, "kyl_sqlite_result_next_row");
-        void* get_int_fn = dlsym(sqlite_lib, "kyl_sqlite_row_get_int");
-        void* get_text_fn = dlsym(sqlite_lib, "kyl_sqlite_row_get_text");
-        void* get_real_fn = dlsym(sqlite_lib, "kyl_sqlite_row_get_real");
-        void* free_result_fn = dlsym(sqlite_lib, "kyl_sqlite_free_result");
-        void* last_error_fn = dlsym(sqlite_lib, "kyl_sqlite_get_last_error");
-        void* set_global_db_fn = dlsym(sqlite_lib, "kyl_sqlite_set_global_db");
-        void* get_global_db_fn = dlsym(sqlite_lib, "kyl_sqlite_get_global_db");
-        
-        if (open_db_fn) register_dynamic_function("sqlite_open_database", open_db_fn, FUNC_SIG_VALUE_ARGS);
-        if (close_db_fn) register_dynamic_function("sqlite_close_database", close_db_fn, FUNC_SIG_VALUE_ARGS);
-        if (execute_sql_fn) register_dynamic_function("sqlite_execute_sql", execute_sql_fn, FUNC_SIG_VALUE_ARGS);
-        if (execute_query_fn) register_dynamic_function("sqlite_execute_query", execute_query_fn, FUNC_SIG_VALUE_ARGS);
-        if (first_row_fn) register_dynamic_function("sqlite_result_first_row", first_row_fn, FUNC_SIG_VALUE_ARGS);
-        if (next_row_fn) register_dynamic_function("sqlite_result_next_row", next_row_fn, FUNC_SIG_VALUE_ARGS);
-        if (get_int_fn) register_dynamic_function("sqlite_row_get_int", get_int_fn, FUNC_SIG_VALUE_ARGS);
-        if (get_text_fn) register_dynamic_function("sqlite_row_get_text", get_text_fn, FUNC_SIG_VALUE_ARGS);
-        if (get_real_fn) register_dynamic_function("sqlite_row_get_real", get_real_fn, FUNC_SIG_VALUE_ARGS);
-        if (free_result_fn) register_dynamic_function("sqlite_free_result", free_result_fn, FUNC_SIG_VALUE_ARGS);
-        if (last_error_fn) register_dynamic_function("sqlite_get_last_error", last_error_fn, FUNC_SIG_VALUE_ARGS);
-        if (set_global_db_fn) register_dynamic_function("sqlite_set_global_db", set_global_db_fn, FUNC_SIG_VALUE_ARGS);
-        if (get_global_db_fn) register_dynamic_function("sqlite_get_global_db", get_global_db_fn, FUNC_SIG_VALUE_ARGS);
-        LOG_INFO("Loaded SQLite library functions");
-    } else if (!sqlite_loaded_via_registry) {
-        // This is a best-effort fallback from CWD; safe to skip if not present
-        LOG_DEBUG("Default dlopen: sqlite not found at ./libs/libkylsqlite.so (%s) — skipping (non-fatal)", dlerror());
-    }
-    
-    LOG_INFO("Finished registering default library functions");
-}
+/* removed library-specific default dlopen registration to keep VM generic */
 
 static void register_dynamic_function(const char* name, void* func_ptr, FunctionSignature signature) {
     if (g_dynamic_function_count >= g_dynamic_function_capacity) {
@@ -781,6 +505,129 @@ static Value wrapper_ptr_string_ptr(int arg_count, Value* args, void* func_ptr) 
 
 // Lookup function for VM function calls
 Value call_dynamic_function(const char* name, int arg_count, Value* args) {
+    // Trace dynamic function calls for debugging crashes (e.g., datetime/date_unix)
+    LOG_DEBUG("call_dynamic_function: name=%s argc=%d", name ? name : "<null>", arg_count);
+    // If this name is an interface alias, enforce type checks and dispatch to target
+    int alias_idx = find_alias_binding(name);
+    if (alias_idx != -1) {
+        AliasBinding* ab = &g_alias_bindings[alias_idx];
+        // Arity check
+        if (ab->param_count != arg_count) {
+            LOG_ERROR("Arity mismatch calling %s: expected %d, got %d", name, ab->param_count, arg_count);
+            Value nilv = {VALUE_NIL};
+            return nilv;
+        }
+
+        // Check each argument against allowed typeset
+        for (int i = 0; i < ab->param_count; i++) {
+            const char* spec = ab->param_specs ? ab->param_specs[i] : NULL;
+            if (!spec) continue; // no spec, skip
+            // Find ':' delimiter to skip name
+            const char* colon = strchr(spec, ':');
+            const char* types = colon ? colon + 1 : spec; // if no name part, treat whole as typeset
+            // Make a mutable copy to tokenize by '|'
+            char buf[256];
+            strncpy(buf, types, sizeof(buf)-1);
+            buf[sizeof(buf)-1] = '\0';
+            bool ok = false;
+            char* saveptr = NULL;
+            char* tok = strtok_r(buf, "|", &saveptr);
+            while (tok) {
+                // Trim each token
+                while (*tok == ' ' || *tok == '\t') tok++;
+                char* end = tok + strlen(tok) - 1;
+                while (end >= tok && (*end == ' ' || *end == '\t')) { *end = '\0'; end--; }
+
+                // Map token to Value type acceptance
+                if (strcasecmp(tok, "string") == 0) {
+                    if (args[i].type == VALUE_STRING) { ok = true; break; }
+                } else if (strcasecmp(tok, "number") == 0 || strncasecmp(tok, "int", 3) == 0 || strcasecmp(tok, "float") == 0 || strcasecmp(tok, "double") == 0) {
+                    if (args[i].type == VALUE_NUMBER) { ok = true; break; }
+                } else if (strcasecmp(tok, "bool") == 0 || strcasecmp(tok, "boolean") == 0) {
+                    if (args[i].type == VALUE_BOOL) { ok = true; break; }
+                } else if (strcasecmp(tok, "nil") == 0 || strcasecmp(tok, "null") == 0) {
+                    if (args[i].type == VALUE_NIL) { ok = true; break; }
+                } else if (strcasecmp(tok, "array") == 0) {
+                    if (args[i].type == VALUE_ARRAY) { ok = true; break; }
+                } else if (strcasecmp(tok, "object") == 0 || strcasecmp(tok, "map") == 0) {
+                    if (args[i].type == VALUE_OBJECT) { ok = true; break; }
+                } else {
+                    // Unknown type token: be permissive
+                    ok = true; break;
+                }
+                tok = strtok_r(NULL, "|", &saveptr);
+            }
+            if (!ok) {
+                LOG_ERROR("Type mismatch calling %s: param %d does not match types '%s'", name, i+1, types);
+                Value nilv = {VALUE_NIL};
+                return nilv;
+            }
+        }
+
+        // Dispatch to target function (directly via cached function pointer when possible)
+        Value result;
+        if (ab->target_df.library_func_ptr != NULL) {
+            switch (ab->target_df.signature) {
+                case FUNC_SIG_VALUE_ARGS: {
+                    typedef Value (*ValueArgFunc)(int, Value*);
+                    ValueArgFunc func = (ValueArgFunc)ab->target_df.library_func_ptr;
+                    LOG_DEBUG("Invoking alias-target (direct) value_args: %s with %d args", ab->target_df.name, arg_count);
+                    result = func(arg_count, args);
+                    break;
+                }
+                case FUNC_SIG_VOID_VOID:
+                case FUNC_SIG_INT_VOID:
+                case FUNC_SIG_PTR_STRING:
+                case FUNC_SIG_PTR_STRING_PTR:
+                case FUNC_SIG_INT_PTR_STRING:
+                case FUNC_SIG_VOID_PTR:
+                case FUNC_SIG_PTR_VOID:
+                case FUNC_SIG_INT_PTR: {
+                    // For non-VALUE_ARGS signatures, fall back to name-based dispatch via the general wrapper
+                    // to reuse existing adapters.
+                    result = call_dynamic_function(ab->target, arg_count, args);
+                    break;
+                }
+                default: {
+                    // Unknown signature; defensively use name-based dispatch
+                    result = call_dynamic_function(ab->target, arg_count, args);
+                    break;
+                }
+            }
+        } else {
+            // Fallback: name-based dispatch (should be rare)
+            result = call_dynamic_function(ab->target, arg_count, args);
+        }
+
+        // Best-effort return type check
+        if (ab->return_spec && ab->return_spec[0]) {
+            const char* types = ab->return_spec;
+            char buf[256];
+            strncpy(buf, types, sizeof(buf)-1);
+            buf[sizeof(buf)-1] = '\0';
+            bool ok = false;
+            char* saveptr2 = NULL;
+            char* tok2 = strtok_r(buf, "|", &saveptr2);
+            while (tok2) {
+                while (*tok2 == ' ' || *tok2 == '\t') tok2++;
+                char* end2 = tok2 + strlen(tok2) - 1;
+                while (end2 >= tok2 && (*end2 == ' ' || *end2 == '\t')) { *end2 = '\0'; end2--; }
+                if (strcasecmp(tok2, "string") == 0) { if (result.type == VALUE_STRING) { ok = true; break; } }
+                else if (strcasecmp(tok2, "number") == 0 || strncasecmp(tok2, "int", 3) == 0 || strcasecmp(tok2, "float") == 0 || strcasecmp(tok2, "double") == 0) { if (result.type == VALUE_NUMBER) { ok = true; break; } }
+                else if (strcasecmp(tok2, "bool") == 0 || strcasecmp(tok2, "boolean") == 0) { if (result.type == VALUE_BOOL) { ok = true; break; } }
+                else if (strcasecmp(tok2, "nil") == 0 || strcasecmp(tok2, "null") == 0) { if (result.type == VALUE_NIL) { ok = true; break; } }
+                else if (strcasecmp(tok2, "array") == 0) { if (result.type == VALUE_ARRAY) { ok = true; break; } }
+                else if (strcasecmp(tok2, "object") == 0 || strcasecmp(tok2, "map") == 0) { if (result.type == VALUE_OBJECT) { ok = true; break; } }
+                else { ok = true; break; }
+                tok2 = strtok_r(NULL, "|", &saveptr2);
+            }
+            if (!ok) {
+                LOG_WARNING("Return type mismatch calling %s: expected '%s'", name, ab->return_spec);
+            }
+        }
+
+        return result;
+    }
     // Mock interception: record calls and optionally return a mocked value
     int midx = find_mock(name);
     if (midx != -1) {
@@ -817,7 +664,9 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
                         // Use explicit function pointer typedef for proper calling convention
                         typedef Value (*ValueArgFunc)(int, Value*);
                         ValueArgFunc func = (ValueArgFunc)df->library_func_ptr;
+                        LOG_DEBUG("Invoking value_args function: %s with %d args", df->name, arg_count);
                         Value result = func(arg_count, args);
+                        LOG_DEBUG("Function %s returned type=%d", df->name, result.type);
                         return result;
                     } else {
                         LOG_WARNING("Library function pointer is NULL for %s", name);
@@ -952,6 +801,8 @@ void vm_cleanup_library_system(void) {
         free(g_mocks[i].name);
     }
     g_mock_count = 0;
+    // Clean up alias bindings
+    free_alias_bindings();
     
     LOG_INFO("VM library system cleanup completed");
 }
@@ -1249,14 +1100,48 @@ Value vm_import_module(int arg_count, Value* args) {
         }
     }
     
-    // Read and compile the module file
+    // Read and compile the module file (try relative to caller first)
     FILE* file = fopen(module_path, "r");
     if (!file) {
-        LOG_ERROR("Cannot open module file: %s", module_path);
-        Value result;
-        result.type = VALUE_BOOL;
-        result.as.boolean = false;
-        return result;
+        // Attempt to resolve relative to the current script directory
+        const char* base_path = (g_current_vm && g_current_vm->current_source_path)
+                                ? g_current_vm->current_source_path
+                                : NULL;
+        if (base_path) {
+            const char* last_slash = strrchr(base_path, '/');
+            if (last_slash) {
+                char resolved[1024];
+                size_t dir_len = (size_t)(last_slash - base_path);
+                if (dir_len >= sizeof(resolved)) dir_len = sizeof(resolved) - 1;
+                memcpy(resolved, base_path, dir_len);
+                resolved[dir_len] = '\0';
+                strncat(resolved, "/", sizeof(resolved) - strlen(resolved) - 1);
+                strncat(resolved, module_path, sizeof(resolved) - strlen(resolved) - 1);
+                file = fopen(resolved, "r");
+                if (file) {
+                    module_path = strdup(resolved);
+                }
+            }
+        }
+            // Try KUYIL_HOME as fallback (for installed interfaces)
+            if (!file) {
+                const char* kuyil_home = getenv("KUYIL_HOME");
+                if (kuyil_home) {
+                    char kuyil_home_path[1024];
+                    snprintf(kuyil_home_path, sizeof(kuyil_home_path), "%s/%s", kuyil_home, module_path);
+                    file = fopen(kuyil_home_path, "r");
+                    if (file) {
+                        module_path = strdup(kuyil_home_path);
+                    }
+                }
+            }
+        if (!file) {
+            LOG_ERROR("Cannot open module file: %s", module_path);
+            Value result;
+            result.type = VALUE_BOOL;
+            result.as.boolean = false;
+            return result;
+        }
     }
     
     // Get file size
@@ -1296,21 +1181,346 @@ Value vm_import_module(int arg_count, Value* args) {
     if (g_imported_module_count < 64) {
         ImportedModule* module = &g_imported_modules[g_imported_module_count];
         strncpy(module->name, clean_name, sizeof(module->name) - 1);
+        module->name[sizeof(module->name) - 1] = '\0';
         strncpy(module->path, module_path, sizeof(module->path) - 1);
+        module->path[sizeof(module->path) - 1] = '\0';
         module->exports = NULL; // Will be populated when functions are exported
         g_imported_module_count++;
     }
     
-    LOG_INFO("Module imported: %s from %s", clean_name, module_path);
+    LOG_INFO("Module importing: %s from %s", clean_name, module_path);
     
-    // TODO: Actually parse and execute the module to register its functions
-    // For now, we simulate successful import
+    // Execute the module in an isolated VM to avoid disturbing the current execution frames.
+    // Dynamic functions and library registrations are global, so effects persist.
+    VM isolated_vm;
+    memset(&isolated_vm, 0, sizeof(VM));
+    // Propagate source path for better error reporting in compiled function
+    isolated_vm.current_source_path = module_path;
+    
+    Value exec_result = {0};
+    InterpretResult result_code = vm_execute_dynamic(&isolated_vm, source,
+                                                    NULL, 0, LIBRARY_ALL,
+                                                    &exec_result);
+    
     free(source);
+    
+    if (result_code != INTERPRET_OK) {
+        LOG_ERROR("Failed to execute module: %s", module_path);
+        Value result;
+        result.type = VALUE_BOOL;
+        result.as.boolean = false;
+        return result;
+    }
+    
+    LOG_INFO("Module loaded successfully: %s", clean_name);
     
     Value result;
     result.type = VALUE_STRING;
     result.as.string = strdup(clean_name);
     return result;
+}
+
+// Import module with namespace: import_as("path", "namespace")
+// Creates an object that forwards method calls with namespace prefix
+Value vm_import_as(int arg_count, Value* args) {
+    if (arg_count < 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        LOG_ERROR("import_as requires two string arguments: path and namespace");
+        Value result;
+        result.type = VALUE_NIL;
+        return result;
+    }
+    
+    const char* module_path = args[0].as.string;
+    const char* namespace = args[1].as.string;
+    
+    // First, import the module normally
+    Value import_args[1] = {args[0]};
+    Value import_result = vm_import_module(1, import_args);
+    
+    if (import_result.type == VALUE_NIL || (import_result.type == VALUE_BOOL && !import_result.as.boolean)) {
+        LOG_ERROR("Failed to import module: %s", module_path);
+        Value result;
+        result.type = VALUE_NIL;
+        return result;
+    }
+    
+    LOG_INFO("Module imported with namespace: %s as %s", module_path, namespace);
+    
+        // Extract interface name from path (e.g., "../interfaces/interface_str.kyl" -> "str")
+        const char* basename = strrchr(module_path, '/');
+        basename = basename ? basename + 1 : module_path;
+        char interface_name[256] = {0};
+        if (strncmp(basename, "interface_", 10) == 0) {
+            const char* name_start = basename + 10;
+            const char* dot = strrchr(name_start, '.');
+            size_t len = dot ? (size_t)(dot - name_start) : strlen(name_start);
+            if (len < sizeof(interface_name)) {
+                memcpy(interface_name, name_start, len);
+                interface_name[len] = '\0';
+            }
+        }
+        LOG_INFO("Derived interface name: '%s'", interface_name[0] ? interface_name : "(none)");
+
+        // Create namespace-prefixed alias bindings for each interface method if possible
+        if (interface_name[0]) {
+            for (int i = 0; i < g_alias_binding_count; i++) {
+                AliasBinding* ab = &g_alias_bindings[i];
+                // Look for aliases like "<interface>.<method>"
+                size_t iface_len = strlen(interface_name);
+                if (strncmp(ab->alias, interface_name, iface_len) == 0 && ab->alias[iface_len] == '.') {
+                    const char* method_part = ab->alias + iface_len + 1; // skip interface_name + '.'
+                    char ns_alias[256];
+                    snprintf(ns_alias, sizeof(ns_alias), "%s.%s", namespace, method_part);
+                    // Register alias if not already present
+                    add_alias_binding_entry(ns_alias, ab->target, &ab->target_df,
+                                            ab->param_count, ab->param_specs, ab->return_spec);
+                }
+            }
+        }
+    
+    // Create a namespace object with methods as function values
+    // For now, return a simple marker object
+    Value result;
+    result.type = VALUE_OBJECT;
+    result.as.object.count = 0;
+    result.as.object.keys = NULL;
+    result.as.object.values = NULL;
+    
+        // Store namespace name and interface name as hidden properties
+        result.as.object.count = 2;
+        result.as.object.keys = malloc(sizeof(char*) * 2);
+        result.as.object.values = malloc(sizeof(Value) * 2);
+        result.as.object.keys[0] = strdup("__namespace__");
+        result.as.object.values[0].type = VALUE_STRING;
+        result.as.object.values[0].as.string = strdup(namespace);
+        result.as.object.keys[1] = strdup("__interface__");
+        result.as.object.values[1].type = VALUE_STRING;
+        result.as.object.values[1].as.string = strdup(interface_name);
+    
+    return result;
+}
+
+// Helper: derive a library name from a path like ./libs/libkylstr.so -> str
+static void derive_library_name(const char* path, char* out, size_t outsz) {
+    if (!path || !out || outsz == 0) return;
+    const char* base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    // Copy basename
+    char tmp[256];
+    strncpy(tmp, base, sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+    // Strip extension .so if present
+    char* dot = strrchr(tmp, '.');
+    if (dot && strcmp(dot, ".so") == 0) *dot = '\0';
+    // Strip libkyl or lib prefix
+    const char* name = tmp;
+    if (strncmp(name, "libkyl", 6) == 0) name += 6;
+    else if (strncmp(name, "lib", 3) == 0) name += 3;
+    // Copy to out with explicit null termination
+    size_t len = strlen(name);
+    if (len >= outsz) len = outsz - 1;
+    memcpy(out, name, len);
+    out[len] = '\0';
+}
+
+// Runtime: load a shared library by filesystem path and register its functions
+// Usage from script: @loadlib("./libs/libkylstr.so");
+Value vm_loadlib(int arg_count, Value* args) {
+    if (arg_count < 1 || args[0].type != VALUE_STRING) {
+        Value result = {VALUE_NIL};
+        return result;
+    }
+
+    const char* path = args[0].as.string;
+
+    // Derive name if provided as second arg, prefer explicit name
+    char name_buf[128];
+    if (arg_count >= 2 && args[1].type == VALUE_STRING) {
+        strncpy(name_buf, args[1].as.string, sizeof(name_buf) - 1);
+        name_buf[sizeof(name_buf) - 1] = '\0';
+    } else {
+        derive_library_name(path, name_buf, sizeof(name_buf));
+    }
+
+    if (name_buf[0] == '\0') {
+        LOG_WARNING("loadlib: could not derive library name from path: %s", path);
+        Value result = {VALUE_BOOL};
+        result.as.boolean = false;
+        return result;
+    }
+
+    // Check if already in registry
+    SharedLibrary* lib = NULL;
+    for (int i = 0; i < g_library_registry.library_count; i++) {
+        if (strcmp(g_library_registry.libraries[i].name, name_buf) == 0) {
+            lib = &g_library_registry.libraries[i];
+            break;
+        }
+    }
+
+    if (!lib) {
+        if (g_library_registry.library_count >= MAX_LIBRARIES) {
+            LOG_WARNING("loadlib: maximum libraries reached; cannot add %s", name_buf);
+            Value result = {VALUE_BOOL};
+            result.as.boolean = false;
+            return result;
+        }
+        lib = &g_library_registry.libraries[g_library_registry.library_count++];
+        memset(lib, 0, sizeof(*lib));
+        strncpy(lib->name, name_buf, MAX_NAME_LENGTH - 1);
+        lib->name[MAX_NAME_LENGTH - 1] = '\0';
+        strncpy(lib->path, path, MAX_PATH_LENGTH - 1);
+        lib->path[MAX_PATH_LENGTH - 1] = '\0';
+        lib->is_optional = true;
+        lib->is_loaded = false;
+        lib->handle = NULL;
+        lib->function_count = 0;
+        LOG_INFO("Added dynamic library: %s -> %s", lib->name, lib->path);
+    } else {
+        // Update path if different
+        if (strlen(path) > 0) {
+            strncpy(lib->path, path, MAX_PATH_LENGTH - 1);
+            lib->path[MAX_PATH_LENGTH - 1] = '\0';
+        }
+    }
+
+    // Load the library using standard loader (will enumerate functions)
+    if (!load_library(lib->name)) {
+        LOG_WARNING("loadlib: failed to load %s from %s", lib->name, lib->path);
+        Value result = {VALUE_BOOL};
+        result.as.boolean = false;
+        return result;
+    }
+
+    // No library-specific behavior here; handled in loader
+
+    // Register the newly loaded library's functions into dynamic dispatch
+    for (int j = 0; j < lib->function_count; j++) {
+        LibraryFunction* f = &lib->functions[j];
+        if (!f->is_loaded) continue;
+        register_dynamic_function(f->name, f->function_ptr, f->signature);
+    }
+
+    // Return loaded library name as string
+    Value result;
+    result.type = VALUE_STRING;
+    result.as.string = strdup(lib->name);
+    return result;
+}
+
+// Helper: find dynamic function by name and return its index in the registry, or -1
+static int find_dynamic_function_idx(const char* name) {
+    if (!g_dynamic_functions || !name) return -1;
+    for (int i = 0; i < g_dynamic_function_count; i++) {
+        if (strcmp(g_dynamic_functions[i].name, name) == 0) return i;
+    }
+    return -1;
+}
+
+// Runtime: bind an interface method name to an underlying dynamic function
+// Usage from script (emitted by parser for interface blocks):
+//   bind_interface_method("str", "substring")
+// This will look for "str_substring" in the dynamic registry and create
+// convenient aliases (if not already present):
+//   - "substring" -> str_substring
+//   - "str.substring" -> str_substring (future-friendly; harmless if unused)
+Value vm_bind_interface_method(int arg_count, Value* args) {
+    if (arg_count < 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        Value r = {VALUE_BOOL};
+        r.as.boolean = false;
+        return r;
+    }
+
+    const char* iface = args[0].as.string;
+    const char* method = args[1].as.string;
+    // Optional: arg 3 array of param specs (strings like "name:type|type"), arg 4 return types spec string
+    Value param_arr = {VALUE_NIL};
+    const char* return_spec = NULL;
+    if (arg_count >= 3) param_arr = args[2];
+    if (arg_count >= 4 && args[3].type == VALUE_STRING) return_spec = args[3].as.string;
+
+    // Build the underlying dynamic function name: iface_method
+    char base[256];
+    snprintf(base, sizeof(base), "%s_%s", iface, method);
+
+    int idx = find_dynamic_function_idx(base);
+    if (idx < 0) {
+        // Not found — best-effort: also try kyl_<iface>_<method> (some libs may expose this)
+        snprintf(base, sizeof(base), "kyl_%s_%s", iface, method);
+        idx = find_dynamic_function_idx(base);
+    }
+    if (idx < 0) {
+        // Some libraries register certain functions without the library prefix,
+        // e.g., "split" instead of "str_split". Try the raw method name.
+        idx = find_dynamic_function_idx(method);
+    }
+
+    if (idx < 0) {
+        LOG_WARNING("bind_interface_method: underlying function not found for %s.%s", iface, method);
+        Value r = {VALUE_BOOL};
+        r.as.boolean = false;
+        return r;
+    }
+
+    DynamicFunction* df = &g_dynamic_functions[idx];
+
+    // Prepare alias binding metadata
+    char* target_dup = strdup(df->name);
+    // Collect param specs if provided
+    int param_count = 0;
+    char** param_specs = NULL;
+    if (param_arr.type == VALUE_ARRAY && param_arr.as.array.count > 0) {
+        param_count = param_arr.as.array.count;
+        param_specs = (char**)malloc(sizeof(char*) * param_count);
+        for (int i = 0; i < param_count; i++) {
+            Value v = param_arr.as.array.values[i];
+            if (v.type == VALUE_STRING) {
+                param_specs[i] = strdup(v.as.string);
+            } else {
+                param_specs[i] = strdup("");
+            }
+        }
+    }
+
+    // use file-scope helper add_alias_binding_entry
+
+    // Alias 1: unqualified method name
+    add_alias_binding_entry(method, target_dup, df, param_count, param_specs, return_spec);
+    // Alias 2: dotted alias
+    char dotted[256];
+    snprintf(dotted, sizeof(dotted), "%s.%s", iface, method);
+    add_alias_binding_entry(dotted, target_dup, df, param_count, param_specs, return_spec);
+
+    // Optional extra aliases (arg 5): either a single string or an array of strings
+    if (arg_count >= 5) {
+        Value aliases = args[4];
+        if (aliases.type == VALUE_STRING) {
+            // Unqualified alias
+            add_alias_binding_entry(aliases.as.string, target_dup, df, param_count, param_specs, return_spec);
+            // Dotted alias using iface
+            char d2[256]; snprintf(d2, sizeof(d2), "%s.%s", iface, aliases.as.string);
+            add_alias_binding_entry(d2, target_dup, df, param_count, param_specs, return_spec);
+        } else if (aliases.type == VALUE_ARRAY) {
+            for (int i = 0; i < aliases.as.array.count; i++) {
+                Value v = aliases.as.array.values[i];
+                if (v.type != VALUE_STRING) continue;
+                add_alias_binding_entry(v.as.string, target_dup, df, param_count, param_specs, return_spec);
+                char d3[256]; snprintf(d3, sizeof(d3), "%s.%s", iface, v.as.string);
+                add_alias_binding_entry(d3, target_dup, df, param_count, param_specs, return_spec);
+            }
+        }
+    }
+
+    // Free local param_specs array (bindings have their own copies)
+    if (param_specs) {
+        for (int i = 0; i < param_count; i++) free(param_specs[i]);
+        free(param_specs);
+    }
+    free(target_dup);
+
+    Value r = {VALUE_BOOL};
+    r.as.boolean = true;
+    return r;
 }
 
 // Export a function from current module: export_function("function_name")

@@ -1,0 +1,9 @@
+// Test if dotted names work without namespace
+import("../interfaces/interface_str.kyl")
+import("../interfaces/interface_math.kyl")
+
+let text = "test"
+print("Using dotted names:")
+print("str.length:", str.length(text))
+print("str.upper:", str.upper(text))
+print("math.abs:", math.abs(-5))

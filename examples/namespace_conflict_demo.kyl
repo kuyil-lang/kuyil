@@ -1,0 +1,37 @@
+import("../interfaces/interface_str.kyl") as str
+import("../interfaces/interface_math.kyl") as math
+
+print("=== Namespace Conflict Demo ===")
+print("")
+
+let text = "Kuyil Language"
+print("Text:", text)
+print("str.length:", str.length(text))
+print("str.upper:", str.upper(text))
+print("str.substring:", str.substring(text, 0, 5))
+
+print("")
+print("--- Math operations ---")
+
+let value = -42.7
+print("Value:", value)
+print("math.abs:", math.abs(value))
+print("math.floor:", math.floor(value))
+print("math.ceil:", math.ceil(value))
+print("math.sqrt:", math.sqrt(16))
+
+print("")
+print("=== Multiple Namespaces Coexist ===")
+
+let str_len = str.length("test")
+let vec_x = 3
+let vec_y = 4
+let vec_len = math.sqrt(vec_x * vec_x + vec_y * vec_y)
+
+print("String length:", str_len)
+print("Vector length:", vec_len)
+
+print("")
+print("=== Clean, Explicit Code ===")
+print("No ambiguity - each method is clearly namespaced")
+print("str.length vs math.sqrt - context is always clear")

@@ -474,10 +474,54 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
     }
     
     if (callee.type == VALUE_STRING) {
-        // Method dispatch: if first arg is an object with __type, try TypeName_methodName
+        kuyil_log_debug("call_value: callee string='%s' argc=%d", callee.as.string ? callee.as.string : "<null>", arg_count);
+        // Special-case namespace method calls: receiver is a namespace object; resolve to dotted alias and drop receiver arg
         if (arg_count >= 1) {
             Value* args = vm->stack_top - arg_count - 1; // args[0] is first argument (receiver for methods)
             if (args[0].type == VALUE_OBJECT) {
+                const char* ns_name = NULL;
+                const char* if_name = NULL;
+                for (int i = 0; i < args[0].as.object.count; i++) {
+                    if (strcmp(args[0].as.object.keys[i], "__namespace__") == 0 && args[0].as.object.values[i].type == VALUE_STRING) {
+                        ns_name = args[0].as.object.values[i].as.string;
+                    } else if (strcmp(args[0].as.object.keys[i], "__interface__") == 0 && args[0].as.object.values[i].type == VALUE_STRING) {
+                        if_name = args[0].as.object.values[i].as.string;
+                    }
+                }
+                if ((ns_name && ns_name[0]) || (if_name && if_name[0])) {
+                    char dotted[256];
+                    // Prefer namespaced alias first
+                    if (ns_name && ns_name[0]) {
+                        snprintf(dotted, sizeof(dotted), "%s.%s", ns_name, callee.as.string);
+                        if (is_dynamic_function(dotted)) {
+                            kuyil_log_debug("Namespace dispatch: '%s' with %d args (dropping receiver)", dotted, arg_count - 1);
+                            Value result = call_dynamic_function(dotted, arg_count - 1, args + 1);
+                            vm->stack_top -= arg_count + 1; // pop receiver, user args, and callee string
+                            vm_push(vm, result);
+                            return true;
+                        }
+                    }
+                    // Fallback to interface dotted alias
+                    if (if_name && if_name[0]) {
+                        snprintf(dotted, sizeof(dotted), "%s.%s", if_name, callee.as.string);
+                        if (is_dynamic_function(dotted)) {
+                            kuyil_log_debug("Interface dispatch: '%s' with %d args (dropping receiver)", dotted, arg_count - 1);
+                            Value result = call_dynamic_function(dotted, arg_count - 1, args + 1);
+                            vm->stack_top -= arg_count + 1;
+                            vm_push(vm, result);
+                            return true;
+                        }
+                    }
+                    // If neither dotted alias exists but unqualified exists, still drop receiver to avoid arity mismatch
+                    if (is_dynamic_function(callee.as.string)) {
+                        kuyil_log_debug("Unqualified dispatch in namespace context: '%s' with %d args (dropping receiver)", callee.as.string, arg_count - 1);
+                        Value result = call_dynamic_function(callee.as.string, arg_count - 1, args + 1);
+                        vm->stack_top -= arg_count + 1;
+                        vm_push(vm, result);
+                        return true;
+                    }
+                }
+                // Non-namespace object fallback continues below (e.g., struct __type dispatch)
                 // Look for "__type" key
                 const char* type_name = NULL;
                 for (int i = 0; i < args[0].as.object.count; i++) {
@@ -607,6 +651,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
 
         // Check dynamic functions loaded by modular library system FIRST
         if (is_dynamic_function(callee.as.string)) {
+            kuyil_log_debug("call_value: dispatching dynamic function '%s'", callee.as.string);
             Value* args = vm->stack_top - arg_count -1;
             Value result = call_dynamic_function(callee.as.string, arg_count, args);
             vm->stack_top -= arg_count + 1;
@@ -2176,6 +2221,9 @@ InterpretResult vm_run(VM* vm) {
             }
             case OP_CALL: {
                 int arg_count = READ_BYTE();
+                Value callee_dbg = vm_peek(vm, 0);
+                kuyil_log_debug("OP_CALL: callee.type=%d arg_count=%d ptr=%p", callee_dbg.type, arg_count,
+                                 (callee_dbg.type == VALUE_STRING ? (void*)callee_dbg.as.string : NULL));
                 if (!call_value(vm, vm_peek(vm, 0), arg_count)) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
@@ -2318,16 +2366,74 @@ InterpretResult vm_run(VM* vm) {
                 Value key = vm_pop(vm);
                 Value object = vm_pop(vm);
                 
-        // Debug logging removed for cleanliness
+                if (key.type != VALUE_STRING) {
+                    runtime_error(vm, "Object property key must be a string.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                // Treat arrays and strings as objects for common properties
+                if (object.type == VALUE_ARRAY) {
+                    if (strcmp(key.as.string, "length") == 0) {
+                        Value v; v.type = VALUE_NUMBER; v.as.number = (double)object.as.array.count; vm_push(vm, v); break;
+                    }
+                    // Unknown property on array -> nil
+                    Value nilv = {VALUE_NIL}; vm_push(vm, nilv); break;
+                }
+                if (object.type == VALUE_STRING) {
+                    if (strcmp(key.as.string, "length") == 0) {
+                        Value v; v.type = VALUE_NUMBER; v.as.number = (double)strlen(object.as.string); vm_push(vm, v); break;
+                    }
+                    if (strcmp(key.as.string, "data") == 0) {
+                        size_t len = strlen(object.as.string);
+                        Value arr; arr.type = VALUE_ARRAY; arr.as.array.count = (int)len; arr.as.array.values = (Value*)malloc(sizeof(Value) * len);
+                        for (size_t i = 0; i < len; i++) { arr.as.array.values[i].type = VALUE_NUMBER; arr.as.array.values[i].as.number = (unsigned char)object.as.string[i]; }
+                        vm_push(vm, arr); break;
+                    }
+                    // Unknown property on string -> nil
+                    Value nilv = {VALUE_NIL}; vm_push(vm, nilv); break;
+                }
                 
                 if (object.type != VALUE_OBJECT) {
                     runtime_error(vm, "Can only access properties on objects.");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                if (key.type != VALUE_STRING) {
-                    runtime_error(vm, "Object property key must be a string.");
-                    return INTERPRET_RUNTIME_ERROR;
+                    // Check if this is a namespace object (has __namespace__ / __interface__)
+                    const char* interface_name = NULL;
+                    const char* namespace_name = NULL;
+                for (int i = 0; i < object.as.object.count; i++) {
+                        if (strcmp(object.as.object.keys[i], "__interface__") == 0) {
+                        if (object.as.object.values[i].type == VALUE_STRING) {
+                                interface_name = object.as.object.values[i].as.string;
+                        }
+                        } else if (strcmp(object.as.object.keys[i], "__namespace__") == 0) {
+                            if (object.as.object.values[i].type == VALUE_STRING) {
+                                namespace_name = object.as.object.values[i].as.string;
+                            }
+                    }
+                }
+                
+                    if ((namespace_name && namespace_name[0]) || (interface_name && interface_name[0])) {
+                        // Try namespaced alias first: "namespace.method"
+                        if (namespace_name && namespace_name[0]) {
+                            char dotted_ns[256];
+                            snprintf(dotted_ns, sizeof(dotted_ns), "%s.%s", namespace_name, key.as.string);
+                            if (is_dynamic_function(dotted_ns)) {
+                                Value func_val = create_dynamic_function_value(dotted_ns);
+                                vm_push(vm, func_val);
+                                break;
+                            }
+                        }
+                        // Fallback: interface dotted alias: "interface.method"
+                        if (interface_name && interface_name[0]) {
+                            char dotted_if[256];
+                            snprintf(dotted_if, sizeof(dotted_if), "%s.%s", interface_name, key.as.string);
+                            if (is_dynamic_function(dotted_if)) {
+                                Value func_val = create_dynamic_function_value(dotted_if);
+                                vm_push(vm, func_val);
+                                break;
+                            }
+                        }
                 }
                 
                 // Search for the key in the object
@@ -2342,9 +2448,7 @@ InterpretResult vm_run(VM* vm) {
                 
                 if (!found) {
                     // Push nil for missing properties (like JavaScript)
-                    Value nil_val;
-                    nil_val.type = VALUE_NIL;
-                    vm_push(vm, nil_val);
+                    Value nil_val; nil_val.type = VALUE_NIL; vm_push(vm, nil_val);
                 }
                 break;
             }
@@ -2632,10 +2736,8 @@ static void vm_init_limited(VM* vm, LibraryFlags allowed_libraries) {
     
     // Legacy hardcoded library functions removed - now handled by modular library system
     
-    // Logging functions
+    // Logging functions - logger should be initialized by main() before VM creation
     if (allowed_libraries & LIBRARY_LOG) {
-        log_init(LOG_DEBUG);
-        
         Value log_fatal_val = {VALUE_STRING, {.string = strdup("log_fatal")}};
         Value log_error_val = {VALUE_STRING, {.string = strdup("log_error")}};
         Value log_warning_val = {VALUE_STRING, {.string = strdup("log_warning")}};
@@ -2805,8 +2907,7 @@ void vm_init(VM* vm) {
     sigaction(SIGILL,  &sa, NULL);
 #endif
     
-    // Initialize logging system
-    log_init(LOG_DEBUG);
+    // Logging system should be initialized by main() before VM creation
     LOG_INFO("Kuyil VM initialized");
     
     // Register built-in functions
@@ -3058,8 +3159,11 @@ InterpretResult vm_interpret(VM* vm, const char* source) {
     // Wire source path into compiled function for stack traces
     function->source_path = vm->current_source_path;
     
-    // Call startup functions before execution
-    if (g_ffi_context) {
+    // Check if we're in a nested import (frame_count > 0 means we're already executing)
+    bool is_nested = (vm->frame_count > 0);
+    
+    // Call startup functions before execution (only for top-level scripts, not imports)
+    if (!is_nested && g_ffi_context) {
         kuyil_log_debug("Automatically calling startup functions before script execution");
         if (!ffi_call_startup_functions(g_ffi_context)) {
             kuyil_log_warning("Startup functions failed, continuing with script execution");
@@ -3067,15 +3171,29 @@ InterpretResult vm_interpret(VM* vm, const char* source) {
     }
     
     // Set up call frame
-    vm->frames[0].function = function;
-    vm->frames[0].ip = function->chunk.code;
-    vm->frames[0].slots = vm->stack;
-    vm->frame_count = 1;
+    if (is_nested) {
+        // For nested imports, add a new frame on top of existing frames
+        if (vm->frame_count >= FRAMES_MAX) {
+            fprintf(stderr, "Stack overflow - import would exceed maximum call depth.\n");
+            return INTERPRET_RUNTIME_ERROR;
+        }
+        CallFrame* frame = &vm->frames[vm->frame_count];
+        frame->function = function;
+        frame->ip = function->chunk.code;
+        frame->slots = vm->stack_top;
+        vm->frame_count++;
+    } else {
+        // For top-level scripts, use frame 0
+        vm->frames[0].function = function;
+        vm->frames[0].ip = function->chunk.code;
+        vm->frames[0].slots = vm->stack;
+        vm->frame_count = 1;
+    }
     
     InterpretResult result = vm_run(vm);
     
-    // Call shutdown functions after execution (regardless of result)
-    if (g_ffi_context) {
+    // Call shutdown functions after execution (only for top-level scripts, not imports)
+    if (!is_nested && g_ffi_context) {
         kuyil_log_debug("Automatically calling shutdown functions after script execution");
         ffi_call_shutdown_functions(g_ffi_context);
     }

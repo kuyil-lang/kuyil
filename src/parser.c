@@ -223,6 +223,7 @@ static ASTNode* interface_declaration(Parser* parser);
 static ASTNode* method_declaration(Parser* parser);
 static ASTNode* switch_statement(Parser* parser);
 static ASTNode* parse_array_literal(Parser* parser);
+static ASTNode* directive_statement(Parser* parser);
 
 // Parse array literal [1, 2, 3]
 static ASTNode* parse_array_literal(Parser* parser) {
@@ -745,10 +746,12 @@ static ASTNode* block_statement(Parser* parser) {
 static ASTNode* if_statement(Parser* parser) {
     ASTNode* if_node = ast_node_new(AST_IF_STMT);
     set_node_location(if_node, previous_token(parser)); // 'if'
-    
-    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+    // Support optional parentheses around condition
+    bool has_paren = parser_match(parser, TOKEN_LEFT_PAREN);
     if_node->as.if_stmt.condition = expression(parser);
-    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after if condition.");
+    if (has_paren) {
+        consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after if condition.");
+    }
     
     if_node->as.if_stmt.then_branch = statement(parser);
     if_node->as.if_stmt.else_branch = NULL;
@@ -763,10 +766,12 @@ static ASTNode* if_statement(Parser* parser) {
 static ASTNode* while_statement(Parser* parser) {
     ASTNode* while_node = ast_node_new(AST_WHILE_STMT);
     set_node_location(while_node, previous_token(parser)); // 'while'
-    
-    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+    // Support optional parentheses around condition
+    bool has_paren = parser_match(parser, TOKEN_LEFT_PAREN);
     while_node->as.while_stmt.condition = expression(parser);
-    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after while condition.");
+    if (has_paren) {
+        consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after while condition.");
+    }
     
     while_node->as.while_stmt.body = statement(parser);
     
@@ -778,7 +783,8 @@ static ASTNode* var_declaration(Parser* parser);
 
 static ASTNode* for_statement(Parser* parser) {
     Token* for_token = previous_token(parser); // 'for'
-    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+    // Support optional parentheses around classic for clauses
+    bool has_paren = parser_match(parser, TOKEN_LEFT_PAREN);
     
     ASTNode* for_node = ast_node_new(AST_FOR_STMT);
     set_node_location(for_node, for_token);
@@ -802,12 +808,22 @@ static ASTNode* for_statement(Parser* parser) {
     consume(parser, TOKEN_SEMICOLON, "Expect ';' after for loop condition.");
     
     // Parse update
-    if (!check(parser, TOKEN_RIGHT_PAREN)) {
-        for_node->as.for_stmt.update = expression(parser);
+    if (has_paren) {
+        if (!check(parser, TOKEN_RIGHT_PAREN)) {
+            for_node->as.for_stmt.update = expression(parser);
+        } else {
+            for_node->as.for_stmt.update = NULL;
+        }
+        consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
     } else {
-        for_node->as.for_stmt.update = NULL;
+        // Without parentheses, parse update expression if present
+        // Stop naturally before the loop body (e.g., '{' or newline)
+        if (!check(parser, TOKEN_LEFT_BRACE) && !check(parser, TOKEN_NEWLINE)) {
+            for_node->as.for_stmt.update = expression(parser);
+        } else {
+            for_node->as.for_stmt.update = NULL;
+        }
     }
-    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
     
     // Parse body
     for_node->as.for_stmt.body = statement(parser);
@@ -871,6 +887,50 @@ static ASTNode* expression_statement(Parser* parser) {
     }
     
     ASTNode* expr = expression(parser);
+    
+    // Check for "import(...) as namespace" pattern
+    if (parser_match(parser, TOKEN_AS)) {
+        // expr should be a call to import()
+        if (expr && expr->type == AST_CALL) {
+            // Get the function being called
+            ASTNode* func = expr->as.call.function;
+            if (func && func->type == AST_IDENTIFIER) {
+                // Check if it's "import"
+                if (strcmp(func->as.identifier, "import") == 0) {
+                    // Expect namespace identifier
+                    Token* ns_token = consume(parser, TOKEN_IDENTIFIER, "Expect namespace identifier after 'as'.");
+                    char* ns_name = malloc(ns_token->length + 1);
+                    memcpy(ns_name, ns_token->start, ns_token->length);
+                    ns_name[ns_token->length] = '\0';
+                    
+                    // Transform into: let namespace = import_as(path, "namespace")
+                    // 1. Change function name from "import" to "import_as"
+                    free(func->as.identifier);
+                    func->as.identifier = strdup("import_as");
+                    
+                    // 2. Add namespace name as second argument
+                    expr->as.call.args = realloc(expr->as.call.args, sizeof(ASTNode*) * (expr->as.call.arg_count + 1));
+                    ASTNode* ns_lit = ast_node_new(AST_LITERAL);
+                    set_node_location(ns_lit, ns_token);
+                    ns_lit->as.literal.type = VALUE_STRING;
+                    ns_lit->as.literal.as.string = ns_name;
+                    expr->as.call.args[expr->as.call.arg_count] = ns_lit;
+                    expr->as.call.arg_count++;
+                    
+                    // 3. Wrap in variable declaration: let namespace = import_as(...)
+                    ASTNode* var_decl = ast_node_new(AST_VAR_DECL);
+                    set_node_location(var_decl, ns_token);
+                    var_decl->as.var_decl.name = strdup(ns_name);
+                    var_decl->as.var_decl.value = expr;
+                    
+                    return var_decl;
+                }
+            }
+        }
+        // If not import, it's an error
+        error(parser, "'as' can only be used with import()");
+    }
+    
     ASTNode* stmt = ast_node_new(AST_EXPRESSION_STMT);
     // Propagate the expression location to the statement for better error reporting
     stmt->line = expr ? expr->line : stmt->line;
@@ -998,6 +1058,10 @@ static ASTNode* switch_statement(Parser* parser) {
 }
 
 static ASTNode* statement(Parser* parser) {
+    // Handle directive statements starting with '@'
+    if (parser_match(parser, TOKEN_AT)) {
+        return directive_statement(parser);
+    }
     // Destructuring assignment at statement start: a, b, c = expr
     // Lookahead to detect pattern IDENT (',' IDENT)+ '='
     int save_pos = parser->current;
@@ -1255,59 +1319,262 @@ static ASTNode* struct_declaration(Parser* parser) {
 static ASTNode* interface_declaration(Parser* parser) {
     Token* interface_token = previous_token(parser); // 'interface'
     Token* name = consume(parser, TOKEN_IDENTIFIER, "Expect interface name.");
-    
-    ASTNode* interface_node = ast_node_new(AST_INTERFACE_DECL);
-    set_node_location(interface_node, interface_token);
-    
-    char* interface_name = malloc(name->length + 1);
-    memcpy(interface_name, name->start, name->length);
-    interface_name[name->length] = '\0';
-    interface_node->as.interface_decl.name = interface_name;
-    
+
+    // We'll lower the interface declaration into a block of runtime calls:
+    //   bind_interface_method("<iface>", "<method>") for each method
+    ASTNode* block = ast_node_new(AST_BLOCK);
+    set_node_location(block, interface_token);
+    block->as.block.statements = NULL;
+    block->as.block.count = 0;
+    block->as.block.capacity = 0;
+
+    // Capture interface name string now
+    char* iface_name = malloc(name->length + 1);
+    memcpy(iface_name, name->start, name->length);
+    iface_name[name->length] = '\0';
+
     consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after interface name.");
-    
-    // Parse method signatures (just names for now)
-    interface_node->as.interface_decl.method_names = NULL;
-    interface_node->as.interface_decl.method_count = 0;
-    
-    if (!check(parser, TOKEN_RIGHT_BRACE)) {
-        int capacity = 4;
-        interface_node->as.interface_decl.method_names = malloc(sizeof(char*) * capacity);
-        
-        do {
-            // Skip optional newlines
-            while (parser_match(parser, TOKEN_NEWLINE));
-            
-            if (check(parser, TOKEN_RIGHT_BRACE)) break;
-            
-            if (interface_node->as.interface_decl.method_count >= capacity) {
-                capacity *= 2;
-                interface_node->as.interface_decl.method_names = realloc(interface_node->as.interface_decl.method_names, sizeof(char*) * capacity);
+
+    while (!check(parser, TOKEN_RIGHT_BRACE) && !parser_is_at_end(parser)) {
+        // Skip newlines and stray commas
+        while (parser_match(parser, TOKEN_NEWLINE) || parser_match(parser, TOKEN_COMMA));
+        if (check(parser, TOKEN_RIGHT_BRACE)) break;
+
+        // Collect optional @alias("alt1", "alt2", ... ) directives before a method
+        ASTNode* alias_array = NULL;
+        while (parser_match(parser, TOKEN_AT)) {
+            Token* dir = consume(parser, TOKEN_IDENTIFIER, "Expect directive name after '@'.");
+            // Only support alias here; if not alias, recover by skipping parens group
+            bool is_alias = (dir->length == 5 && strncmp(dir->start, "alias", 5) == 0);
+            consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after directive name.");
+            if (is_alias) {
+                // Build array of string literals
+                if (!alias_array) {
+                    alias_array = ast_node_new(AST_ARRAY_LITERAL);
+                    set_node_location(alias_array, dir);
+                    alias_array->as.array_literal.count = 0;
+                    alias_array->as.array_literal.capacity = 4;
+                    alias_array->as.array_literal.elements = malloc(sizeof(ASTNode*) * alias_array->as.array_literal.capacity);
+                }
+                if (!check(parser, TOKEN_RIGHT_PAREN)) {
+                    do {
+                        Token* s = consume(parser, TOKEN_STRING, "Expect string literal alias name.");
+                        ASTNode* lit = ast_node_new(AST_LITERAL);
+                        set_node_location(lit, s);
+                        lit->as.literal.type = VALUE_STRING;
+                        // Strip quotes from alias string (same as regular string literals)
+                        int alias_len = s->length - 2; // Remove quotes
+                        if (alias_len < 0) alias_len = 0;
+                        char* an = malloc(alias_len + 1);
+                        if (alias_len > 0) {
+                            memcpy(an, s->start + 1, alias_len);
+                        }
+                        an[alias_len] = '\0';
+                        lit->as.literal.as.string = an;
+                        if (alias_array->as.array_literal.count >= alias_array->as.array_literal.capacity) {
+                            int old = alias_array->as.array_literal.capacity;
+                            alias_array->as.array_literal.capacity = old < 8 ? 8 : old * 2;
+                            alias_array->as.array_literal.elements = realloc(alias_array->as.array_literal.elements, sizeof(ASTNode*) * alias_array->as.array_literal.capacity);
+                        }
+                        alias_array->as.array_literal.elements[alias_array->as.array_literal.count++] = lit;
+                    } while (parser_match(parser, TOKEN_COMMA));
+                }
+            } else {
+                // Skip until matching ')'
+                int depth = 1;
+                while (!parser_is_at_end(parser) && depth > 0) {
+                    if (parser_match(parser, TOKEN_LEFT_PAREN)) depth++;
+                    else if (parser_match(parser, TOKEN_RIGHT_PAREN)) depth--;
+                    else parser_advance(parser);
+                }
+                continue;
             }
-            
-            Token* method = consume(parser, TOKEN_IDENTIFIER, "Expect method name.");
-            char* method_name = malloc(method->length + 1);
-            memcpy(method_name, method->start, method->length);
-            method_name[method->length] = '\0';
-            interface_node->as.interface_decl.method_names[interface_node->as.interface_decl.method_count++] = method_name;
-            
-            // Expect () after method name
-            consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after method name.");
-            consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after method name.");
-            
-            // Skip optional newlines after method
+            consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after directive arguments.");
+            // Allow multiple @alias directives
             while (parser_match(parser, TOKEN_NEWLINE));
-            
-            // Comma or newline can separate methods
-            if (!check(parser, TOKEN_RIGHT_BRACE)) {
-                parser_match(parser, TOKEN_COMMA);
+        }
+
+        // Tolerate optional leading return type or modifiers; find IDENT followed by '('
+        Token* method_ident = NULL;
+        Token* possible_return_type = NULL; // Capture simple single-token return type if present
+        int start_pos = parser->current;
+        while (!parser_is_at_end(parser)) {
+            Token* t = current_token(parser);
+            // If we see an identifier and next token is '(', treat it as method name
+            if (t->type == TOKEN_IDENTIFIER) {
+                // Lookahead for '('
+                int la = parser->current + 1;
+                // Ensure it's not a directive like @alias(...)
+                int prevtok = parser->current - 1;
+                bool preceded_by_at = (prevtok >= 0 && parser->tokens[prevtok].type == TOKEN_AT);
+                if (!preceded_by_at && la < parser->count && parser->tokens[la].type == TOKEN_LEFT_PAREN) {
+                    method_ident = t;
+                    // Attempt to capture single-token return type: previous non-newline/comma identifier
+                    int prev = parser->current - 1;
+                    while (prev >= 0 && (parser->tokens[prev].type == TOKEN_NEWLINE || parser->tokens[prev].type == TOKEN_COMMA)) prev--;
+                    if (prev >= 0 && parser->tokens[prev].type == TOKEN_IDENTIFIER) {
+                        possible_return_type = &parser->tokens[prev];
+                    }
+                    // consume IDENT and '('
+                    parser_advance(parser); // IDENT
+                    parser_advance(parser); // '('
+                    break;
+                }
             }
-        } while (!check(parser, TOKEN_RIGHT_BRACE));
+            // If we hit a '{' or '}' unexpectedly, bail
+            if (t->type == TOKEN_LEFT_BRACE || t->type == TOKEN_RIGHT_BRACE) break;
+            parser_advance(parser);
+        }
+
+        if (!method_ident) {
+            // Could not find a valid method signature; try to recover to next comma/newline/'}'
+            while (!check(parser, TOKEN_RIGHT_BRACE) && !parser_is_at_end(parser)) {
+                if (parser_match(parser, TOKEN_COMMA) || parser_match(parser, TOKEN_NEWLINE)) break;
+                parser_advance(parser);
+            }
+            continue;
+        }
+
+        // Parse parameter specs inside (...)
+        // We'll build an array literal of strings like "name:type|type"
+        ASTNode* params_array = ast_node_new(AST_ARRAY_LITERAL);
+        set_node_location(params_array, method_ident);
+        params_array->as.array_literal.count = 0;
+        params_array->as.array_literal.capacity = 4;
+        params_array->as.array_literal.elements = malloc(sizeof(ASTNode*) * params_array->as.array_literal.capacity);
+
+        int paren_depth = 1; // we already consumed one '('
+        while (!parser_is_at_end(parser) && paren_depth > 0) {
+            // End of parameter list
+            if (check(parser, TOKEN_RIGHT_PAREN)) {
+                parser_advance(parser);
+                paren_depth--;
+                break;
+            }
+            // Skip commas and newlines
+            while (parser_match(parser, TOKEN_COMMA) || parser_match(parser, TOKEN_NEWLINE));
+            if (check(parser, TOKEN_RIGHT_PAREN)) continue;
+
+            // Expect param name
+            if (!check(parser, TOKEN_IDENTIFIER)) {
+                // Not a param; try to recover by skipping until comma or ')'
+                while (!check(parser, TOKEN_RIGHT_PAREN) && !check(parser, TOKEN_COMMA) && !parser_is_at_end(parser)) parser_advance(parser);
+                continue;
+            }
+            Token* pname = parser_advance(parser); // IDENT
+
+            // Optional ':' typespec
+            char typespec_buf[256];
+            typespec_buf[0] = '\0';
+            if (parser_match(parser, TOKEN_COLON)) {
+                // Collect tokens until comma or ')'
+                char* w = typespec_buf;
+                size_t rem = sizeof(typespec_buf);
+                while (!check(parser, TOKEN_RIGHT_PAREN) && !check(parser, TOKEN_COMMA) && !parser_is_at_end(parser)) {
+                    Token* tt = parser_advance(parser);
+                    if (tt->length > 0 && rem > (size_t)tt->length + 1) {
+                        memcpy(w, tt->start, tt->length);
+                        w += tt->length;
+                        *w++ = ' ';
+                        rem -= tt->length + 1;
+                    } else break;
+                }
+                if (w != typespec_buf) { *(w-1) = '\0'; } else { *w = '\0'; }
+            }
+
+            // Build "name: types" string literal node
+            ASTNode* spec_str = ast_node_new(AST_LITERAL);
+            spec_str->as.literal.type = VALUE_STRING;
+            size_t name_len = pname->length;
+            size_t type_len = strlen(typespec_buf);
+            size_t total = name_len + 2 + type_len; // name + ':' + ' ' + types
+            char* s = malloc(total + 1);
+            memcpy(s, pname->start, name_len);
+            s[name_len] = ':';
+            s[name_len+1] = ' ';
+            memcpy(s + name_len + 2, typespec_buf, type_len);
+            s[total] = '\0';
+            spec_str->as.literal.as.string = s;
+
+            // Append to params array
+            if (params_array->as.array_literal.count >= params_array->as.array_literal.capacity) {
+                int old_cap = params_array->as.array_literal.capacity;
+                params_array->as.array_literal.capacity = old_cap < 8 ? 8 : old_cap * 2;
+                params_array->as.array_literal.elements = realloc(params_array->as.array_literal.elements, sizeof(ASTNode*) * params_array->as.array_literal.capacity);
+            }
+            params_array->as.array_literal.elements[params_array->as.array_literal.count++] = spec_str;
+
+            // If next is comma, consume and continue
+            parser_match(parser, TOKEN_COMMA);
+        }
+
+        // Build: bind_interface_method("iface", "method") as an expression statement
+        ASTNode* fn_ident = ast_node_new(AST_IDENTIFIER);
+        set_node_location(fn_ident, method_ident);
+        fn_ident->as.identifier = strdup("bind_interface_method");
+
+        // Arg 1: interface name string literal
+        ASTNode* iface_str = ast_node_new(AST_LITERAL);
+        set_node_location(iface_str, name);
+        iface_str->as.literal.type = VALUE_STRING;
+        iface_str->as.literal.as.string = strdup(iface_name);
+
+        // Arg 2: method name string literal
+        ASTNode* method_str = ast_node_new(AST_LITERAL);
+        set_node_location(method_str, method_ident);
+        method_str->as.literal.type = VALUE_STRING;
+        char* mname = malloc(method_ident->length + 1);
+        memcpy(mname, method_ident->start, method_ident->length);
+        mname[method_ident->length] = '\0';
+        method_str->as.literal.as.string = mname;
+
+        ASTNode* call = ast_node_new(AST_CALL);
+        set_node_location(call, method_ident);
+        call->as.call.function = fn_ident;
+        // args: iface, method, params_array?, return_type?, aliasArray?
+        int extra = 0;
+        ASTNode* ret_str = NULL;
+        if (possible_return_type) {
+            ret_str = ast_node_new(AST_LITERAL);
+            set_node_location(ret_str, possible_return_type);
+            ret_str->as.literal.type = VALUE_STRING;
+            char* rname = malloc(possible_return_type->length + 1);
+            memcpy(rname, possible_return_type->start, possible_return_type->length);
+            rname[possible_return_type->length] = '\0';
+            ret_str->as.literal.as.string = rname;
+            extra = 1;
+        }
+        int has_params = (params_array->as.array_literal.count > 0) ? 1 : 0;
+        int has_aliases = (alias_array && alias_array->as.array_literal.count > 0) ? 1 : 0;
+        call->as.call.arg_count = 2 + has_params + extra + has_aliases;
+        call->as.call.args = malloc(sizeof(ASTNode*) * call->as.call.arg_count);
+        int ai = 0;
+        call->as.call.args[ai++] = iface_str;
+        call->as.call.args[ai++] = method_str;
+        if (has_params) call->as.call.args[ai++] = params_array;
+        if (extra) call->as.call.args[ai++] = ret_str;
+        if (has_aliases) call->as.call.args[ai++] = alias_array;
+
+        ASTNode* stmt = ast_node_new(AST_EXPRESSION_STMT);
+        set_node_location(stmt, method_ident);
+        stmt->as.expression = call;
+
+        // Append to block
+        if (block->as.block.count >= block->as.block.capacity) {
+            int old_cap = block->as.block.capacity;
+            block->as.block.capacity = old_cap < 8 ? 8 : old_cap * 2;
+            block->as.block.statements = realloc(block->as.block.statements, sizeof(ASTNode*) * block->as.block.capacity);
+        }
+        block->as.block.statements[block->as.block.count++] = stmt;
+
+        // Optional trailing commas/newlines between methods
+        while (parser_match(parser, TOKEN_NEWLINE) || parser_match(parser, TOKEN_COMMA));
     }
-    
+
     consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after interface methods.");
-    
-    return interface_node;
+
+    // Free iface_name ownership transferred into literal nodes; avoid leak by not freeing here
+    return block;
 }
 
 static ASTNode* method_declaration(Parser* parser) {
@@ -1371,6 +1638,10 @@ static ASTNode* method_declaration(Parser* parser) {
 }
 
 static ASTNode* declaration(Parser* parser) {
+    // Support directives at declaration level as well
+    if (parser_match(parser, TOKEN_AT)) {
+        return directive_statement(parser);
+    }
     if (parser_match(parser, TOKEN_STRUCT)) {
         return struct_declaration(parser);
     }
@@ -1394,6 +1665,52 @@ static ASTNode* declaration(Parser* parser) {
     if (parser_match(parser, TOKEN_LET)) return var_declaration(parser);
     
     return statement(parser);
+}
+
+// Parse a directive like: @loadlib("./path/to/lib.so");
+static ASTNode* directive_statement(Parser* parser) {
+    // Expect directive identifier
+    Token* name = consume(parser, TOKEN_IDENTIFIER, "Expect directive name after '@'.");
+    // Only 'loadlib' is supported for now
+    // Parse arguments in parentheses
+    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after directive name.");
+
+    // Collect zero or more comma-separated expressions until ')'
+    ASTNode** args = NULL;
+    int arg_count = 0;
+    int capacity = 0;
+    if (!check(parser, TOKEN_RIGHT_PAREN)) {
+        capacity = 4;
+        args = malloc(sizeof(ASTNode*) * capacity);
+        do {
+            if (arg_count >= capacity) {
+                capacity *= 2;
+                args = realloc(args, sizeof(ASTNode*) * capacity);
+            }
+            args[arg_count++] = expression(parser);
+        } while (parser_match(parser, TOKEN_COMMA));
+    }
+    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after directive arguments.");
+
+    // Build a call expression to an intrinsic function with the same name
+    ASTNode* ident = ast_node_new(AST_IDENTIFIER);
+    char* dir_name = malloc(name->length + 1);
+    memcpy(dir_name, name->start, name->length);
+    dir_name[name->length] = '\0';
+    ident->as.identifier = dir_name;
+    set_node_location(ident, name);
+
+    ASTNode* call = ast_node_new(AST_CALL);
+    set_node_location(call, name);
+    call->as.call.function = ident;
+    call->as.call.args = args;
+    call->as.call.arg_count = arg_count;
+
+    // Wrap as expression statement to execute the directive at runtime
+    ASTNode* stmt = ast_node_new(AST_EXPRESSION_STMT);
+    set_node_location(stmt, name);
+    stmt->as.expression = call;
+    return stmt;
 }
 
 // Main parsing functions

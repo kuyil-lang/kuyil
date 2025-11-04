@@ -1,0 +1,9 @@
+// Interface for WebView library (subset)
+@loadlib("./libs/libkylwebview.so");
+
+interface webview {
+  number init()
+  number create(title: string)
+  number load_url(window: number, url: string)
+  number run(window: number)
+}

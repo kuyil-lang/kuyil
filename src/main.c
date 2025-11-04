@@ -781,6 +781,7 @@ static void print_usage() {
     printf("Usage: kuyil [options] [script]\n\n");
     printf("Options:\n");
     printf("  -h, --help           Show this help message\n");
+    printf("  -d, --debug          Enable debug logging\n");
     printf("  -c, --compile        Compile script to binary\n");
     printf("  --native             Generate native executable (requires -c)\n");
     printf("  --embed-bytecode     Embed bytecode instead of source (more secure)\n");
@@ -798,6 +799,7 @@ static void print_usage() {
     printf("  -                    Read from stdin\n\n");
     printf("Examples:\n");
     printf("  kuyil script.kyl                             Run script.kyl\n");
+    printf("  kuyil -d script.kyl                          Run with debug logging\n");
     printf("  kuyil --log-level debug script.kyl           Run with debug logging\n");
     printf("  kuyil --log-file app.log script.kyl          Log to file\n");
     printf("  kuyil --test tests/sample.kyl                Run tests with assertions\n");
@@ -1105,7 +1107,7 @@ static void check_syntax_only(const char* path) {
 
 int main(int argc, char* argv[]) {
     // Initialize logging system first
-    log_init(LOG_INFO);
+    log_init(LOG_WARNING);
     
     // HTTP subsystem now handled by shared libraries
     
@@ -1149,7 +1151,9 @@ int main(int argc, char* argv[]) {
     const char* coverage_format = "text";
         
         for (int i = 1; i < argc; i++) {
-            if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--compile") == 0) {
+            if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--debug") == 0) {
+                log_set_level(LOG_DEBUG);
+            } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--compile") == 0) {
                 compile_mode = true;
             } else if (strcmp(argv[i], "--native") == 0) {
                 native_mode = true;
