@@ -1,0 +1,18 @@
+import("../../interfaces/interface_webview.kyl")
+
+// Simple test without HTTP server
+print("Testing simple WebView...")
+
+init()
+let settings = createDefaultSettings()
+let win = create("Simple Test", settings)
+
+if win == nil {
+    print("Failed to create window")
+} else {
+    print("Window created, showing...")
+    loadHtml(win, "<h1>Hello World</h1><p>Close this window to test cleanup</p>")
+    show(win)
+    run(win)
+    print("Window closed")
+}

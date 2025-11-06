@@ -1,17 +1,17 @@
 // Minimal transcoder test
-@loadlib("./libs/libkyltranscoder.so");
 import("../interfaces/interface_str.kyl")
+import("../interfaces/interface_transcoder.kyl")
 
 print("Testing gzip compress/decompress...")
 let input = "Hello World"
 print("Input:", input)
 print("Input length:", length(input))
 
-let compressed = compress_gzip(input)
+let compressed = compressGzip(input)
 print("Compressed (hex):", compressed)
 print("Compressed length:", length(compressed))
 
-let output = decompress_gzip(compressed)
+let output = decompressGzip(compressed)
 print("Output:", output)
 print("Output length:", length(output))
 print("Match:", output == input)

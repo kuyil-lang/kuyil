@@ -29,10 +29,10 @@ print("sqrt(16) =", sqrt(16))
 print("pow(2, 8) =", pow(2, 8))
 
 print("\n=== DateTime Operations ===")
-print("Current timestamp:", date_now())
-print("ISO format:", date_iso(date_now()))
+print("Current timestamp:", now())
+print("ISO format:", iso(now()))
 
 // You can also use the prefixed versions
 print("\n=== Using Prefixed Names ===")
-print("str_length:", str_length("test"))
-print("math_abs:", math_abs(-10))
+print("str_length:", length("test"))
+print("math_abs:", abs(-10))

@@ -1,4 +1,7 @@
 // ******** arithmetic <start> *****
+import("../interfaces/interface_str.kyl")
+import("../interfaces/interface_math.kyl")
+import("../interfaces/interface_datetime.kyl")
 let j = 100
 let t = 10
 let a = j + 10 - t * 5
@@ -59,23 +62,23 @@ anon2()
 // Test math library functionsf
 import("./interfaces/interface_math.kyl") as math
 print("Testing Math Library:")
-print("math_abs(-5) =", math_abs(-5))
-print("math_sqrt(16) =", math_sqrt(16))
-print("math_pow(2, 3) =", math_pow(2, 3))
+print("abs(-5) =", abs(-5))
+print("sqrt(16) =", sqrt(16))
+print("pow(2, 3) =", pow(2, 3))
 
 // Test string library functions  
-import("./interfaces/interface_str.kyl") as str
+import("../interfaces/interface_str.kyl") as str
 print("Testing String Library:")
 let str1 = "Hello World"
 print("str_length('Hello World') =", str.length(str1))
 print("str_upper('Hello World') =", str.upper(str1))
-print("str_contains('Hello World', 'World') =", str_contains(str1, "World"))
+print("str_contains('Hello World', 'World') =", str.contains(str1, "World"))
 
 // Test date/time library functions
-import("./interfaces/interface_datetime.kyl") as datetime
+import("../interfaces/interface_datetime.kyl") as datetime
 print("Testing DateTime Library:")
-print("Current date:", date_now())
-print("Current timestamp:", date_unix())
+print("Current date:", now())
+print("Current timestamp:", unix())
 
 print("All modular library tests completed!")
 
@@ -83,8 +86,9 @@ let name = "Kuyil"
 let result = sqrt(pow(2, 8))
 print(upper(name), "computed:", result)
 
-import("./interfaces/interface_http.kyl") as http
-let data = client_get("https://api.example.com/data")
+// Test HTTP client (using fast GitHub API)
+import("../interfaces/interface_http.kyl") as http
+let data = clientGet("https://api.github.com/zen")
 print("Fetched", length(data), "bytes")
 
 if name == "Kuyil" {print("Hello")}

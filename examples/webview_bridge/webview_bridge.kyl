@@ -1,0 +1,84 @@
+import("../../interfaces/interface_http.kyl")
+import("../../interfaces/interface_str.kyl")
+import("../../interfaces/interface_webview.kyl")
+
+function handle_push(req, res) {
+    let body = requestGetBody(req)
+    // Expect a plain string or JSON with {"msg": "..."}
+    let msg = body
+    if length(body) >= 6 and substring(body, 0, 6) == `{"msg"` {
+        // naive parse: find "msg":"..."
+        // This is a simple demo; in real code use a proper JSON helper when available
+        let idx = replace(body, `{"msg":"`, "")
+        // Fallback store full body
+        msg = body
+    }
+    print("Received from JS:", body)
+    responseSetStatus(res, 200)
+    responseSetJson(res, `{"ok":true}`)
+}
+
+function handle_pull(req, res) {
+    responseSetStatus(res, 200)
+    // For now, always return empty - in a real app we'd store messages
+    responseSetJson(res, `{"message":null}`)
+}
+
+function start_server(port, base) {
+    // Create server and static mounts
+    let srv = server(port)
+    // Serve this example directory statically
+    static(base)
+    // Exclude /api from static so it routes to handlers
+    staticBypass("/api")
+    // Register API routes
+    registerRoute("POST", "/api/push", "handle_push")
+    registerRoute("GET", "/api/pull", "handle_pull")
+    // Start in background so we can continue to WebView
+    let ok = startServer(port)
+    if ok == false {
+        print("Failed to start HTTP server background thread")
+    }
+}
+
+function main() {
+    let PORT = 5173
+    let BASE = "examples/webview_bridge"
+    
+    // Start background HTTP server
+    start_server(PORT, BASE)
+
+    // Initialize and launch WebView
+    init()
+    print("WebView initialized")
+    
+    // Create window with default settings (like the working calculator)
+    let settings = createDefaultSettings()
+    print("Settings created:", settings)
+    
+    let win = create("Kuyil WebView Bridge Demo", settings)
+    print("Window created:", win)
+    
+    if win == nil {
+        print("ERROR: Failed to create webview window!")
+        return
+    }
+    
+    // Load the URL
+    let url = `http://127.0.0.1:` + toString(PORT) + `/index.html`
+    print("Loading URL:", url)
+    loadUrl(win, url)
+    
+    // Show and run the window
+    print("Starting WebView Bridge Demo...")
+    show(win)
+    run(win)
+    
+    // Window closed
+    // Note: We don't call cleanup() here because the background
+    // thread may still be processing requests, which would cause a
+    // race condition with VM shutdown. The OS will clean up resources.
+    print("WebView closed")
+}
+
+main()

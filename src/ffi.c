@@ -263,6 +263,9 @@ const char* ffi_type_name(FFIType type) {
         case FFI_TYPE_UINT64: return "uint64";
         case FFI_TYPE_FLOAT: return "float";
         case FFI_TYPE_DOUBLE: return "double";
+        case FFI_TYPE_FLOAT16: return "float16";
+        case FFI_TYPE_FLOAT32: return "float32";
+        case FFI_TYPE_FLOAT64: return "float64";
         case FFI_TYPE_STRING: return "string";
         case FFI_TYPE_POINTER: return "pointer";
         case FFI_TYPE_STRUCT: return "struct";
@@ -283,8 +286,11 @@ const char* ffi_c_type_name(FFIType type) {
         case FFI_TYPE_UINT16: return "uint16_t";
         case FFI_TYPE_UINT32: return "uint32_t";
         case FFI_TYPE_UINT64: return "uint64_t";
-        case FFI_TYPE_FLOAT: return "float";
-        case FFI_TYPE_DOUBLE: return "double";
+        case FFI_TYPE_FLOAT: return "float";      // alias float32
+        case FFI_TYPE_DOUBLE: return "double";    // alias float64
+        case FFI_TYPE_FLOAT16: return "_Float16"; // if unsupported, treat as 16-bit storage
+        case FFI_TYPE_FLOAT32: return "float";
+        case FFI_TYPE_FLOAT64: return "double";
         case FFI_TYPE_STRING: return "char*";
         case FFI_TYPE_POINTER: return "void*";
         case FFI_TYPE_STRUCT: return "struct";
@@ -307,12 +313,42 @@ size_t ffi_type_size(FFIType type) {
         case FFI_TYPE_UINT64: return sizeof(uint64_t);
         case FFI_TYPE_FLOAT: return sizeof(float);
         case FFI_TYPE_DOUBLE: return sizeof(double);
+        case FFI_TYPE_FLOAT16: return 2;
+        case FFI_TYPE_FLOAT32: return 4;
+        case FFI_TYPE_FLOAT64: return 8;
         case FFI_TYPE_STRING: return sizeof(char*);
         case FFI_TYPE_POINTER: return sizeof(void*);
         case FFI_TYPE_STRUCT: return 0;  // Variable size
         case FFI_TYPE_ARRAY: return 0;   // Variable size
         default: return 0;
     }
+}
+
+FFIType ffi_type_from_string(const char* s) {
+    if (!s) return FFI_TYPE_VOID;
+    // normalize lowercase
+    char buf[64]; size_t n = strlen(s);
+    if (n >= sizeof(buf)) n = sizeof(buf)-1; 
+    for (size_t i = 0; i < n; i++) { char c = s[i]; buf[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
+    buf[n] = '\0';
+    if (strcmp(buf, "void") == 0) return FFI_TYPE_VOID;
+    if (strcmp(buf, "bool") == 0 || strcmp(buf, "boolean") == 0) return FFI_TYPE_BOOL;
+    if (strcmp(buf, "byte") == 0 || strcmp(buf, "uint8") == 0) return FFI_TYPE_UINT8;
+    if (strcmp(buf, "int8") == 0) return FFI_TYPE_INT8;
+    if (strcmp(buf, "int16") == 0) return FFI_TYPE_INT16;
+    if (strcmp(buf, "int32") == 0 || strcmp(buf, "int") == 0) return FFI_TYPE_INT32;
+    if (strcmp(buf, "int64") == 0 || strcmp(buf, "long") == 0) return FFI_TYPE_INT64;
+    if (strcmp(buf, "uint16") == 0) return FFI_TYPE_UINT16;
+    if (strcmp(buf, "uint32") == 0) return FFI_TYPE_UINT32;
+    if (strcmp(buf, "uint64") == 0) return FFI_TYPE_UINT64;
+    if (strcmp(buf, "float16") == 0) return FFI_TYPE_FLOAT16;
+    if (strcmp(buf, "float32") == 0 || strcmp(buf, "float") == 0) return FFI_TYPE_FLOAT32;
+    if (strcmp(buf, "float64") == 0 || strcmp(buf, "double") == 0) return FFI_TYPE_FLOAT64;
+    if (strcmp(buf, "string") == 0) return FFI_TYPE_STRING;
+    if (strcmp(buf, "pointer") == 0 || strcmp(buf, "ptr") == 0) return FFI_TYPE_POINTER;
+    if (strcmp(buf, "struct") == 0) return FFI_TYPE_STRUCT;
+    if (strcmp(buf, "array") == 0) return FFI_TYPE_ARRAY;
+    return FFI_TYPE_POINTER; // default fallback
 }
 
 // Error Handling
@@ -397,6 +433,24 @@ void* ffi_kuyil_to_c(Value* kuyil_val, FFIType target_type, size_t* size) {
             break;
         }
         
+        case FFI_TYPE_INT8: {
+            int8_t* val = ffi_malloc(sizeof(int8_t));
+            if (kuyil_val->type == VALUE_NUMBER) {
+                *val = (int8_t)kuyil_val->as.number;
+            } else if (kuyil_val->type == VALUE_BOOL) {
+                *val = kuyil_val->as.boolean ? 1 : 0;
+            } else { g_last_error = FFI_ERROR_TYPE_MISMATCH; ffi_free(val); return NULL; }
+            result = val; *size = sizeof(int8_t); break;
+        }
+        case FFI_TYPE_INT16: {
+            int16_t* val = ffi_malloc(sizeof(int16_t));
+            if (kuyil_val->type == VALUE_NUMBER) {
+                *val = (int16_t)kuyil_val->as.number;
+            } else if (kuyil_val->type == VALUE_BOOL) {
+                *val = kuyil_val->as.boolean ? 1 : 0;
+            } else { g_last_error = FFI_ERROR_TYPE_MISMATCH; ffi_free(val); return NULL; }
+            result = val; *size = sizeof(int16_t); break;
+        }
         case FFI_TYPE_INT32: {
             int32_t* val = ffi_malloc(sizeof(int32_t));
             if (kuyil_val->type == VALUE_NUMBER) {
@@ -428,8 +482,45 @@ void* ffi_kuyil_to_c(Value* kuyil_val, FFIType target_type, size_t* size) {
             *size = sizeof(int64_t);
             break;
         }
+        case FFI_TYPE_UINT8: {
+            uint8_t* val = ffi_malloc(sizeof(uint8_t));
+            if (kuyil_val->type == VALUE_NUMBER) {
+                *val = (uint8_t)kuyil_val->as.number;
+            } else if (kuyil_val->type == VALUE_BOOL) {
+                *val = kuyil_val->as.boolean ? 1 : 0;
+            } else { g_last_error = FFI_ERROR_TYPE_MISMATCH; ffi_free(val); return NULL; }
+            result = val; *size = sizeof(uint8_t); break;
+        }
+        case FFI_TYPE_UINT16: {
+            uint16_t* val = ffi_malloc(sizeof(uint16_t));
+            if (kuyil_val->type == VALUE_NUMBER) {
+                *val = (uint16_t)kuyil_val->as.number;
+            } else if (kuyil_val->type == VALUE_BOOL) {
+                *val = kuyil_val->as.boolean ? 1 : 0;
+            } else { g_last_error = FFI_ERROR_TYPE_MISMATCH; ffi_free(val); return NULL; }
+            result = val; *size = sizeof(uint16_t); break;
+        }
+        case FFI_TYPE_UINT32: {
+            uint32_t* val = ffi_malloc(sizeof(uint32_t));
+            if (kuyil_val->type == VALUE_NUMBER) {
+                *val = (uint32_t)kuyil_val->as.number;
+            } else if (kuyil_val->type == VALUE_BOOL) {
+                *val = kuyil_val->as.boolean ? 1 : 0;
+            } else { g_last_error = FFI_ERROR_TYPE_MISMATCH; ffi_free(val); return NULL; }
+            result = val; *size = sizeof(uint32_t); break;
+        }
+        case FFI_TYPE_UINT64: {
+            uint64_t* val = ffi_malloc(sizeof(uint64_t));
+            if (kuyil_val->type == VALUE_NUMBER) {
+                *val = (uint64_t)kuyil_val->as.number;
+            } else if (kuyil_val->type == VALUE_BOOL) {
+                *val = kuyil_val->as.boolean ? 1 : 0;
+            } else { g_last_error = FFI_ERROR_TYPE_MISMATCH; ffi_free(val); return NULL; }
+            result = val; *size = sizeof(uint64_t); break;
+        }
         
-        case FFI_TYPE_DOUBLE: {
+        case FFI_TYPE_DOUBLE:
+        case FFI_TYPE_FLOAT64: {
             double* val = ffi_malloc(sizeof(double));
             if (kuyil_val->type == VALUE_NUMBER) {
                 *val = kuyil_val->as.number;
@@ -443,6 +534,29 @@ void* ffi_kuyil_to_c(Value* kuyil_val, FFIType target_type, size_t* size) {
             result = val;
             *size = sizeof(double);
             break;
+        }
+        case FFI_TYPE_FLOAT:
+        case FFI_TYPE_FLOAT32: {
+            float* val = ffi_malloc(sizeof(float));
+            if (kuyil_val->type == VALUE_NUMBER) {
+                *val = (float)kuyil_val->as.number;
+            } else if (kuyil_val->type == VALUE_BOOL) {
+                *val = kuyil_val->as.boolean ? 1.0f : 0.0f;
+            } else { g_last_error = FFI_ERROR_TYPE_MISMATCH; ffi_free(val); return NULL; }
+            result = val; *size = sizeof(float); break;
+        }
+        case FFI_TYPE_FLOAT16: {
+            // Store as 16-bit half precision; approximate by casting to float and truncating bits
+            // Note: This is a placeholder; actual half conversion is not implemented
+            uint16_t* val = ffi_malloc(sizeof(uint16_t));
+            if (kuyil_val->type == VALUE_NUMBER) {
+                float f = (float)kuyil_val->as.number;
+                // naive quantization: scale not accurate; store zero for simplicity
+                (void)f; *val = 0; 
+            } else if (kuyil_val->type == VALUE_BOOL) {
+                *val = 0; // 0 or 1 not represented precisely here
+            } else { g_last_error = FFI_ERROR_TYPE_MISMATCH; ffi_free(val); return NULL; }
+            result = val; *size = sizeof(uint16_t); break;
         }
         
         case FFI_TYPE_STRING: {
@@ -543,17 +657,25 @@ Value* ffi_c_to_kuyil(void* c_val, FFIType source_type, size_t size) {
             break;
         }
         
-        case FFI_TYPE_FLOAT: {
+        case FFI_TYPE_FLOAT:
+        case FFI_TYPE_FLOAT32: {
             float val = *(float*)c_val;
             result->type = VALUE_NUMBER;
             result->as.number = (double)val;
             break;
         }
         
-        case FFI_TYPE_DOUBLE: {
+        case FFI_TYPE_DOUBLE:
+        case FFI_TYPE_FLOAT64: {
             double val = *(double*)c_val;
             result->type = VALUE_NUMBER;
             result->as.number = val;
+            break;
+        }
+        case FFI_TYPE_FLOAT16: {
+            // Placeholder: interpret as zero
+            result->type = VALUE_NUMBER;
+            result->as.number = 0.0;
             break;
         }
         

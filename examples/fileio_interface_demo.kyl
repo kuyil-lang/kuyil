@@ -6,11 +6,11 @@ print("=== File I/O Demo ===")
 // Write some text to a file
 let content = "Hello from Kuyil!\nThis is a test file.\n"
 print("Writing to test.txt...")
-file_write_text("test.txt", content)
+writeText("test.txt", content)
 
 // Read it back
 print("\nReading test.txt...")
-let read_content = read_text("test.txt")
+let read_content = readText("test.txt")
 print("Content:", read_content)
 
 // Check if file exists

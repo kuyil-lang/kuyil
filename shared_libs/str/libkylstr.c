@@ -5,6 +5,22 @@
 #include <ctype.h>
 #include <stdio.h>
 
+// Export interface signatures for auto-binding (lowerCamel)
+__attribute__((visibility("default")))
+const char* kyl_interface_signature_text =
+    "str length(input: string) -> int32\n"
+    "str substring(input: string, start: int32, end: int32) -> string\n"
+    "str upper(input: string) -> string\n"
+    "str lower(input: string) -> string\n"
+    "str trim(input: string) -> string\n"
+    "str startsWith(input: string, prefix: string) -> bool\n"
+    "str endsWith(input: string, suffix: string) -> bool\n"
+    "str contains(haystack: string, needle: string) -> bool\n"
+    "str replace(input: string, from: string, to: string) -> string\n"
+    "str split(input: string, delimiter: string) -> string\n"
+    "str toNumber(input: string) -> float64\n"
+    "str toString(value: number) -> string\n";
+
 // String length function
 Value kyl_str_length(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_STRING) {
@@ -122,6 +138,44 @@ Value kyl_str_trim(int arg_count, Value* args) {
     Value result;
     result.type = VALUE_STRING;
     result.as.string = trimmed;
+    return result;
+}
+
+// String startsWith function
+Value kyl_str_starts_with(int arg_count, Value* args) {
+    Value result;
+    result.type = VALUE_BOOL;
+    result.as.boolean = false;
+    if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        return result;
+    }
+    const char* input = args[0].as.string;
+    const char* prefix = args[1].as.string;
+    size_t in_len = strlen(input);
+    size_t p_len = strlen(prefix);
+    if (p_len > in_len) {
+        return result;
+    }
+    result.as.boolean = (strncmp(input, prefix, p_len) == 0);
+    return result;
+}
+
+// String endsWith function
+Value kyl_str_ends_with(int arg_count, Value* args) {
+    Value result;
+    result.type = VALUE_BOOL;
+    result.as.boolean = false;
+    if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        return result;
+    }
+    const char* input = args[0].as.string;
+    const char* suffix = args[1].as.string;
+    size_t in_len = strlen(input);
+    size_t s_len = strlen(suffix);
+    if (s_len > in_len) {
+        return result;
+    }
+    result.as.boolean = (strncmp(input + (in_len - s_len), suffix, s_len) == 0);
     return result;
 }
 

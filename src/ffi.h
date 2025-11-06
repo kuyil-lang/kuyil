@@ -35,6 +35,10 @@ typedef enum {
     FFI_TYPE_UINT64,
     FFI_TYPE_FLOAT,
     FFI_TYPE_DOUBLE,
+    // Extended float types
+    FFI_TYPE_FLOAT16,
+    FFI_TYPE_FLOAT32,
+    FFI_TYPE_FLOAT64,
     FFI_TYPE_STRING,
     FFI_TYPE_POINTER,
     FFI_TYPE_STRUCT,
@@ -112,6 +116,9 @@ bool ffi_validate_parameters(FFIFunction* func, Value* args, int arg_count);
 const char* ffi_type_name(FFIType type);
 const char* ffi_c_type_name(FFIType type);
 size_t ffi_type_size(FFIType type);
+
+// Helpers: map textual type to FFIType (accepts aliases like byte->uint8, float32->float)
+FFIType ffi_type_from_string(const char* type_name);
 
 // Error handling
 typedef enum {

@@ -1,15 +1,14 @@
 // Interface for File I/O library
 @loadlib("./libs/libkylfileio.so");
 
-// Note: underlying functions are prefixed with 'file_', so the interface is named 'file'
 interface file {
-  string read_text(path: string)
-  array read_csv(path: string)
-  object read_json(path: string)
-  object read_yaml(path: string)
-  bool exists(path: string)
-  number size(path: string)
-  bool validate(path: string)
-  bool write_text(path: string, content: string)
+  string readText(path: string)
+  array  readCsv(path: string)
+  object readJson(path: string)
+  object readYaml(path: string)
+  bool   exists(path: string)
+  int32  size(path: string)
+  bool   validate(path: string)
+  bool   writeText(path: string, content: string)
 }
 

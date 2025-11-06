@@ -1,4 +1,7 @@
 // Kuyil Simple Examples - Working Versions
+import("../interfaces/interface_str.kyl")
+import("../interfaces/interface_math.kyl")
+import("../interfaces/interface_datetime.kyl")
 // Using only confirmed working functions
 
 print("=== Working Kuyil Examples ===")
@@ -6,9 +9,9 @@ print("=== Working Kuyil Examples ===")
 print("\n1. String Operations (Known Working):")
 let text = "Hello Kuyil"
 print("Original: " + text)
-print("Length: " + str_substring("0123456789ABCDEF", str_length(text), str_length(text) + 1))
-print("Uppercase: " + str_upper(text))
-print("Lowercase: " + str_lower(text))
+print("Length: " + substring("0123456789ABCDEF", length(text), length(text) + 1))
+print("Uppercase: " + upper(text))
+print("Lowercase: " + lower(text))
 
 print("\n2. Mathematical Operations:")
 let a = 10
@@ -18,16 +21,16 @@ print("Addition result: 15")
 print("Square root of 16: 4")
 
 // Use actual math functions
-let sqrt_result = math_sqrt(16)
-let power_result = math_pow(2, 3)
+let sqrt_result = sqrt(16)
+let power_result = pow(2, 3)
 print("sqrt(16) = calculated")  
 print("pow(2,3) = calculated")
 
 print("\n3. Date/Time Operations:")
-let current_date = date_now()
+let current_date = now()
 print("Current timestamp available")
 
-let unix_time = date_unix()
+let unix_time = unix()
 print("Unix timestamp available")
 
 print("\n4. Conditional Logic:")

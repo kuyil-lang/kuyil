@@ -1,4 +1,4 @@
 import("../interfaces/interface_datetime.kyl")
 import("../interfaces/interface_str.kyl")
-let t = date_unix()
-print("unix=", to_string(t))
+let t = unix()
+print("unix=", toString(t))

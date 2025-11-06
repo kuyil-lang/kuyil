@@ -25,7 +25,7 @@ fn (Person) birthday() {
 fn (Person) toJSON() {
     let json = `{`
     json = json + `"name": "` + this.name + `", `
-    json = json + `"age": ` + to_string(this.age) + `, `
+    json = json + `"age": ` + toString(this.age) + `, `
     json = json + `"email": "` + this.email + `"`
     json = json + `}`
     return json
@@ -57,9 +57,9 @@ fn (Employee) getFullInfo() {
 fn (Employee) toJSON() {
     let json = `{`
     json = json + `"person": ` + this.person.toJSON() + `, `
-    json = json + `"employeeId": ` + to_string(this.employeeId) + `, `
+    json = json + `"employeeId": ` + toString(this.employeeId) + `, `
     json = json + `"department": "` + this.department + `", `
-    json = json + `"salary": ` + to_string(this.salary)
+    json = json + `"salary": ` + toString(this.salary)
     json = json + `}`
     return json
 }

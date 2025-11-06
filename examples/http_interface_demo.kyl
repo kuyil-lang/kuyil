@@ -7,10 +7,10 @@ print("=== HTTP Client Demo ===")
 
 // Make a simple GET request
 print("\nFetching from example API...")
-let response = client_get("https://api.github.com/zen")
+let response = clientGet("https://api.github.com/zen")
 print("Response:", response)
 
-// You can also use the full name
-print("\nUsing full function name...")
-let response2 = http_client_get("https://httpbin.org/get")
-print("Response length:", length(response2))
+// Check response length
+print("\nResponse length:", length(response))
+
+print("\nHTTP client demo completed!")

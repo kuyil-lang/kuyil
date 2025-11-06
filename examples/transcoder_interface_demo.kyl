@@ -9,11 +9,11 @@ let input = "The quick brown fox jumps over the lazy dog"
 print("Original: ", input)
 
 // Compress using gzip (now returns object {data, length})
-let gz = gzip(input)
+let gz = compressGzip(input)
 print("Gzip compressed bytes: ", gz.length)
 
 // Decompress using gzip (accepts the object)
-let out = decompress_gzip(gz)
+let out = decompressGzip(gz)
 print("Roundtrip ok: ", out == input)
 
 // Optional: unzip helper demo (expects a real zip file; skipped here)

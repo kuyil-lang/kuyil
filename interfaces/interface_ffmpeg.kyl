@@ -3,13 +3,32 @@
 
 // General ffmpeg helpers
 interface ffmpeg {
-  string get_last_error_kyl()
-  bool clear_error_kyl()
+  string getLastError()
+  bool   clearError()
 }
 
-// Audio-related functions (prefix 'audio_')
+// Audio-related functions
 interface audio {
-  number get_duration_kyl(path: string)
-  number get_sample_rate_kyl(path: string)
-  number get_channels_kyl(path: string)
+  float64 getDuration(path: string)
+  int32   getSampleRate(path: string)
+  int32   getChannels(path: string)
+  int32   load(path: string)
+  bool    save(handle: int32, path: string)
+  bool    segmentFree(handle: int32)
+  int32   trim(handle: int32, startMs: float64, endMs: float64)
+  int32   fadeIn(handle: int32, durationMs: float64)
+  int32   fadeOut(handle: int32, durationMs: float64)
+  int32   adjustVolume(handle: int32, factor: float64)
+  int32   normalize(handle: int32)
+  int32   concat(handle1: int32, handle2: int32)
+  int32   merge(handle1: int32, handle2: int32)
+  int32   overlay(base: int32, overlay: int32, positionMs: float64)
+  int32   speedChange(handle: int32, factor: float64)
+  int32   reverse(handle: int32)
+}
+
+// Audio editor
+interface editor {
+  int32 create()
+  bool  destroy(handle: int32)
 }

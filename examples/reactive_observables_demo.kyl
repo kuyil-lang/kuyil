@@ -1,4 +1,5 @@
 // Reactive Observables Concept Demo for Kuyil
+import("../interfaces/interface_str.kyl")
 // Demonstrates reactive programming patterns and Observable concepts
 
 print("=== Kuyil Reactive Observables Demo ===")
@@ -22,7 +23,7 @@ print("")
 
 print("[STREAM] Creating data stream...")
 let stream_id = 1001
-print("[STREAM] Stream ID: " + to_string(stream_id))
+print("[STREAM] Stream ID: " + toString(stream_id))
 
 print("[EMIT] Emitting values to stream...")
 print("[DATA] Value 1: Hello")
@@ -40,12 +41,12 @@ print("")
 let observer1_id = 2001
 let observer2_id = 2002
 
-print("[OBSERVER] Observer " + to_string(observer1_id) + " subscribed")
-print("[OBSERVER] Observer " + to_string(observer2_id) + " subscribed")
+print("[OBSERVER] Observer " + toString(observer1_id) + " subscribed")
+print("[OBSERVER] Observer " + toString(observer2_id) + " subscribed")
 
 print("[NOTIFY] Notifying observers of new data...")
-print("[OBSERVER-" + to_string(observer1_id) + "] Received: Hello")
-print("[OBSERVER-" + to_string(observer2_id) + "] Received: Hello")
+print("[OBSERVER-" + toString(observer1_id) + "] Received: Hello")
+print("[OBSERVER-" + toString(observer2_id) + "] Received: Hello")
 
 print("")
 
@@ -55,14 +56,14 @@ print("")
 
 print("[EVENT-BUS] Creating global event bus")
 let event_bus_id = 3001
-print("[EVENT-BUS] Bus ID: " + to_string(event_bus_id))
+print("[EVENT-BUS] Bus ID: " + toString(event_bus_id))
 
 print("[PUBLISH] Publishing user.login event")
 print("[PUBLISH] Publishing data.updated event") 
 print("[PUBLISH] Publishing system.shutdown event")
 
 let subscriber_count = 5
-print("[SUBSCRIBERS] " + to_string(subscriber_count) + " components listening")
+print("[SUBSCRIBERS] " + toString(subscriber_count) + " components listening")
 
 print("")
 
@@ -86,7 +87,7 @@ print("6. Reactive Error Handling:")
 print("")
 
 let error_stream = 4001
-print("[ERROR-STREAM] Stream " + to_string(error_stream) + " encountered error")
+print("[ERROR-STREAM] Stream " + toString(error_stream) + " encountered error")
 print("[RECOVERY] Implementing error recovery")
 print("[RETRY] Attempting retry with backoff")
 print("[SUCCESS] Stream recovered successfully")

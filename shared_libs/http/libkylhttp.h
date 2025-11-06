@@ -6,6 +6,7 @@
 // HTTP Server functions
 Value kyl_http_server(int arg_count, Value* args);
 Value kyl_http_get(int arg_count, Value* args);
+Value kyl_http_start_server(int arg_count, Value* args);
 Value kyl_http_post(int arg_count, Value* args);
 Value kyl_http_put(int arg_count, Value* args);
 Value kyl_http_delete(int arg_count, Value* args);

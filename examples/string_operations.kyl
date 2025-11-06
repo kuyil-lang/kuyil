@@ -1,8 +1,6 @@
 // String Operations Example
 // Demonstrates string manipulation functions via modular library system
-
-// Load the string manipulation library
-load_library("libstring.so")
+import("../interfaces/interface_str.kyl")
 
 print("=== String Operations Demo ===")
 
@@ -11,31 +9,35 @@ let sample_text = "  Hello, Kuyil Programming Language!  "
 print("Original text: '" + sample_text + "'")
 
 // String length
-let length = str_length(sample_text)
-print("Length: " + to_string(length))
+let len = length(sample_text)
+print("Length: " + toString(len))
 
 // String trimming
-let trimmed = str_trim(sample_text)
+let trimmed = trim(sample_text)
 print("Trimmed: '" + trimmed + "'")
 
 // Case conversions
-let upper_case = str_upper(trimmed)
-let lower_case = str_lower(trimmed)
+let upper_case = upper(trimmed)
+let lower_case = lower(trimmed)
 print("Uppercase: " + upper_case)
 print("Lowercase: " + lower_case)
 
 // Substring extraction
-let substring = str_substring(trimmed, 7, 12)  // Extract "Kuyil"
-print("Substring (7-12): '" + substring + "'")
+let sub = substring(trimmed, 7, 12)  // Extract "Kuyil"
+print("Substring (7-12): '" + sub + "'")
 
 // String contains check
-let contains_kuyil = str_contains(trimmed, "Kuyil")
-let contains_python = str_contains(trimmed, "Python")
-print("Contains 'Kuyil': " + to_string(contains_kuyil))
-print("Contains 'Python': " + to_string(contains_python))
+let contains_kuyil = contains(trimmed, "Kuyil")
+let contains_python = contains(trimmed, "Python")
+print("Contains 'Kuyil': " + toString(contains_kuyil))
+print("Contains 'Python': " + toString(contains_python))
+
+// Prefix/Suffix checks
+print("Starts with 'Hello': " + toString(startsWith(trimmed, "Hello")))
+print("Ends with 'Language!': " + toString(endsWith(trimmed, "Language!")))
 
 // String replacement
-let replaced = str_replace(trimmed, "Kuyil", "Amazing Kuyil")
+let replaced = replace(trimmed, "Kuyil", "Amazing Kuyil")
 print("After replacement: " + replaced)
 
 // Advanced string operations
@@ -45,9 +47,9 @@ let email = "user@example.com"
 print("Email: " + email)
 
 // Extract domain
-let at_pos = str_length(email) - str_length(str_replace(email, "@", "")) - 1
+let at_pos = length(email) - length(replace(email, "@", "")) - 1
 if (at_pos > 0) {
-    let domain = str_substring(email, at_pos + 1, str_length(email))
+    let domain = substring(email, at_pos + 1, length(email))
     print("Domain: " + domain)
 }
 
@@ -59,17 +61,17 @@ let lang3 = "JavaScript"
 let lang4 = "Rust"
 let lang5 = "Go"
 
-let processed1 = str_upper(str_substring(lang1, 0, 1)) + str_lower(str_substring(lang1, 1, str_length(lang1)))
-let processed2 = str_upper(str_substring(lang2, 0, 1)) + str_lower(str_substring(lang2, 1, str_length(lang2)))
-let processed3 = str_upper(str_substring(lang3, 0, 1)) + str_lower(str_substring(lang3, 1, str_length(lang3)))
-let processed4 = str_upper(str_substring(lang4, 0, 1)) + str_lower(str_substring(lang4, 1, str_length(lang4)))
-let processed5 = str_upper(str_substring(lang5, 0, 1)) + str_lower(str_substring(lang5, 1, str_length(lang5)))
+let processed1 = upper(substring(lang1, 0, 1)) + lower(substring(lang1, 1, length(lang1)))
+let processed2 = upper(substring(lang2, 0, 1)) + lower(substring(lang2, 1, length(lang2)))
+let processed3 = upper(substring(lang3, 0, 1)) + lower(substring(lang3, 1, length(lang3)))
+let processed4 = upper(substring(lang4, 0, 1)) + lower(substring(lang4, 1, length(lang4)))
+let processed5 = upper(substring(lang5, 0, 1)) + lower(substring(lang5, 1, length(lang5)))
 
-print("  1. " + processed1 + " (length: " + to_string(str_length(lang1)) + ")")
-print("  2. " + processed2 + " (length: " + to_string(str_length(lang2)) + ")")
-print("  3. " + processed3 + " (length: " + to_string(str_length(lang3)) + ")")
-print("  4. " + processed4 + " (length: " + to_string(str_length(lang4)) + ")")
-print("  5. " + processed5 + " (length: " + to_string(str_length(lang5)) + ")")
+print("  1. " + processed1 + " (length: " + toString(length(lang1)) + ")")
+print("  2. " + processed2 + " (length: " + toString(length(lang2)) + ")")
+print("  3. " + processed3 + " (length: " + toString(length(lang3)) + ")")
+print("  4. " + processed4 + " (length: " + toString(length(lang4)) + ")")
+print("  5. " + processed5 + " (length: " + toString(length(lang5)) + ")")
 
 print("\n=== String Validation Example ===")
 
@@ -80,21 +82,21 @@ let email2 = "invalid-email"
 let email3 = "test@domain.org"
 let email4 = "no-at-sign.com"
 
-let has_at1 = str_contains(email1, "@")
-let has_dot1 = str_contains(email1, ".")
-let is_valid1 = has_at1 && has_dot1 && str_length(email1) > 5
+let has_at1 = contains(email1, "@")
+let has_dot1 = contains(email1, ".")
+let is_valid1 = has_at1 && has_dot1 && length(email1) > 5
 
-let has_at2 = str_contains(email2, "@")
-let has_dot2 = str_contains(email2, ".")
-let is_valid2 = has_at2 && has_dot2 && str_length(email2) > 5
+let has_at2 = contains(email2, "@")
+let has_dot2 = contains(email2, ".")
+let is_valid2 = has_at2 && has_dot2 && length(email2) > 5
 
-let has_at3 = str_contains(email3, "@")
-let has_dot3 = str_contains(email3, ".")
-let is_valid3 = has_at3 && has_dot3 && str_length(email3) > 5
+let has_at3 = contains(email3, "@")
+let has_dot3 = contains(email3, ".")
+let is_valid3 = has_at3 && has_dot3 && length(email3) > 5
 
-let has_at4 = str_contains(email4, "@")
-let has_dot4 = str_contains(email4, ".")
-let is_valid4 = has_at4 && has_dot4 && str_length(email4) > 5
+let has_at4 = contains(email4, "@")
+let has_dot4 = contains(email4, ".")
+let is_valid4 = has_at4 && has_dot4 && length(email4) > 5
 
 if (is_valid1) {
     print("Email: " + email1 + " -> Valid")

@@ -5,6 +5,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+// Export interface signatures for auto-binding (lowerCamel)
+__attribute__((visibility("default")))
+const char* kyl_interface_signature_text =
+    "datetime now() -> string\n"
+    "datetime current() -> string\n"
+    "date now() -> string\n"
+    "date unix() -> int64\n"
+    "date iso(date: string) -> string\n";
+
 // DateTime library functions
 Value kyl_date_now(int arg_count, Value* args) {
     (void)arg_count; (void)args; // Suppress unused parameter warnings

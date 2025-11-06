@@ -2,15 +2,17 @@
 @loadlib("./libs/libkylstr.so");
 
 interface str {
-  number length(input: string)
-  string substring(input: string, start: number, end: number)
+  int32 length(input: string)
+  string substring(input: string, start: int32, end: int32)
   string upper(input: string)
   string lower(input: string)
   string trim(input: string)
+  bool startsWith(input: string, prefix: string)
+  bool endsWith(input: string, suffix: string)
   bool contains(haystack: string, needle: string)
   string replace(input: string, from: string, to: string)
   string split(input: string, delimiter: string)
-  number to_number(input: string)
-  string to_string(value: number)
+  float64 toNumber(input: string)
+  string toString(value: number)
 }
 

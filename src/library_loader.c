@@ -1,4 +1,6 @@
+#define _POSIX_C_SOURCE 200809L
 #include "library_loader.h"
+#include "vm_library_integration.h"
 #include "logging.h"
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +14,7 @@
 // Forward declarations
 void load_ffmpeg_functions(SharedLibrary* lib);
 void load_generic_functions(SharedLibrary* lib, const char* functions[][3], const char* category);
+Value vm_bind_interface_method(int arg_count, Value* args);  // From vm_library_integration.c
 
 // Global library registry
 LibraryRegistry g_library_registry = {0};
@@ -179,45 +182,176 @@ bool load_library(const char* library_name) {
     
     lib->is_loaded = true;
     LOG_INFO("Successfully loaded library: %s", library_name);
-    LOG_INFO("Enumerating functions for library switch: '%s'", library_name);
     
-    // Load function symbols based on library type
-    if (strcmp(library_name, "webview") == 0) {
-        load_webview_functions(lib);
-    } else if (strcmp(library_name, "crypto") == 0) {
-        load_crypto_functions(lib);
-    } else if (strcmp(library_name, "compression") == 0) {
-        load_compression_functions(lib);
-    } else if (strcmp(library_name, "sqlite") == 0) {
-        load_sqlite_functions(lib);
-    } else if (strcmp(library_name, "http") == 0) {
-        // Enumerate HTTP functions from the loaded handle
-        load_http_functions(lib);
-    } else if (strcmp(library_name, "math") == 0) {
-        load_math_functions(lib);
-    } else if (strcmp(library_name, "str") == 0) {
-        load_str_functions(lib);
-    } else if (strcmp(library_name, "datetime") == 0) {
-        load_datetime_functions(lib);
-    } else if (strcmp(library_name, "rpc") == 0) {
-        load_rpc_functions(lib);
-    } else if (strcmp(library_name, "fileio") == 0) {
-        load_fileio_functions(lib);
-    } else if (strcmp(library_name, "ffmpeg") == 0) {
-        load_ffmpeg_functions(lib);
-    } else if (strcmp(library_name, "transcoder") == 0) {
-        // Alias: the transcoder shared library exposes compression helpers
-        // such as compress/decompress and unzip operations.
-        // Treat it the same as the "compression" category.
-        LOG_INFO("Enumerating functions for 'transcoder' via compression loader");
-        load_compression_functions(lib);
+    // New design: discover signatures exported by the library
+    // Look for kyl_interface_signature_text symbol
+    const char** sig_ptr = (const char**)dlsym(lib->handle, "kyl_interface_signature_text");
+    if (sig_ptr && *sig_ptr) {
+        const char* sig_text = *sig_ptr;
+        LOG_INFO("Found interface signatures in library %s, parsing...", library_name);
+        
+        // Parse signature text format: "interface_name method_name(param:type,...) -> return_type\n..."
+        // Manual parsing to avoid strtok issues
+        const char* p = sig_text;
+        char line_buf[1024];
+        
+        while (*p) {
+            // Extract one line
+            int line_len = 0;
+            while (*p && *p != '\n' && line_len < sizeof(line_buf) - 1) {
+                line_buf[line_len++] = *p++;
+            }
+            line_buf[line_len] = '\0';
+            if (*p == '\n') p++; // skip newline
+            
+            // Skip empty lines and comments
+            const char* line = line_buf;
+            while (*line == ' ' || *line == '\t') line++;
+            if (*line == '\0' || *line == '#') continue;
+            
+            // Parse: interface_name method_name(params) -> return_type
+            char iface_name[128] = {0};
+            char method_name[128] = {0};
+            
+            // Extract interface name
+            int i = 0;
+            while (*line && *line != ' ' && *line != '\t' && i < 127) {
+                iface_name[i++] = *line++;
+            }
+            iface_name[i] = '\0';
+            
+            // Skip whitespace
+            while (*line == ' ' || *line == '\t') line++;
+            
+            // Extract method name (stop at '(')
+            i = 0;
+            while (*line && *line != '(' && *line != ' ' && *line != '\t' && i < 127) {
+                method_name[i++] = *line++;
+            }
+            method_name[i] = '\0';
+            
+            // Parse parameters if present: openDatabase(path: string, flags: int32)
+            // Skip to '(' to find params
+            while (*line && *line != '(') line++;
+            
+            // Initialize param array - collect params in a temporary buffer
+            char* param_list[32] = {0};  // Max 32 params
+            int param_count = 0;
+            
+            char return_type_str[128] = {0};
+            
+            if (*line == '(') {
+                line++; // skip '('
+                // Parse params until ')'
+                while (*line && *line != ')' && param_count < 32) {
+                    while (*line == ' ' || *line == '\t' || *line == ',') line++;
+                    if (*line == ')') break;
+                    
+                    // Extract one param: "name: type"
+                    char param_spec[256] = {0};
+                    int pi = 0;
+                    int paren_depth = 0;
+                    while (*line && pi < 255) {
+                        if (*line == '(') paren_depth++;
+                        if (*line == ')') {
+                            if (paren_depth == 0) break;
+                            paren_depth--;
+                        }
+                        if (*line == ',' && paren_depth == 0) break;
+                        param_spec[pi++] = *line++;
+                    }
+                    param_spec[pi] = '\0';
+                    
+                    // Trim trailing spaces
+                    while (pi > 0 && (param_spec[pi-1] == ' ' || param_spec[pi-1] == '\t')) {
+                        param_spec[--pi] = '\0';
+                    }
+                    
+                    if (pi > 0) {
+                        param_list[param_count++] = strdup(param_spec);
+                    }
+                }
+                
+                // Skip ')'
+                if (*line == ')') line++;
+                
+                // Look for return type: " -> type"
+                while (*line == ' ' || *line == '\t') line++;
+                if (*line == '-' && *(line+1) == '>') {
+                    line += 2;
+                    while (*line == ' ' || *line == '\t') line++;
+                    // Extract return type
+                    int ri = 0;
+                    while (*line && *line != '\n' && ri < 127) {
+                        return_type_str[ri++] = *line++;
+                    }
+                    return_type_str[ri] = '\0';
+                    // Trim trailing spaces
+                    while (ri > 0 && (return_type_str[ri-1] == ' ' || return_type_str[ri-1] == '\t')) {
+                        return_type_str[--ri] = '\0';
+                    }
+                }
+            }
+            
+            if (iface_name[0] && method_name[0]) {
+                LOG_INFO("Auto-binding %s.%s from signature (params=%d)", 
+                         iface_name, method_name, param_count);
+                
+                // Build Value array for params
+                Value param_array = {VALUE_ARRAY};
+                param_array.as.array.count = param_count;
+                if (param_count > 0) {
+                    param_array.as.array.values = malloc(sizeof(Value) * param_count);
+                    for (int pi = 0; pi < param_count; pi++) {
+                        param_array.as.array.values[pi].type = VALUE_STRING;
+                        param_array.as.array.values[pi].as.string = param_list[pi];
+                    }
+                } else {
+                    param_array.as.array.values = NULL;
+                }
+                
+                // Prepare args: [interface, method, params_array, return_type]
+                Value args[4];
+                args[0].type = VALUE_STRING;
+                args[0].as.string = strdup(iface_name);
+                args[1].type = VALUE_STRING;
+                args[1].as.string = strdup(method_name);
+                args[2] = param_array;
+                args[3].type = VALUE_STRING;
+                args[3].as.string = return_type_str[0] ? strdup(return_type_str) : strdup("");
+                
+                // Call the binding function
+                Value result = vm_bind_interface_method(4, args);
+                
+                // Free the allocated strings
+                free(args[0].as.string);
+                free(args[1].as.string);
+                free(args[3].as.string);
+                
+                // Free param array
+                if (param_array.as.array.values) {
+                    for (int pi = 0; pi < param_count; pi++) {
+                        free(param_array.as.array.values[pi].as.string);
+                    }
+                    free(param_array.as.array.values);
+                }
+                
+                if (result.type == VALUE_BOOL && result.as.boolean) {
+                    LOG_DEBUG("Successfully bound %s.%s", iface_name, method_name);
+                } else {
+                    LOG_WARNING("Failed to bind %s.%s", iface_name, method_name);
+                }
+            }
+        }
+    } else {
+        LOG_DEBUG("No kyl_interface_signature_text found in %s (functions discovered at call time)", library_name);
     }
     
     return true;
 }
 
 void load_webview_functions(SharedLibrary* lib) {
-    // Define WebView functions
+    // Define WebView functions - using value_args for new functions that take Value* args
     const char* webview_functions[][3] = {
         {"webview_init", "webview_init", "int_void"},
         {"webview_create", "webview_create", "ptr_string_ptr"},
@@ -229,6 +363,9 @@ void load_webview_functions(SharedLibrary* lib) {
         {"webview_hide", "webview_hide", "void_ptr"},
         {"webview_destroy", "webview_destroy", "void_ptr"},
         {"webview_cleanup", "webview_cleanup", "void_void"},
+        {"webview_eval", "kyl_webview_eval", "value_args"},
+        {"webview_set_title", "kyl_webview_set_title", "value_args"},
+        {"webview_set_size", "kyl_webview_set_size", "value_args"},
         {NULL, NULL, NULL} // Terminator
     };
     
@@ -254,6 +391,8 @@ void load_webview_functions(SharedLibrary* lib) {
             func->signature = FUNC_SIG_PTR_VOID;
         } else if (strcmp(webview_functions[i][2], "void_void") == 0) {
             func->signature = FUNC_SIG_VOID_VOID;
+        } else if (strcmp(webview_functions[i][2], "value_args") == 0) {
+            func->signature = FUNC_SIG_VALUE_ARGS;
         }
         
         // Load the function symbol
@@ -464,6 +603,7 @@ void load_http_functions(SharedLibrary* lib) {
     const char* http_functions[][3] = {
         // Server endpoints
         {"http_server", "kyl_http_server", "value_args"},
+        {"http_start_server", "kyl_http_start_server", "value_args"},
         {"http_get", "kyl_http_get", "value_args"},
         {"http_post", "kyl_http_post", "value_args"},
         {"http_put", "kyl_http_put", "value_args"},
@@ -615,6 +755,9 @@ void* get_library_function(const char* library_name, const char* function_name) 
 }
 
 bool register_library_functions(VM* vm) {
+    // Register functions from libraries.conf pre-loaded libraries
+    // These get added to g_dynamic_functions[], which the interface system
+    // uses via bind_interface_method() to create convenient aliases.
     int total_functions = 0;
     
     for (int i = 0; i < g_library_registry.library_count; i++) {
@@ -625,8 +768,8 @@ bool register_library_functions(VM* vm) {
             LibraryFunction* func = &lib->functions[j];
             if (!func->is_loaded) continue;
             
-            // Register function with VM based on signature
-            // This would integrate with your existing VM function registration system
+            // Register function with VM's dynamic function system
+            vm_register_dynamic_function(func->name, func->function_ptr, func->signature);
             total_functions++;
             LOG_INFO("Registered function: %s from library %s", func->name, lib->name);
         }

@@ -1,0 +1,198 @@
+// WebView Bridge Demo - Direct JS Communication
+// Demonstrates executing JavaScript from Kuyil using webview_eval()
+
+import("../../interfaces/interface_webview.kyl")
+
+print("=== WebView Direct Bridge Demo ===")
+
+// Initialize WebView
+init()
+
+// Create window
+let settings = createDefaultSettings()
+let win = create("Kuyil ↔ JavaScript Direct Bridge", settings)
+
+if win == nil {
+    print("ERROR: Failed to create window")
+} else {
+    print("Window created successfully")
+    
+    // Create HTML with JavaScript that can receive messages from Kuyil
+    let html = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Kuyil Bridge</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .info {
+            background: #f0f4ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        #messages {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .message {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            animation: slideIn 0.3s ease-out;
+        }
+        .from-kuyil {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            margin-left: 20px;
+        }
+        .from-js {
+            background: #e3f2fd;
+            color: #1565c0;
+            margin-right: 20px;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .count {
+            text-align: center;
+            font-size: 18px;
+            color: #667eea;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Kuyil ↔ JavaScript Bridge</h1>
+        
+        <div class="info">
+            <strong>How it works:</strong><br>
+            • Kuyil calls <code>webview_eval()</code> to execute JavaScript<br>
+            • JavaScript calls <code>receiveFromKuyil()</code> when messages arrive<br>
+            • No HTTP polling needed - direct communication!
+        </div>
+        
+        <div id="messages">
+            <div class="message from-kuyil">
+                👋 Welcome! Messages from Kuyil will appear here.
+            </div>
+        </div>
+        
+        <button onclick="sendToKuyil()">📤 Send Message to Kuyil</button>
+        
+        <div class="count" id="count">Messages received: 0</div>
+    </div>
+
+    <script>
+        let messageCount = 0;
+        
+        // Function called by Kuyil via webview_eval()
+        function receiveFromKuyil(message) {
+            const messagesDiv = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message from-kuyil';
+            messageEl.innerHTML = '<strong>From Kuyil:</strong><br>' + message;
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            messageCount++;
+            document.getElementById('count').textContent = 'Messages received: ' + messageCount;
+        }
+        
+        // Send message to Kuyil (for now, just log it)
+        // In a real app, you'd use webview_bind() to call Kuyil functions
+        function sendToKuyil() {
+            const messagesDiv = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message from-js';
+            messageEl.innerHTML = '<strong>From JavaScript:</strong><br>Hello Kuyil! (Time: ' + new Date().toLocaleTimeString() + ')';
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // TODO: Call Kuyil function here using webview_bind()
+            console.log('Message sent to Kuyil:', new Date().toLocaleTimeString());
+        }
+        
+        // Show initial message
+        console.log('WebView Bridge initialized!');
+    </script>
+</body>
+</html>`
+    
+    // Load the HTML
+    print("Loading HTML content...")
+    loadHtml(win, html)
+    
+    // Show the window
+    print("Showing window...")
+    show(win)
+    
+    // Send some test messages from Kuyil to JavaScript
+    print("Sending test messages...")
+    
+    // Message 1
+    let js1 = `receiveFromKuyil("Hello from Kuyil! 👋");`
+    eval(win, js1)
+    
+    // Message 2  
+    let js2 = `receiveFromKuyil("This message was sent using webview_eval() 🚀");`
+    eval(win, js2)
+    
+    // Message 3
+    let js3 = `receiveFromKuyil("You can send data from Kuyil to JavaScript directly! 💬");`
+    eval(win, js3)
+    
+    print("✅ Messages sent! Check the WebView window.")
+    print("Starting event loop...")
+    
+    // Run the WebView event loop (blocks until window is closed)
+    run(win)
+    
+    print("Window closed")
+}
+
+print("=== Demo Complete ===")

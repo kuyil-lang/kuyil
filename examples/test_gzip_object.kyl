@@ -1,18 +1,17 @@
 // Test gzip with byte array object return
-@loadlib("str")
-@loadlib("transcoder")
+import("../interfaces/interface_str.kyl")
+import("../interfaces/interface_transcoder.kyl")
 
 let original = "Hello World! This is a test of gzip compression with byte arrays."
 print("Original: ")
 print(original)
 print("\nOriginal length: ")
-print(str_length(original))
+print(length(original))
 
 // Compress - returns object with {data: [bytes...], length: N}
 print("\n\nCompressing...")
-let compressed = gzip_compress(original)
-print("\nCompressed type: ")
-print(type_of(compressed))
+let compressed = compressGzip(original)
+print("\nCompressed object returned")
 print("\nCompressed length: ")
 print(compressed.length)
 print("\nData array length: ")
@@ -20,11 +19,11 @@ print(array_length(compressed.data))
 
 // Decompress - takes object with {data: [bytes...], length: N}
 print("\n\nDecompressing...")
-let decompressed = gzip_decompress(compressed)
+let decompressed = decompressGzip(compressed)
 print("\nDecompressed: ")
 print(decompressed)
 print("\nDecompressed length: ")
-print(str_length(decompressed))
+print(length(decompressed))
 
 // Check roundtrip
 print("\n\nRoundtrip match: ")

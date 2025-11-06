@@ -3088,6 +3088,9 @@ void vm_free(VM* vm) {
         g_ffi_context = NULL;
     }
     
+    // Cleanup VM library system (aliases, dynamic functions, loaded libs)
+    vm_cleanup_library_system();
+    
     // Free globals
     for (int i = 0; i < vm->global_count; i++) {
         free(vm->globals[i].name);

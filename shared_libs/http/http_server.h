@@ -85,6 +85,7 @@ void http_server_register_route(HttpServer* server, const char* method, const ch
 
 void http_server_listen(HttpServer* server);
 void http_server_stop(HttpServer* server);
+bool http_server_is_running(HttpServer* server);
 void http_server_free(HttpServer* server);
 
 // HTTP Request/Response helper functions

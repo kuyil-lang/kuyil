@@ -1,21 +1,32 @@
 // Interface for Compression/Transcoder library
 @loadlib("./libs/libkyltranscoder.so");
 
-// Compression functions (prefix 'compress_')
-// gzip now returns an object { data: array<byte-as-number>, length: number }
+// Compression functions
 interface compress {
-  object gzip(input: string)
-  string zip(input: string)
+  object compressGzip(input: string)
+  object compressDeflate(input: string)
+  string compressZip(input: string)
 }
 
-// Decompression functions (prefix 'decompress_')
-// gzip now accepts the object { data, length } and returns original string
+// Decompression functions
 interface decompress {
-  string gzip(input: object)
-  string zip(input: string)
+  string decompressGzip(input: object)
+  string decompressDeflate(input: object)
+  string decompressZip(input: string)
 }
 
-// Unzip helper (prefix 'unzip_')
+// Transcoding utilities
+interface transcode {
+  string urlEncode(input: string)
+  string urlDecode(input: string)
+  string htmlEncode(input: string)
+  string hexEncode(input: string)
+  string hexDecode(input: string)
+  int32  crc32(input: string)
+  float64 compressionRatio(original: int32, compressed: int32)
+}
+
+// Unzip helper
 interface unzip {
-  bool to_directory(zipPath: string)
+  bool toDirectory(zipPath: string)
 }

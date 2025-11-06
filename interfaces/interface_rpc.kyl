@@ -2,7 +2,7 @@
 @loadlib("./libs/libkylrpc.so");
 
 interface rpc {
-  string get_version()
-  bool set_log_level(level: number)
-  string get_last_error()
+  string getVersion()
+  bool setLogLevel(level: int32)
+  string getLastError()
 }

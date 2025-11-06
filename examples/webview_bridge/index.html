@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Kuyil WebView Bridge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #0f172a; color: #e2e8f0; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 20px; max-width: 800px; margin: 0 auto; box-shadow: 0 10px 20px rgba(0,0,0,0.25); }
+    h1 { margin-top: 0; font-size: 22px; }
+    .row { display: flex; gap: 12px; margin: 12px 0; }
+    input, button { font-size: 14px; padding: 10px 12px; border-radius: 8px; border: 1px solid #374151; background: #0b1220; color: #e2e8f0; }
+    button { background: #0ea5e9; border-color: #0284c7; color: #082f49; font-weight: 600; cursor: pointer; }
+    button:hover { background: #38bdf8; }
+    .log { white-space: pre-wrap; background: #0b1220; border: 1px solid #1f2937; border-radius: 8px; padding: 12px; min-height: 100px; }
+    .muted { color: #94a3b8; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>WebView ↔ Kuyil Bridge (HTTP)</h1>
+    <p class="muted">This demo uses a background Kuyil HTTP server for two-way messaging.</p>
+
+    <div class="row">
+      <input id="msgInput" placeholder="Type a message for Kuyil..." style="flex:1" />
+      <button id="sendBtn">Send to Kuyil</button>
+    </div>
+
+    <h3>Messages from Kuyil</h3>
+    <div id="incoming" class="log">(waiting...)</div>
+
+    <h3>Event Log</h3>
+    <div id="log" class="log"></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

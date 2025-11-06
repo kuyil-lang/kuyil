@@ -1,4 +1,5 @@
 // Test struct literal syntax and serialization
+import("../interfaces/interface_str.kyl")
 
 print("=== Testing Struct Literals and Serialization ===")
 print("")
@@ -34,7 +35,7 @@ print(laptop)
 // Test property access
 print("\nTesting property access:")
 print("alice.name = " + alice.name)
-print("alice.age = " + to_string(alice.age))
+print("alice.age = " + toString(alice.age))
 print("bob.email = " + bob.email)
 print("laptop.title = " + laptop.title)
 

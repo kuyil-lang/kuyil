@@ -2,13 +2,13 @@
 @loadlib("./libs/libkylmath.so");
 
 interface math {
-  number abs(x: number)
-  number floor(x: number)
-  number ceil(x: number)
-  number round(x: number)
-  number sqrt(x: number)
-  number pow(x: number, y: number)
-  number sin(x: number)
-  number cos(x: number)
-  number tan(x: number)
+  float64 abs(x: float64)
+  float64 floor(x: float64)
+  float64 ceil(x: float64)
+  float64 round(x: float64)
+  float64 sqrt(x: float64)
+  float64 pow(x: float64, y: float64)
+  float64 sin(x: float64)
+  float64 cos(x: float64)
+  float64 tan(x: float64)
 }

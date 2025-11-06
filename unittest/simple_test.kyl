@@ -54,13 +54,13 @@ function test_string_operations() {
         print("FAIL: String concatenation")
     }
     
-    if (str_upper("hello") == "HELLO") {
+    if (upper("hello") == "HELLO") {
         print("PASS: String uppercase")
     } else {
         print("FAIL: String uppercase")
     }
     
-    if (str_lower("HELLO") == "hello") {
+    if (lower("HELLO") == "hello") {
         print("PASS: String lowercase")
     } else {
         print("FAIL: String lowercase")
@@ -70,19 +70,19 @@ function test_string_operations() {
 function test_math_functions() {
     print("Testing math functions...")
     
-    if (math_abs(-5) == 5) {
+    if (abs(-5) == 5) {
         print("PASS: Absolute value")
     } else {
         print("FAIL: Absolute value")
     }
     
-    if (math_sqrt(16) == 4) {
+    if (sqrt(16) == 4) {
         print("PASS: Square root")
     } else {
         print("FAIL: Square root")
     }
     
-    if (math_pow(2, 3) == 8) {
+    if (pow(2, 3) == 8) {
         print("PASS: Power function")
     } else {
         print("FAIL: Power function")

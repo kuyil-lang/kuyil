@@ -10,6 +10,6 @@ interface datetime {
 // Date helpers
 interface date {
   string now()
-  number unix()
+  int64 unix()
   string iso(date: string)
 }

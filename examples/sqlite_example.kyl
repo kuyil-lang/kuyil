@@ -13,7 +13,7 @@ let dbPath = "example.db"
 let openFlags = 6
 
 print("Opening database:", dbPath)
-let handle = db.open_database(dbPath, openFlags)
+let handle = db.openDatabase(dbPath, openFlags)
 
 if (handle < 0) {
     print("Error: Failed to open database")
@@ -24,7 +24,7 @@ if (handle < 0) {
     // Create table
     print("Creating users table...")
     let createTableSQL = "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, age INTEGER)"
-    let result = db.execute_sql(handle, createTableSQL)
+    let result = db.executeSql(handle, createTableSQL)
     print("Create table result:", result)
     print("")
     
@@ -34,42 +34,42 @@ if (handle < 0) {
     let insert2 = "INSERT INTO users (name, email, age) VALUES ('Bob Smith', 'bob@example.com', 25)"
     let insert3 = "INSERT INTO users (name, email, age) VALUES ('Carol White', 'carol@example.com', 35)"
     
-    db.execute_sql(handle, insert1)
-    db.execute_sql(handle, insert2)
-    db.execute_sql(handle, insert3)
+    db.executeSql(handle, insert1)
+    db.executeSql(handle, insert2)
+    db.executeSql(handle, insert3)
     print("Data inserted successfully")
     print("")
     
     // Query data
     print("Querying all users...")
     let querySQL = "SELECT * FROM users"
-    let queryResult = db.execute_query(handle, querySQL)
+    let queryResult = db.executeQuery(handle, querySQL)
     print("Query executed, result:", queryResult)
     print("")
     
     // Update data
     print("Updating user age...")
     let updateSQL = "UPDATE users SET age = 31 WHERE name = 'Alice Johnson'"
-    db.execute_sql(handle, updateSQL)
+    db.executeSql(handle, updateSQL)
     print("Update completed")
     print("")
     
     // Delete data
     print("Deleting user...")
     let deleteSQL = "DELETE FROM users WHERE name = 'Bob Smith'"
-    db.execute_sql(handle, deleteSQL)
+    db.executeSql(handle, deleteSQL)
     print("Delete completed")
     print("")
     
     // Query count
     print("Counting remaining users...")
     let countSQL = "SELECT COUNT(*) FROM users"
-    db.execute_query(handle, countSQL)
+    db.executeQuery(handle, countSQL)
     print("")
     
     // Close database
     print("Closing database...")
-    let closeResult = db.close_database(handle)
+    let closeResult = db.closeDatabase(handle)
     print("Database closed, result:", closeResult)
 }
 

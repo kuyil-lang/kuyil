@@ -6,6 +6,43 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <pthread.h>
+
+// Export interface signatures for auto-binding (lowerCamel)
+__attribute__((visibility("default")))
+const char* kyl_interface_signature_text =
+    "http server(port: int32) -> int32\n"
+    "http get(path: string, handler: string) -> bool\n"
+    "http post(path: string, handler: string) -> bool\n"
+    "http put(path: string, handler: string) -> bool\n"
+    "http delete(path: string, handler: string) -> bool\n"
+    "http listen(port: int32) -> bool\n"
+    "http startServer(port: int32) -> bool\n"
+    "http registerRoute(method: string, path: string, handler: string) -> bool\n"
+    "http clientGet(url: string) -> string\n"
+    "http clientPost(url: string, body: string) -> string\n"
+    "http cleanup() -> bool\n"
+    "http static(root: string) -> bool\n"
+    "http staticAdd(route: string, dir: string) -> bool\n"
+    "http staticBypass(path: string) -> bool\n"
+    "http staticBypassClear() -> bool\n"
+    "response setStatus(response: int32, status: int32) -> bool\n"
+    "response setBody(response: int32, body: string) -> bool\n"
+    "response setJson(response: int32, json: string) -> bool\n"
+    "response addHeader(response: int32, name: string, value: string) -> bool\n"
+    "request getMethod(request: int32) -> string\n"
+    "request getPath(request: int32) -> string\n"
+    "request getBody(request: int32) -> string\n"
+    "request getParam(request: int32, name: string) -> string\n"
+    "request getHeader(request: int32, name: string) -> string\n"
+    "request parseMultipart(request: int32) -> bool\n"
+    "request getMultipartField(request: int32, name: string) -> string\n"
+    "request parseMultipartFields(request: int32) -> object\n"
+    "request parseMultipartFile(request: int32, fieldname: string) -> object\n"
+    "request saveMultipartFile(request: int32, fieldname: string, destpath: string) -> bool\n"
+    "request getJsonString(request: int32, path: string) -> string\n"
+    "request getJsonNumber(request: int32, path: string) -> float64\n"
+    "request getJsonBool(request: int32, path: string) -> bool\n";
 
 // Helper: strnstr implementation for portability (not in glibc)
 static const char* strnstr(const char* haystack, const char* needle, size_t len) {
@@ -459,7 +496,8 @@ Value kyl_http_static(int arg_count, Value* args) {
 
     if (arg_count == 1 && args[0].type == VALUE_STRING) {
         const char* root_path = args[0].as.string;
-        http_server_set_static_root(g_http_server, root_path);
+        // When only root path is provided, mount at "/" (root)
+        http_server_set_static_mount(g_http_server, "/", root_path);
         printf("HTTP static root set to: %s\n", root_path);
         result.type = VALUE_BOOL; result.as.boolean = true; return result;
     }
@@ -548,6 +586,49 @@ void http_set_kuyil_caller(void* fn_ptr) {
     fprintf(stderr, "[HTTP] http_set_kuyil_caller installed: %p\n", fn_ptr);
 }
 
+// Background listener thread for non-blocking server start
+typedef struct {
+    HttpServer* server;
+} ListenThreadArgs;
+
+static void* http_listen_thread_fn(void* arg) {
+    ListenThreadArgs* a = (ListenThreadArgs*)arg;
+    if (a && a->server) {
+        http_server_listen(a->server);
+    }
+    free(a);
+    return NULL;
+}
+
+// Start HTTP server in background thread: http_start_server(port)
+Value kyl_http_start_server(int arg_count, Value* args) {
+    Value result = {VALUE_BOOL};
+    result.as.boolean = false;
+    if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
+        return result;
+    }
+    int port = (int)args[0].as.number;
+    if (!g_http_server) {
+        http_init();
+        g_http_server = http_server_create(port);
+    }
+    // Spawn listener thread if not already running
+    if (g_http_server && !http_server_is_running(g_http_server)) {
+        ListenThreadArgs* a = (ListenThreadArgs*)malloc(sizeof(ListenThreadArgs));
+        if (!a) return result;
+        a->server = g_http_server;
+        pthread_t t;
+        int rc = pthread_create(&t, NULL, http_listen_thread_fn, a);
+        if (rc == 0) {
+            pthread_detach(t);
+            result.as.boolean = true;
+        } else {
+            free(a);
+        }
+    }
+    return result;
+}
+
 // C callback that bridges to Kuyil function
 static void route_handler_bridge(HttpRequest* req, HttpResponseBuilder* res, void* user_data) {
     if (!user_data) return;
@@ -595,10 +676,10 @@ static void route_handler_bridge(HttpRequest* req, HttpResponseBuilder* res, voi
 }
 
 // Register a route with a Kuyil callback function
-// Usage: http_register_route(server, "GET", "/api/users/:id", handler_function)
+// Usage: registerRoute("GET", "/api/users/:id", "handler_function")
 Value kyl_http_register_route(int arg_count, Value* args) {
-    if (arg_count != 4) {
-        printf("http_register_route requires 4 arguments: server, method, path, callback\n");
+    if (arg_count != 3) {
+        printf("registerRoute requires 3 arguments: method, path, callback\n");
         Value result = {VALUE_NIL};
         return result;
     }
@@ -609,23 +690,22 @@ Value kyl_http_register_route(int arg_count, Value* args) {
         return result;
     }
     
-    // args[0] = server (number/port)
-    // args[1] = method (string: "GET", "POST", etc.)
-    // args[2] = path (string: "/api/users/:id")
-    // args[3] = callback function
+    // args[0] = method (string: "GET", "POST", etc.)
+    // args[1] = path (string: "/api/users/:id")
+    // args[2] = callback function name
     
-    if (args[1].type != VALUE_STRING || args[2].type != VALUE_STRING || args[3].type != VALUE_STRING) {
+    if (args[0].type != VALUE_STRING || args[1].type != VALUE_STRING || args[2].type != VALUE_STRING) {
         printf("Method, path, and handler must be strings\n");
         Value result = {VALUE_NIL};
         return result;
     }
     
-    const char* method = args[1].as.string;
-    const char* path = args[2].as.string;
+    const char* method = args[0].as.string;
+    const char* path = args[1].as.string;
     
     // Create callback info structure
     KuyilRouteCallback* callback_info = malloc(sizeof(KuyilRouteCallback));
-    callback_info->handler_name = strdup(args[3].as.string);
+    callback_info->handler_name = strdup(args[2].as.string);
     callback_info->vm = NULL;
     
     // Register the route

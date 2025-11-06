@@ -11,7 +11,7 @@ interface str {
   string lower(input: string)
 }
 
-print("len=", str_length("hello"))
-print("sub=", str_substring("kuyil", 1, 3))
+print("len=", length("hello"))
+print("sub=", substring("kuyil", 1, 3))
 // After interface binding, you can call using just the method name
 print("sub2=", substring("kuyil", 1, 3))

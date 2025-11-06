@@ -1,5 +1,7 @@
 // Math Operations Example - Simplified and Robust
 // Demonstrates mathematical functions via modular library system
+import("../interfaces/interface_math.kyl")
+import("../interfaces/interface_str.kyl")
 
 print("=== Basic Math Operations Demo ===")
 
@@ -9,20 +11,20 @@ let negative_num = -15.3
 let zero_num = 0.0
 
 print("Test numbers:")
-print("  Positive: " + to_string(positive_num))
-print("  Negative: " + to_string(negative_num))
-print("  Zero: " + to_string(zero_num))
+print("  Positive: " + toString(positive_num))
+print("  Negative: " + toString(negative_num))
+print("  Zero: " + toString(zero_num))
 
 // Absolute value operations
 print("")
 print("=== Absolute Value ===")
-let abs1 = math_abs(positive_num)
-let abs2 = math_abs(negative_num)
-let abs3 = math_abs(zero_num)
+let abs1 = abs(positive_num)
+let abs2 = abs(negative_num)
+let abs3 = abs(zero_num)
 
-print("abs(42.7) = " + to_string(abs1))
-print("abs(-15.3) = " + to_string(abs2))
-print("abs(0.0) = " + to_string(abs3))
+print("abs(42.7) = " + toString(abs1))
+print("abs(-15.3) = " + toString(abs2))
+print("abs(0.0) = " + toString(abs3))
 
 // Floor operations
 print("")
@@ -31,62 +33,62 @@ let val1 = 3.14
 let val2 = -2.71
 let val3 = 5.99
 
-let floor1 = math_floor(val1)
-let floor2 = math_floor(val2)
-let floor3 = math_floor(val3)
+let floor1 = floor(val1)
+let floor2 = floor(val2)
+let floor3 = floor(val3)
 
-print("floor(3.14) = " + to_string(floor1))
-print("floor(-2.71) = " + to_string(floor2))
-print("floor(5.99) = " + to_string(floor3))
+print("floor(3.14) = " + toString(floor1))
+print("floor(-2.71) = " + toString(floor2))
+print("floor(5.99) = " + toString(floor3))
 
 // Ceiling operations
 print("")
 print("=== Ceiling Function ===")
-let ceil1 = math_ceil(val1)
-let ceil2 = math_ceil(val2)
-let ceil3 = math_ceil(val3)
+let ceil1 = ceil(val1)
+let ceil2 = ceil(val2)
+let ceil3 = ceil(val3)
 
-print("ceil(3.14) = " + to_string(ceil1))
-print("ceil(-2.71) = " + to_string(ceil2))
-print("ceil(5.99) = " + to_string(ceil3))
+print("ceil(3.14) = " + toString(ceil1))
+print("ceil(-2.71) = " + toString(ceil2))
+print("ceil(5.99) = " + toString(ceil3))
 
 // Rounding operations
 print("")
 print("=== Rounding Function ===")
-let round1 = math_round(val1)
-let round2 = math_round(val2)
-let round3 = math_round(val3)
+let round1 = round(val1)
+let round2 = round(val2)
+let round3 = round(val3)
 
-print("round(3.14) = " + to_string(round1))
-print("round(-2.71) = " + to_string(round2))
-print("round(5.99) = " + to_string(round3))
+print("round(3.14) = " + toString(round1))
+print("round(-2.71) = " + toString(round2))
+print("round(5.99) = " + toString(round3))
 
 // Square root
 print("")
 print("=== Square Root ===")
 let sqrt_val = 16.0
-let sqrt_result = math_sqrt(sqrt_val)
-print("sqrt(16.0) = " + to_string(sqrt_result))
+let sqrt_result = sqrt(sqrt_val)
+print("sqrt(16.0) = " + toString(sqrt_result))
 
 // Power function
 print("")
 print("=== Power Function ===")
 let base = 2.0
 let exponent = 3.0
-let power_result = math_pow(base, exponent)
-print("pow(2.0, 3.0) = " + to_string(power_result))
+let power_result = pow(base, exponent)
+print("pow(2.0, 3.0) = " + toString(power_result))
 
 // Trigonometric functions
 print("")
 print("=== Trigonometric Functions ===")
 let angle = 1.0
-let sin_result = math_sin(angle)
-let cos_result = math_cos(angle)
-let tan_result = math_tan(angle)
+let sin_result = sin(angle)
+let cos_result = cos(angle)
+let tan_result = tan(angle)
 
-print("sin(1.0) = " + to_string(sin_result))
-print("cos(1.0) = " + to_string(cos_result))
-print("tan(1.0) = " + to_string(tan_result))
+print("sin(1.0) = " + toString(sin_result))
+print("cos(1.0) = " + toString(cos_result))
+print("tan(1.0) = " + toString(tan_result))
 
 print("")
 print("Math operations demo completed!")

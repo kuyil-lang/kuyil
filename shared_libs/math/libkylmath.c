@@ -2,6 +2,19 @@
 #include <math.h>
 #include <stddef.h>
 
+// Export interface signatures for auto-binding (lowerCamel)
+__attribute__((visibility("default")))
+const char* kyl_interface_signature_text =
+    "math abs(x: float64) -> float64\n"
+    "math floor(x: float64) -> float64\n"
+    "math ceil(x: float64) -> float64\n"
+    "math round(x: float64) -> float64\n"
+    "math sqrt(x: float64) -> float64\n"
+    "math pow(x: float64, y: float64) -> float64\n"
+    "math sin(x: float64) -> float64\n"
+    "math cos(x: float64) -> float64\n"
+    "math tan(x: float64) -> float64\n";
+
 // Math library functions
 Value kyl_math_abs(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {

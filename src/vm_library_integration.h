@@ -34,6 +34,9 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args);
 bool is_dynamic_function(const char* name);
 Value create_dynamic_function_value(const char* name);
 
+// Dynamic function registration (for library_loader)
+void vm_register_dynamic_function(const char* name, void* func_ptr, FunctionSignature signature);
+
 // Test/mocking support for dynamic functions (used in --test mode)
 void mock_set_return_value(const char* name, Value v);
 void mock_clear(const char* name);
@@ -61,6 +64,9 @@ Value vm_clear_libraries(int arg_count, Value* args);
 Value vm_import_module(int arg_count, Value* args);
 Value vm_import_as(int arg_count, Value* args);
 Value vm_export_function(int arg_count, Value* args);
+
+// Interface method binding (for dynamic discovery and signature-based loading)
+Value vm_bind_interface_method(int arg_count, Value* args);
 
 // Internal functions (implemented in .c file)
 // These are now implemented and don't need separate declarations

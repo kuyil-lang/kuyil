@@ -1213,6 +1213,10 @@ void http_server_stop(HttpServer* server) {
     }
 }
 
+bool http_server_is_running(HttpServer* server) {
+    return server ? server->running : false;
+}
+
 void http_server_free(HttpServer* server) {
     if (server) {
         http_server_stop(server);

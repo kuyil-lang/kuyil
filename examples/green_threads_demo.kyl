@@ -1,4 +1,5 @@
 // Green Threads Concept Demo for Kuyil
+import("../interfaces/interface_str.kyl")
 // Demonstrates concurrent programming concepts using available functions
 
 print("=== Kuyil Green Threads Concept Demo ===")
@@ -22,15 +23,15 @@ print("")
 
 print("[TASK-1] Starting CPU computation task")
 let cpu_result = 100 + 50
-print("[TASK-1] Computation completed: " + to_string(cpu_result))
+print("[TASK-1] Computation completed: " + toString(cpu_result))
 
 print("[TASK-2] Starting I/O simulation task")  
 let io_result = 200 + 75
-print("[TASK-2] I/O operation completed: " + to_string(io_result))
+print("[TASK-2] I/O operation completed: " + toString(io_result))
 
 print("[TASK-3] Starting data processing task")
 let data_result = 300 + 25
-print("[TASK-3] Data processing completed: " + to_string(data_result))
+print("[TASK-3] Data processing completed: " + toString(data_result))
 
 print("")
 
@@ -39,10 +40,10 @@ print("3. Task State Management:")
 print("")
 
 let task_id = 1001
-print("[STATE] Task " + to_string(task_id) + " created")
-print("[STATE] Task " + to_string(task_id) + " started")
-print("[STATE] Task " + to_string(task_id) + " running")
-print("[STATE] Task " + to_string(task_id) + " completed")
+print("[STATE] Task " + toString(task_id) + " created")
+print("[STATE] Task " + toString(task_id) + " started")
+print("[STATE] Task " + toString(task_id) + " running")
+print("[STATE] Task " + toString(task_id) + " completed")
 
 print("")
 
@@ -51,9 +52,9 @@ print("4. Task Error Handling:")
 print("")
 
 let error_task = 2001  
-print("[ERROR] Task " + to_string(error_task) + " encountered error")
+print("[ERROR] Task " + toString(error_task) + " encountered error")
 print("[RETRY] Implementing retry mechanism")
-print("[SUCCESS] Task " + to_string(error_task) + " completed on retry")
+print("[SUCCESS] Task " + toString(error_task) + " completed on retry")
 
 print("")
 
@@ -65,9 +66,9 @@ let active_tasks = 3
 let max_tasks = 10
 let available_slots = max_tasks - active_tasks
 
-print("[RESOURCES] Active tasks: " + to_string(active_tasks))
-print("[RESOURCES] Maximum tasks: " + to_string(max_tasks))  
-print("[RESOURCES] Available slots: " + to_string(available_slots))
+print("[RESOURCES] Active tasks: " + toString(active_tasks))
+print("[RESOURCES] Maximum tasks: " + toString(max_tasks))  
+print("[RESOURCES] Available slots: " + toString(available_slots))
 
 print("")
 

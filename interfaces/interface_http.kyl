@@ -3,44 +3,45 @@
 
 // HTTP Server functions
 interface http {
-  number server()
+  int32 server(port: int32)
   bool get(path: string, handler: string)
   bool post(path: string, handler: string)
   bool put(path: string, handler: string)
   bool delete(path: string, handler: string)
-  bool listen(port: number)
-  bool register_route(method: string, path: string, handler: string)
-  string client_get(url: string)
-  string client_post(url: string, body: string)
+  bool listen(port: int32)
+  bool startServer(port: int32)
+  bool registerRoute(method: string, path: string, handler: string)
+  string clientGet(url: string)
+  string clientPost(url: string, body: string)
   bool cleanup()
   bool static(root: string)
-  bool static_add(route: string, dir: string)
-  bool static_bypass(path: string)
-  bool static_bypass_clear()
+  bool staticAdd(route: string, dir: string)
+  bool staticBypass(path: string)
+  bool staticBypassClear()
 }
 
 // Response builder functions
 interface response {
-  bool set_status(response: number, status: number)
-  bool set_body(response: number, body: string)
-  bool set_json(response: number, json: string)
-  bool add_header(response: number, name: string, value: string)
+  bool setStatus(response: int32, status: int32)
+  bool setBody(response: int32, body: string)
+  bool setJson(response: int32, json: string)
+  bool addHeader(response: int32, name: string, value: string)
 }
 
 // Request accessor functions
 interface request {
-  string get_method(request: number)
-  string get_path(request: number)
-  string get_body(request: number)
-  string get_param(request: number, name: string)
-  string get_header(request: number, name: string)
-  bool parse_multipart(request: number)
-  string get_multipart_field(request: number, name: string)
-  array parse_multipart_fields(request: number)
-  object parse_multipart_file(request: number, fieldname: string)
-  bool save_multipart_file(request: number, fieldname: string, destpath: string)
-  string get_json_string(request: number, path: string)
-  number get_json_number(request: number, path: string)
-  bool get_json_bool(request: number, path: string)
+  string getMethod(request: int32)
+  string getPath(request: int32)
+  string getBody(request: int32)
+  string getParam(request: int32, name: string)
+  string getHeader(request: int32, name: string)
+  bool parseMultipart(request: int32)
+  string getMultipartField(request: int32, name: string)
+  array parseMultipartFields(request: int32)
+  object parseMultipartFile(request: int32, fieldname: string)
+  bool saveMultipartFile(request: int32, fieldname: string, destpath: string)
+  string getJsonString(request: int32, path: string)
+  float64 getJsonNumber(request: int32, path: string)
+  bool getJsonBool(request: int32, path: string)
 }
 

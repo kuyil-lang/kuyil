@@ -2,9 +2,21 @@
 @loadlib("./libs/libkylsqlite.so");
 
 interface sqlite {
-  number open_database(path: string, flags: number)
-  number close_database(handle: number)
-  number execute_sql(handle: number, sql: string)
-  // Simple query helpers
-  number execute_query(handle: number, sql: string)
+  int32 openDatabase(path: string, flags: int32)
+  int32 closeDatabase(handle: int32)
+  int32 executeSql(handle: int32, sql: string)
+  int32 executeQuery(handle: int32, sql: string)
+  int32 freeResult(handle: int32)
+  string getLastError(handle: int32)
+}
+
+interface result {
+  int32 firstRow(handle: int32)
+  int32 nextRow(handle: int32)
+}
+
+interface row {
+  int32   getInt(rowHandle: int32, colIndex: int32)
+  string  getText(rowHandle: int32, colIndex: int32)
+  float64 getReal(rowHandle: int32, colIndex: int32)
 }

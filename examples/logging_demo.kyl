@@ -1,4 +1,5 @@
 // Simple Logging Demo for Kuyil
+import("../interfaces/interface_str.kyl")
 // Demonstrates basic structured logging patterns
 
 print("=== Kuyil Logging System Demo ===")
@@ -21,13 +22,13 @@ print("2. Logging with Variables:")
 print("")
 
 let user_id = 12345
-print("[INFO] Processing request for user ID: " + to_string(user_id))
+print("[INFO] Processing request for user ID: " + toString(user_id))
 
 let status_code = 200
-print("[INFO] Request completed with status: " + to_string(status_code))
+print("[INFO] Request completed with status: " + toString(status_code))
 
 let error_count = 0
-print("[DEBUG] Current error count: " + to_string(error_count))
+print("[DEBUG] Current error count: " + toString(error_count))
 
 print("")
 
@@ -53,7 +54,7 @@ print("4. Conditional Logging:")
 print("")
 
 let request_count = 5
-print("[DEBUG] Processing " + to_string(request_count) + " requests")
+print("[DEBUG] Processing " + toString(request_count) + " requests")
 
 if (request_count > 3) {
     print("[WARNING] High request volume detected")
@@ -68,13 +69,13 @@ print("5. Loop-based Logging:")
 print("")
 
 for (let i = 1; i <= 3; i = i + 1) {
-    print("[DEBUG] Processing item " + to_string(i))
+    print("[DEBUG] Processing item " + toString(i))
     
     if (i == 2) {
-        print("[WARNING] Special handling for item " + to_string(i))
+        print("[WARNING] Special handling for item " + toString(i))
     }
     
-    print("[INFO] Item " + to_string(i) + " processed successfully")
+    print("[INFO] Item " + toString(i) + " processed successfully")
 }
 
 print("")
@@ -85,22 +86,22 @@ print("")
 
 let a = 10
 let b = 2
-print("[DEBUG] Attempting calculation: " + to_string(a) + " / " + to_string(b))
+print("[DEBUG] Attempting calculation: " + toString(a) + " / " + toString(b))
 
 if (b != 0) {
     let result = a / b
-    print("[INFO] Calculation successful: result = " + to_string(result))
+    print("[INFO] Calculation successful: result = " + toString(result))
 } else {
     print("[ERROR] Division by zero prevented")
 }
 
 let c = 15
 let d = 0
-print("[DEBUG] Attempting calculation: " + to_string(c) + " / " + to_string(d))
+print("[DEBUG] Attempting calculation: " + toString(c) + " / " + toString(d))
 
 if (d != 0) {
     let result2 = c / d
-    print("[INFO] Calculation successful: result = " + to_string(result2))
+    print("[INFO] Calculation successful: result = " + toString(result2))
 } else {
     print("[ERROR] Division by zero prevented")
 }
@@ -128,7 +129,7 @@ print("=== Logging Demo Complete ===")
 print("")
 print("✅ Logging Features Demonstrated:")
 print("✓ Basic log levels (INFO, DEBUG, WARNING, ERROR)")
-print("✓ Variable interpolation with to_string()")
+print("✓ Variable interpolation with toString()")
 print("✓ Contextual logging with component tags")
 print("✓ Conditional logging based on application state")  
 print("✓ Loop-based logging for batch operations")
@@ -137,7 +138,7 @@ print("✓ Application lifecycle logging")
 print("")
 print("💡 Implementation Notes:")
 print("   - Uses print() with formatted strings")
-print("   - Leverages to_string() for variable conversion")
+print("   - Leverages toString() for variable conversion")
 print("   - Avoids complex operations to prevent segfaults")
 print("   - Demonstrates practical logging patterns")
 print("   - Safe and stable implementation")

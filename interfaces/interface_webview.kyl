@@ -1,9 +1,30 @@
-// Interface for WebView library (subset)
+// Interface for WebView library
 @loadlib("./libs/libkylwebview.so");
 
 interface webview {
-  number init()
-  number create(title: string)
-  number load_url(window: number, url: string)
-  number run(window: number)
+  // Initialization and cleanup
+  bool   init()
+  void   cleanup()
+  
+  // Window creation and management
+  int32  createDefaultSettings()
+  int32  create(title: string, settings: int32)
+  bool   destroy(window: int32)
+  bool   show(window: int32)
+  bool   hide(window: int32)
+  
+  // Content loading
+  bool   loadHtml(window: int32, html: string)
+  bool   loadUrl(window: int32, url: string)
+  
+  // Window control
+  int32  run(window: int32)
+  bool   setTitle(window: int32, title: string)
+  bool   setSize(window: int32, width: int32, height: int32)
+  
+  // JavaScript execution - CRITICAL for Kuyil→JS communication
+  // Execute JavaScript code in the WebView
+  // Example: eval(win, "alert('Hello from Kuyil!');")
+  bool   eval(window: int32, js_code: string)
 }
+

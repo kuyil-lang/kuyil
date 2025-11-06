@@ -7,36 +7,28 @@ print("=== Date and Time Operations Demo ===")
 
 // Current date and time - WORKING
 print("Current Date and Time:")
-let current_date = date_now()
+let current_date = now()
 print("Current date: " + current_date)
 
-let formatted_date = date_current()
+let formatted_date = now()
 print("Formatted date: " + formatted_date)
 
 // Unix timestamp operations - WORKING
 print("")
 print("=== Unix Timestamp Operations ===")
-let unix_time = date_unix()
-print("Unix timestamp: " + to_string(unix_time))
+let unix_time = unix()
+print("Unix timestamp: " + toString(unix_time))
 
-// Convert from unix timestamp - WORKING  
-let from_unix = date_from_unix(1609459200)  // 2021-01-01 00:00:00
-print("From unix (1609459200): " + from_unix)
+// Convert from unix timestamp - not available; show raw timestamp
+print("From unix (1609459200): (conversion not available in API)")
 
 // ISO format - WORKING
 print("")
 print("=== ISO Date Format ===")
-let iso_date = date_iso()
+let iso_date = iso()
 print("ISO format: " + iso_date)
 
-// Datetime functions - Let's test these
-print("")
-print("=== DateTime Functions ===")
-let datetime_str = datetime_now()
-print("DateTime now: " + datetime_str)
-
-let datetime_formatted = datetime_current()
-print("DateTime current: " + datetime_formatted)
+// Datetime convenience functions not present; using now()/iso() instead
 
 print("")
 print("Date operations demo completed!")

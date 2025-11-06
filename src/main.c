@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "vm.h"
+#include "vm_library_integration.h"
 // HTTP functionality now in shared libraries
 #include "logging.h"
 #include "tokens.h"

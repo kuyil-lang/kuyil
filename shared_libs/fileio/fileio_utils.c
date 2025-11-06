@@ -3,6 +3,18 @@
 
 #include "fileio_utils.h"
 
+// Kuyil interface signature metadata
+__attribute__((visibility("default")))
+const char* kyl_interface_signature_text = 
+    "file readText(path: string) -> string\n"
+    "file readCsv(path: string) -> array\n"
+    "file readJson(path: string) -> object\n"
+    "file readYaml(path: string) -> object\n"
+    "file exists(path: string) -> bool\n"
+    "file size(path: string) -> int32\n"
+    "file validate(path: string) -> bool\n"
+    "file writeText(path: string, content: string) -> bool\n";
+
 // Optional YAML support - uncomment if libyaml is available
 // #include <yaml.h>
 #define YAML_SUPPORT 0
@@ -793,6 +805,16 @@ Value kuyil_file_write_text(int arg_count, Value* args) {
     result.as.boolean = ok ? 1 : 0;
     return result;
 }
+
+// LowerCamel aliases for cleaner interface
+Value readText(int arg_count, Value* args) { return kuyil_file_read_text(arg_count, args); }
+Value readCsv(int arg_count, Value* args) { return kuyil_file_read_csv(arg_count, args); }
+Value readJson(int arg_count, Value* args) { return kuyil_file_read_json(arg_count, args); }
+Value readYaml(int arg_count, Value* args) { return kuyil_file_read_yaml(arg_count, args); }
+Value exists(int arg_count, Value* args) { return kuyil_file_exists(arg_count, args); }
+Value size(int arg_count, Value* args) { return kuyil_file_size(arg_count, args); }
+Value validate(int arg_count, Value* args) { return kuyil_file_validate(arg_count, args); }
+Value writeText(int arg_count, Value* args) { return kuyil_file_write_text(arg_count, args); }
 
 // Library entry point for dynamic loading
 __attribute__((constructor))
