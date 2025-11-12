@@ -40,7 +40,9 @@ typedef enum {
     AST_BREAK_STMT,
     AST_CONTINUE_STMT,
     AST_EXPRESSION_STMT,
-    AST_ASSIGNMENT
+    AST_ASSIGNMENT,
+    AST_AVATAR_STMT,         // avatar functionName(args) or avatar func() {...}
+    AST_AWAIT_EXPR           // await avatar_handle
 } ASTNodeType;
 
 typedef enum {
@@ -112,6 +114,7 @@ typedef struct {
     char** params;
     int param_count;
     Block* body;
+    bool is_exported;  // Whether this function should be exported from module
 } FunctionDecl;
 
 typedef struct {
@@ -222,6 +225,15 @@ typedef struct {
     ASTNode* default_body;   // Default case body (can be NULL)
 } SwitchStmt;
 
+typedef struct {
+    ASTNode* call_expr;      // The function call or anonymous function to run in avatar
+    bool is_anonymous;       // true if avatar func() {...}, false if avatar functionName(args)
+} AvatarStmt;
+
+typedef struct {
+    ASTNode* avatar_handle;  // Expression that evaluates to avatar handle (or nil for all)
+} AwaitExpr;
+
 struct ASTNode {
     ASTNodeType type;
     int line;
@@ -251,6 +263,8 @@ struct ASTNode {
         ObjectLiteral object_literal;
         StructLiteral struct_literal;
         InterpolatedString interpolated_string;
+        AvatarStmt avatar_stmt;
+        AwaitExpr await_expr;
         ASTNode* expression; // For expression statements
     } as;
 };

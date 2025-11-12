@@ -49,6 +49,8 @@ typedef enum {
     OP_CALL,           // Call function
     OP_RETURN,         // Return from function
     OP_CLOSURE,        // Create closure/anonymous function
+    OP_AVATAR,         // Launch avatar (green thread)
+    OP_AWAIT,          // Wait for avatar to complete
     
     // Control flow
     OP_JUMP,           // Unconditional jump
@@ -128,6 +130,10 @@ int chunk_add_constant(Chunk* chunk, Value value);
 void compiler_init(Compiler* compiler, const char* name);
 Function* compiler_compile(ASTNode* ast);
 void compiler_free(Compiler* compiler);
+
+// Export tracking functions
+void compiler_clear_exports(void);
+const char** compiler_get_exports(int* count);
 
 // Disassembly for debugging
 void disassemble_chunk(Chunk* chunk, const char* name);

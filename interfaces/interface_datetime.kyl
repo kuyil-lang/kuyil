@@ -1,15 +1,24 @@
 // Interface for Date/Time library
-@loadlib("./libs/libkyldatetime.so");
+// Load library at runtime
+loadlib("libs/libkyldatetime.so")
 
 // Datetime-specific helpers
 interface datetime {
-  string now()
-  string current()
+  @alias("now")
+  string datetime_now()
+  
+  @alias("current")
+  string datetime_current()
 }
 
 // Date helpers
 interface date {
-  string now()
-  int64 unix()
-  string iso(date: string)
+  @alias("now")
+  string date_now()
+  
+  @alias("unix")
+  int64 date_unix()
+  
+  @alias("iso")
+  string date_iso(date: string)
 }

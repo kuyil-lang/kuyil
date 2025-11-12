@@ -1,18 +1,41 @@
 // Interface for String library
-@loadlib("./libs/libkylstr.so");
+// Load library at runtime
+loadlib("libs/libkylstr.so")
 
 interface str {
-  int32 length(input: string)
-  string substring(input: string, start: int32, end: int32)
-  string upper(input: string)
-  string lower(input: string)
-  string trim(input: string)
-  bool startsWith(input: string, prefix: string)
-  bool endsWith(input: string, suffix: string)
-  bool contains(haystack: string, needle: string)
-  string replace(input: string, from: string, to: string)
-  string split(input: string, delimiter: string)
-  float64 toNumber(input: string)
-  string toString(value: number)
+  @alias("length")
+  int32 str_length(input: string)
+  
+  @alias("substring")
+  string str_substring(input: string, start: int32, end: int32)
+  
+  @alias("upper")
+  string str_upper(input: string)
+  
+  @alias("lower")
+  string str_lower(input: string)
+  
+  @alias("trim")
+  string str_trim(input: string)
+  
+  @alias("startsWith")
+  bool str_startsWith(input: string, prefix: string)
+  
+  @alias("endsWith")
+  bool str_endsWith(input: string, suffix: string)
+  
+  @alias("contains")
+  bool str_contains(haystack: string, needle: string)
+  
+  @alias("replace")
+  string str_replace(input: string, from: string, to: string)
+  
+  @alias("split")
+  string str_split(input: string, delimiter: string)
+  
+  @alias("toNumber")
+  float64 str_toNumber(input: string)
+  
+  @alias("toString")
+  string str_toString(value: number)
 }
-

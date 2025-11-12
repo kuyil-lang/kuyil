@@ -34,6 +34,10 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args);
 bool is_dynamic_function(const char* name);
 Value create_dynamic_function_value(const char* name);
 
+// Shared function lookup logic for both main VM and avatars
+// Returns VALUE_NIL if not found, otherwise returns the function as VALUE_STRING or VALUE_FUNCTION
+Value vm_lookup_function_shared(const char* name, VM* main_vm);
+
 // Dynamic function registration (for library_loader)
 void vm_register_dynamic_function(const char* name, void* func_ptr, FunctionSignature signature);
 

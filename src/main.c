@@ -110,6 +110,25 @@ static char* read_file(const char* path) {
     buffer[bytes_read] = '\0';
     
     fclose(file);
+    
+    // Skip shebang line if present (#!/bin/kuyil or similar)
+    char* source_start = buffer;
+    if (bytes_read >= 2 && buffer[0] == '#' && buffer[1] == '!') {
+        // Find the end of the first line
+        while (*source_start != '\0' && *source_start != '\n') {
+            source_start++;
+        }
+        if (*source_start == '\n') {
+            source_start++; // Skip the newline
+        }
+    }
+    
+    // If we skipped the shebang, copy the rest to the beginning
+    if (source_start != buffer) {
+        size_t remaining = strlen(source_start);
+        memmove(buffer, source_start, remaining + 1);
+    }
+    
     return buffer;
 }
 
@@ -852,6 +871,7 @@ static bool check_semantic_errors(ASTNode* node) {
                     int max_args;
                 } builtins[] = {
                     {"print", 1, 1},
+                    {"typeof", 1, 1},
                     {"log_info", 1, 1},
                     {"log_debug", 1, 1}, 
                     {"log_warning", 1, 1},

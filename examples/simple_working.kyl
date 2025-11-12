@@ -49,7 +49,7 @@ for (let i = 1; i <= 5; i = i + 1) {
 print("Loop completed, sum calculated")
 
 print("\n6. Function Definitions:")
-function greet(name) {
+fn greet(name) {
     print("Hello from function!")
     return true
 }

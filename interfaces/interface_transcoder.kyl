@@ -1,32 +1,57 @@
 // Interface for Compression/Transcoder library
-@loadlib("./libs/libkyltranscoder.so");
+// Load library at runtime
+loadlib("libs/libkyltranscoder.so")
 
 // Compression functions
 interface compress {
-  object compressGzip(input: string)
-  object compressDeflate(input: string)
-  string compressZip(input: string)
+  @alias("compressGzip")
+  object compress_compressGzip(input: string)
+  
+  @alias("compressDeflate")
+  object compress_compressDeflate(input: string)
+  
+  @alias("compressZip")
+  string compress_compressZip(input: string)
 }
 
 // Decompression functions
 interface decompress {
-  string decompressGzip(input: object)
-  string decompressDeflate(input: object)
-  string decompressZip(input: string)
+  @alias("decompressGzip")
+  string decompress_decompressGzip(input: object)
+  
+  @alias("decompressDeflate")
+  string decompress_decompressDeflate(input: object)
+  
+  @alias("decompressZip")
+  string decompress_decompressZip(input: string)
 }
 
 // Transcoding utilities
 interface transcode {
-  string urlEncode(input: string)
-  string urlDecode(input: string)
-  string htmlEncode(input: string)
-  string hexEncode(input: string)
-  string hexDecode(input: string)
-  int32  crc32(input: string)
-  float64 compressionRatio(original: int32, compressed: int32)
+  @alias("urlEncode")
+  string transcode_urlEncode(input: string)
+  
+  @alias("urlDecode")
+  string transcode_urlDecode(input: string)
+  
+  @alias("htmlEncode")
+  string transcode_htmlEncode(input: string)
+  
+  @alias("hexEncode")
+  string transcode_hexEncode(input: string)
+  
+  @alias("hexDecode")
+  string transcode_hexDecode(input: string)
+  
+  @alias("crc32")
+  int32 transcode_crc32(input: string)
+  
+  @alias("compressionRatio")
+  float64 transcode_compressionRatio(original: int32, compressed: int32)
 }
 
 // Unzip helper
 interface unzip {
-  bool toDirectory(zipPath: string)
+  @alias("toDirectory")
+  bool unzip_toDirectory(zipPath: string)
 }

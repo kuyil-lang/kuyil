@@ -1,9 +1,18 @@
 // WebView Bridge Demo - Direct JS Communication
 // Demonstrates executing JavaScript from Kuyil using webview_eval()
 
+import("../../interfaces/interface_system.kyl")
+
+// NOTE: Import order doesn't matter when using full function names!
+// Use webview_bind() and webview_eval() instead of short aliases
 import("../../interfaces/interface_webview.kyl")
 
+// Global variable to hold window handle
+let global_window = 0
+
 print("=== WebView Direct Bridge Demo ===")
+
+// NOTE: Removed function test() to avoid potential naming conflict with bind()
 
 // Initialize WebView
 init()
@@ -12,9 +21,24 @@ init()
 let settings = createDefaultSettings()
 let win = create("Kuyil ↔ JavaScript Direct Bridge", settings)
 
+print("Testing bind at top level...")
+print("Window handle:")
+print(win)
+// IMPORTANT: webview must be imported BEFORE system due to function alias collision
+// When system is imported first, bind() doesn't resolve correctly
+// Commented out - bind now requires 3 arguments including callback function
+// let test_bind_result = bind(win, "testTopLevel")
+print("Bind test at top level skipped (needs callback function)")
+
 if win == nil {
     print("ERROR: Failed to create window")
-} else {
+}
+
+function test(arg) {
+    print("bindtest", arg)
+}
+
+if win != nil {
     print("Window created successfully")
     
     // Create HTML with JavaScript that can receive messages from Kuyil
@@ -146,15 +170,27 @@ if win == nil {
         // Send message to Kuyil (for now, just log it)
         // In a real app, you'd use webview_bind() to call Kuyil functions
         function sendToKuyil() {
+            // Test if window.test was bound by Kuyil
+            if (typeof window.test === 'function') {
+                console.log('[JS] window.test is available! Calling it...');
+                try {
+                    let result = window.test('hello from JS');
+                    console.log('[JS] Result from test():', result);
+                } catch(e) {
+                    console.error('[JS] Error calling test():', e);
+                }
+            } else {
+                console.log('[JS] window.test is NOT available (type:', typeof window.test, ')');
+            }
+            
             const messagesDiv = document.getElementById('messages');
             const messageEl = document.createElement('div');
             messageEl.className = 'message from-js';
-            messageEl.innerHTML = '<strong>From JavaScript:</strong><br>Hello Kuyil! (Time: ' + new Date().toLocaleTimeString() + ')';
+            messageEl.innerHTML = '<strong>From JavaScript:</strong><br>Checked window.test - see console';
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            
-            // TODO: Call Kuyil function here using webview_bind()
-            console.log('Message sent to Kuyil:', new Date().toLocaleTimeString());
+
+            window.test("Asdf")
         }
         
         // Show initial message
@@ -171,27 +207,52 @@ if win == nil {
     print("Showing window...")
     show(win)
     
-    // Send some test messages from Kuyil to JavaScript
+    // Solution: Use step() loop manually instead of avatar + run()
+    // This way we can send messages while keeping UI responsive
+    
+    print("Waiting 2 seconds before sending messages...")
+    // Process some events
+    let i = 0
+    while i < 10 {
+        step(win)
+        i = i + 1
+        sleep(100)
+    }
+    
+    // Try to bind the test function
+    print("Binding test() function to JavaScript...")
+    print("Window handle is:")
+    print(win)
+    print("Calling webview bind()...")
+    let succ = bind(win, "test", test)
+    print("Bind result:")
+    print(succ)
+
+    // Send test messages
     print("Sending test messages...")
     
     // Message 1
     let js1 = `receiveFromKuyil("Hello from Kuyil! 👋");`
     eval(win, js1)
+    print("Message 1 sent")
     
     // Message 2  
     let js2 = `receiveFromKuyil("This message was sent using webview_eval() 🚀");`
     eval(win, js2)
-    
+    print("Message 2 sent")
+       
     // Message 3
     let js3 = `receiveFromKuyil("You can send data from Kuyil to JavaScript directly! 💬");`
     eval(win, js3)
+    print("Message 3 sent")
     
-    print("✅ Messages sent! Check the WebView window.")
-    print("Starting event loop...")
+    print("✅ All messages sent! Running event loop...")
+
+    print("Close the window to exit.")
     
-    // Run the WebView event loop (blocks until window is closed)
+    // Now run the blocking event loop
     run(win)
-    
+      
     print("Window closed")
 }
 

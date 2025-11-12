@@ -32,6 +32,10 @@ typedef enum {
     TOKEN_CASE,
     TOKEN_DEFAULT,
     TOKEN_AS,
+    TOKEN_AVATAR,
+    TOKEN_AWAIT,
+    TOKEN_EXPORT,
+    TOKEN_IMPORT,
 
     // Operators
     TOKEN_PLUS,

@@ -68,6 +68,33 @@ int chunk_add_constant(Chunk* chunk, Value value) {
 static Compiler* current = NULL;
 static int current_line = 0;  // Track current source line for bytecode emission
 
+// Track exported functions during compilation
+static char** g_exported_functions = NULL;
+static int g_exported_function_count = 0;
+static int g_exported_function_capacity = 0;
+
+static void add_exported_function(const char* name) {
+    if (g_exported_function_count >= g_exported_function_capacity) {
+        int old_capacity = g_exported_function_capacity;
+        g_exported_function_capacity = old_capacity < 8 ? 8 : old_capacity * 2;
+        g_exported_functions = realloc(g_exported_functions, 
+                                      sizeof(char*) * g_exported_function_capacity);
+    }
+    g_exported_functions[g_exported_function_count++] = strdup(name);
+}
+
+void compiler_clear_exports() {
+    for (int i = 0; i < g_exported_function_count; i++) {
+        free(g_exported_functions[i]);
+    }
+    g_exported_function_count = 0;
+}
+
+const char** compiler_get_exports(int* count) {
+    *count = g_exported_function_count;
+    return (const char**)g_exported_functions;
+}
+
 static void error_at_node(ASTNode* node, const char* message) {
     fprintf(stderr, "[line %d] Error: %s\n", node->line, message);
     current->had_error = true;
@@ -196,6 +223,8 @@ static void compile_while_stmt(ASTNode* node);
 static void compile_for_stmt(ASTNode* node);
 static void compile_switch_stmt(ASTNode* node);
 static void compile_return_stmt(ASTNode* node);
+static void compile_avatar_stmt(ASTNode* node);
+static void compile_await_expr(ASTNode* node);
 
 static void compile_literal(ASTNode* node) {
     switch (node->as.literal.type) {
@@ -556,6 +585,12 @@ static void compile_expression(ASTNode* node) {
         case AST_MEMBER_ACCESS:
             compile_member_access(node);
             break;
+        case AST_AWAIT_EXPR:
+            compile_await_expr(node);
+            break;
+        case AST_AVATAR_STMT:
+            compile_avatar_stmt(node);
+            break;
         default:
             error_at_node(node, "Unknown expression type.");
     }
@@ -643,6 +678,11 @@ static void compile_function_decl(ASTNode* node) {
         return;
     }
     emit_bytes(OP_LOG_PUSH_CTX, (uint8_t)name_constant);
+    
+    // Track if this function is exported
+    if (node->as.function_decl.is_exported) {
+        add_exported_function(node->as.function_decl.name);
+    }
     
     // Save current compiler state
     Compiler* enclosing = current;
@@ -1273,6 +1313,52 @@ static void compile_return_stmt(ASTNode* node) {
     emit_byte(OP_RETURN);
 }
 
+static void compile_avatar_stmt(ASTNode* node) {
+    // Avatar statement: launches a function in a green thread
+    // Two forms:
+    // 1. avatar functionName(args) - call existing function
+    // 2. avatar func() { ... } - anonymous function
+    
+    if (node->as.avatar_stmt.is_anonymous) {
+        // Compile the anonymous function
+        compile_expression(node->as.avatar_stmt.call_expr);
+        // The function is now on the stack
+        // Push 0 args (the function itself has no call-time args)
+        emit_byte(OP_AVATAR);
+        emit_byte(0); // arg count
+    } else {
+        // It's a call expression - compile it to get function + args on stack
+        ASTNode* call_expr = node->as.avatar_stmt.call_expr;
+        
+        // Push the function
+        compile_expression(call_expr->as.call.function);
+        
+        // Push all arguments
+        for (int i = 0; i < call_expr->as.call.arg_count; i++) {
+            compile_expression(call_expr->as.call.args[i]);
+        }
+        
+        // Emit avatar launch with arg count
+        emit_byte(OP_AVATAR);
+        emit_byte(call_expr->as.call.arg_count);
+    }
+}
+
+static void compile_await_expr(ASTNode* node) {
+    // Await expression: waits for avatar to complete
+    // If avatar_handle is NULL, waits for all avatars
+    
+    if (node->as.await_expr.avatar_handle != NULL) {
+        // Wait for specific avatar
+        compile_expression(node->as.await_expr.avatar_handle);
+        emit_byte(OP_AWAIT);
+    } else {
+        // Wait for all avatars - push nil as marker
+        emit_byte(OP_NIL);
+        emit_byte(OP_AWAIT);
+    }
+}
+
 // Top-level statement dispatcher
 static void compile_statement(ASTNode* node) {
     if (node == NULL) return;
@@ -1310,6 +1396,9 @@ static void compile_statement(ASTNode* node) {
             break;
         case AST_RETURN_STMT:
             compile_return_stmt(node);
+            break;
+        case AST_AVATAR_STMT:
+            compile_avatar_stmt(node);
             break;
         case AST_EXPRESSION_STMT:
             compile_expression(node->as.expression);
@@ -1513,6 +1602,10 @@ int disassemble_instruction(Chunk* chunk, int offset) {
             return jump_instruction("OP_LOOP", -1, chunk, offset);
         case OP_CALL:
             return byte_instruction("OP_CALL", chunk, offset);
+        case OP_AVATAR:
+            return byte_instruction("OP_AVATAR", chunk, offset);
+        case OP_AWAIT:
+            return simple_instruction("OP_AWAIT", offset);
         case OP_RETURN:
             return simple_instruction("OP_RETURN", offset);
         case OP_OBJECT_NEW:

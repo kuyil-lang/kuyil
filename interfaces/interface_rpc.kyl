@@ -1,8 +1,14 @@
 // Interface for RPC library (subset)
-@loadlib("./libs/libkylrpc.so");
+// Load library at runtime
+loadlib("libs/libkylrpc.so")
 
 interface rpc {
-  string getVersion()
-  bool setLogLevel(level: int32)
-  string getLastError()
+  @alias("getVersion")
+  string rpc_getVersion()
+  
+  @alias("setLogLevel")
+  bool rpc_setLogLevel(level: int32)
+  
+  @alias("getLastError")
+  string rpc_getLastError()
 }

@@ -48,6 +48,27 @@ typedef struct {
 static DynamicFunction* g_dynamic_functions = NULL;
 static int g_dynamic_function_count = 0;
 static int g_dynamic_function_capacity = 0;
+static pthread_mutex_t g_dynamic_functions_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Hash table for O(1) function lookup
+#define FUNCTION_HASH_SIZE 256
+typedef struct FunctionHashEntry {
+    const char* name;
+    int function_index;  // Index into g_dynamic_functions array
+    struct FunctionHashEntry* next;
+} FunctionHashEntry;
+
+static FunctionHashEntry* g_function_hash_table[FUNCTION_HASH_SIZE] = {NULL};
+
+// Simple hash function for function names
+static unsigned int hash_function_name(const char* name) {
+    unsigned int hash = 5381;
+    int c;
+    while ((c = *name++)) {
+        hash = ((hash << 5) + hash) + c;  // hash * 33 + c
+    }
+    return hash % FUNCTION_HASH_SIZE;
+}
 
 // Alias binding metadata for interface-bound methods with type checks
 typedef struct {
@@ -71,7 +92,11 @@ static int g_alias_binding_count = 0;
 
 static int find_alias_binding(const char* name) {
     for (int i = 0; i < g_alias_binding_count; i++) {
-        if (strcmp(g_alias_bindings[i].alias, name) == 0) return i;
+        if (strcmp(g_alias_bindings[i].alias, name) == 0) {
+            fprintf(stderr, "[find_alias_binding] Found '%s' at index %d, return_spec='%s'\n",
+                    name, i, g_alias_bindings[i].return_spec ? g_alias_bindings[i].return_spec : "NULL");
+            return i;
+        }
     }
     return -1;
 }
@@ -143,6 +168,9 @@ static void add_alias_if_missing(const char* alias, const char* target, DynamicF
         add_alias_binding_entry(alias, target, df, pcount, pspecs, rspec);
     }
 }
+
+// Forward declaration
+static int find_dynamic_function_idx(const char* name);
 
 // Simple mock registry for testing
 typedef struct {
@@ -403,6 +431,16 @@ static void register_dynamic_function(const char* name, void* func_ptr, Function
         df->handler = NULL; // Will use wrapper functions via call_dynamic_function
     }
     
+    // Add to hash table for O(1) lookup
+    unsigned int hash = hash_function_name(name);
+    FunctionHashEntry* entry = malloc(sizeof(FunctionHashEntry));
+    if (entry) {
+        entry->name = df->name;  // Use the same strdup'd pointer
+        entry->function_index = g_dynamic_function_count;
+        entry->next = g_function_hash_table[hash];
+        g_function_hash_table[hash] = entry;
+    }
+    
     g_dynamic_function_count++;
     LOG_DEBUG("Registered dynamic function: %s", name);
 }
@@ -416,12 +454,52 @@ void vm_register_dynamic_function(const char* name, void* func_ptr, FunctionSign
 bool is_dynamic_function(const char* name) {
     if (!g_dynamic_functions || !name) return false;
     
-    for (int i = 0; i < g_dynamic_function_count; i++) {
-        if (strcmp(g_dynamic_functions[i].name, name) == 0) {
+    pthread_mutex_lock(&g_dynamic_functions_mutex);
+    
+    // Use hash table for O(1) lookup
+    unsigned int hash = hash_function_name(name);
+    FunctionHashEntry* entry = g_function_hash_table[hash];
+    
+    while (entry) {
+        if (strcmp(entry->name, name) == 0) {
+            pthread_mutex_unlock(&g_dynamic_functions_mutex);
             return true;
         }
+        entry = entry->next;
     }
+    
+    pthread_mutex_unlock(&g_dynamic_functions_mutex);
     return false;
+}
+
+// Shared function lookup logic for both main VM and avatars
+// Returns VALUE_NIL if not found, otherwise returns the function as VALUE_STRING
+Value vm_lookup_function_shared(const char* name, VM* main_vm) {
+    if (!name) {
+        Value nil = {VALUE_NIL};
+        return nil;
+    }
+    
+    // Priority 1: Check dynamic functions via O(1) hash table
+    if (is_dynamic_function(name)) {
+        Value result;
+        result.type = VALUE_STRING;
+        result.as.string = (char*)name; // Safe: name is from constants
+        return result;
+    }
+    
+    // Priority 2: Check user-defined globals (linear search fallback)
+    if (main_vm) {
+        for (int i = 0; i < main_vm->global_count; i++) {
+            if (main_vm->globals[i].name && strcmp(main_vm->globals[i].name, name) == 0) {
+                return main_vm->globals[i].value;
+            }
+        }
+    }
+    
+    // Not found
+    Value nil = {VALUE_NIL};
+    return nil;
 }
 
 // Create a function value for a dynamic function (placeholder)
@@ -639,6 +717,8 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
 
         // Dispatch to target function (directly via cached function pointer when possible)
         Value result;
+        fprintf(stderr, "[call_dynamic_function] Alias '%s' -> target '%s', func_ptr=%p, sig=%d\n",
+                name, ab->target, ab->target_df.library_func_ptr, ab->target_df.signature);
         if (ab->target_df.library_func_ptr != NULL) {
             switch (ab->target_df.signature) {
                 case FUNC_SIG_VALUE_ARGS: {
@@ -646,6 +726,7 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
                     ValueArgFunc func = (ValueArgFunc)ab->target_df.library_func_ptr;
                     LOG_DEBUG("Invoking alias-target (direct) value_args: %s with %d args", ab->target_df.name, arg_count);
                     result = func(arg_count, args);
+                    fprintf(stderr, "[call_dynamic_function] Result type=%d, bool=%d\n", result.type, result.as.boolean);
                     break;
                 }
                 case FUNC_SIG_VOID_VOID:
@@ -673,6 +754,7 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
         }
 
         // Best-effort return type check
+        fprintf(stderr, "[call_dynamic_function] Before type check: type=%d\n", result.type);
         if (ab->return_spec && ab->return_spec[0]) {
             const char* types = ab->return_spec;
             char buf[256];
@@ -703,7 +785,9 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
                 tok2 = strtok_r(NULL, "|", &saveptr2);
             }
             if (!ok) {
-                LOG_WARNING("Return type mismatch calling %s: expected '%s'", name, ab->return_spec);
+                const char* type_names[] = {"NIL", "BOOL", "NUMBER", "STRING", "ARRAY", "OBJECT", "FUNCTION"};
+                const char* type_name = (result.type >= 0 && result.type < 7) ? type_names[result.type] : "UNKNOWN";
+                LOG_WARNING("Return type mismatch calling %s: expected '%s', got %s (type=%d)", name, ab->return_spec, type_name, result.type);
             }
         }
 
@@ -718,12 +802,28 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
         }
         // fallthrough to real call if no forced return
     }
-    for (int i = 0; i < g_dynamic_function_count; i++) {
-        if (strcmp(g_dynamic_functions[i].name, name) == 0) {
-            DynamicFunction* df = &g_dynamic_functions[i];
-            
-            // Call the appropriate wrapper based on signature
-            switch (df->signature) {
+    
+    pthread_mutex_lock(&g_dynamic_functions_mutex);
+    
+    // Use hash table for O(1) lookup
+    unsigned int hash = hash_function_name(name);
+    FunctionHashEntry* entry = g_function_hash_table[hash];
+    DynamicFunction* df = NULL;
+    
+    while (entry) {
+        if (strcmp(entry->name, name) == 0) {
+            df = &g_dynamic_functions[entry->function_index];
+            break;
+        }
+        entry = entry->next;
+    }
+    
+    if (df) {
+        // Unlock before calling the actual function (which may take time)
+        pthread_mutex_unlock(&g_dynamic_functions_mutex);
+        
+        // Call the appropriate wrapper based on signature
+        switch (df->signature) {
                 case FUNC_SIG_VOID_VOID:
                     return wrapper_void_void(arg_count, args, df->library_func_ptr);
                 case FUNC_SIG_INT_VOID:
@@ -758,8 +858,12 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
                     LOG_WARNING("Unimplemented function signature for %s", name);
                     break;
             }
-        }
+            // If we reach here, return nil
+            Value nilv = {VALUE_NIL};
+            return nilv;
     }
+    
+    pthread_mutex_unlock(&g_dynamic_functions_mutex);
     
     // Function not found
     LOG_WARNING("Dynamic function not found: %s", name);
@@ -1155,6 +1259,7 @@ typedef struct {
     char name[256];
     char path[512];
     void* exports;  // Could be function table or other exports
+    VM* vm;         // Keep the VM alive for function references
 } ImportedModule;
 
 static ImportedModule g_imported_modules[64];
@@ -1162,18 +1267,52 @@ static int g_imported_module_count = 0;
 
 // Import functions from another Kuyil module: import("path/to/module.kyl")
 Value vm_import_module(int arg_count, Value* args) {
+    fprintf(stderr, "[DEBUG] vm_import_module called with arg_count=%d\n", arg_count);
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
+        fprintf(stderr, "[DEBUG] vm_import_module: Invalid arguments\n");
         Value result;
         result.type = VALUE_NIL;
         return result;
     }
     
     const char* module_path = args[0].as.string;
+    fprintf(stderr, "[DEBUG] vm_import_module: Importing '%s'\n", module_path);
+    const char* original_module_name = module_path;
     
-    // Check if module already imported
+    // Read and compile the module file (try relative to caller first)
+    FILE* file = fopen(module_path, "r");
+    
+    // If simple name without path separators and .kyl extension, try multiple locations
+    if (!file && !strchr(module_path, '/') && !strstr(module_path, ".kyl")) {
+        fprintf(stderr, "[DEBUG] Trying to resolve module: %s\n", module_path);
+        // 1. Try kyllibs/<name>.kyl (standard library location)
+        char kyllibs_path[1024];
+        snprintf(kyllibs_path, sizeof(kyllibs_path), "kyllibs/%s.kyl", module_path);
+        fprintf(stderr, "[DEBUG] Checking kyllibs path: %s\n", kyllibs_path);
+        file = fopen(kyllibs_path, "r");
+        if (file) {
+            module_path = strdup(kyllibs_path);
+            fprintf(stderr, "[DEBUG] Resolved '%s' to kyllibs: %s\n", original_module_name, kyllibs_path);
+            LOG_INFO("Resolved '%s' to kyllibs: %s", original_module_name, kyllibs_path);
+        }
+        
+        // 2. Fallback to interfaces/interface_<name>.kyl
+        if (!file) {
+            char interface_path[1024];
+            snprintf(interface_path, sizeof(interface_path), "interfaces/interface_%s.kyl", module_path);
+            file = fopen(interface_path, "r");
+            if (file) {
+                module_path = strdup(interface_path);
+                LOG_INFO("Resolved '%s' to interface file: %s", original_module_name, interface_path);
+            }
+        }
+    }
+    
+    // Check if module already imported (AFTER path resolution)
     for (int i = 0; i < g_imported_module_count; i++) {
         if (strcmp(g_imported_modules[i].path, module_path) == 0) {
             LOG_INFO("Module already imported: %s", module_path);
+            if (file) fclose(file);
             Value result;
             result.type = VALUE_BOOL;
             result.as.boolean = true;
@@ -1181,8 +1320,6 @@ Value vm_import_module(int arg_count, Value* args) {
         }
     }
     
-    // Read and compile the module file (try relative to caller first)
-    FILE* file = fopen(module_path, "r");
     if (!file) {
         // Attempt to resolve relative to the current script directory
         const char* base_path = (g_current_vm && g_current_vm->current_source_path)
@@ -1258,39 +1395,68 @@ Value vm_import_module(int arg_count, Value* args) {
     char* dot = strrchr(clean_name, '.');
     if (dot) *dot = '\0';
     
-    // Store imported module info
+    LOG_INFO("Module importing: %s from %s", clean_name, module_path);
+    
+    // Execute the module in the CURRENT VM so exported functions are automatically
+    // available as globals in the calling scope.
+    if (!g_current_vm) {
+        LOG_ERROR("No current VM for module import: %s", module_path);
+        free(source);
+        Value result;
+        result.type = VALUE_BOOL;
+        result.as.boolean = false;
+        return result;
+    }
+    
+    // Save and update source path for better error reporting
+    const char* old_source_path = g_current_vm->current_source_path;
+    g_current_vm->current_source_path = module_path;
+    
+    // Save VM state before nested interpretation
+    Value* saved_stack_top = g_current_vm->stack_top;
+    
+    // Clear previous export list before compilation
+    compiler_clear_exports();
+    
+    // Interpret the module source directly in the current VM
+    InterpretResult result_code = vm_interpret(g_current_vm, source);
+    
+    // Restore VM stack state after nested interpretation
+    g_current_vm->stack_top = saved_stack_top;
+    
+    // Restore source path
+    g_current_vm->current_source_path = old_source_path;
+    
+    free(source);
+    
+    if (result_code != INTERPRET_OK) {
+        LOG_ERROR("Failed to execute module: %s", module_path);
+        compiler_clear_exports();
+        Value result;
+        result.type = VALUE_BOOL;
+        result.as.boolean = false;
+        return result;
+    }
+    
+    // Get the list of exported functions
+    int export_count = 0;
+    const char** exports = compiler_get_exports(&export_count);
+    
+    if (export_count > 0) {
+        LOG_INFO("Module exported %d functions", export_count);
+    }
+    compiler_clear_exports();
+    
+    // Store the imported module info
     if (g_imported_module_count < 64) {
         ImportedModule* module = &g_imported_modules[g_imported_module_count];
         strncpy(module->name, clean_name, sizeof(module->name) - 1);
         module->name[sizeof(module->name) - 1] = '\0';
         strncpy(module->path, module_path, sizeof(module->path) - 1);
         module->path[sizeof(module->path) - 1] = '\0';
-        module->exports = NULL; // Will be populated when functions are exported
+        module->exports = NULL;
+        module->vm = NULL;  // No separate VM needed
         g_imported_module_count++;
-    }
-    
-    LOG_INFO("Module importing: %s from %s", clean_name, module_path);
-    
-    // Execute the module in an isolated VM to avoid disturbing the current execution frames.
-    // Dynamic functions and library registrations are global, so effects persist.
-    VM isolated_vm;
-    memset(&isolated_vm, 0, sizeof(VM));
-    // Propagate source path for better error reporting in compiled function
-    isolated_vm.current_source_path = module_path;
-    
-    Value exec_result = {0};
-    InterpretResult result_code = vm_execute_dynamic(&isolated_vm, source,
-                                                    NULL, 0, LIBRARY_ALL,
-                                                    &exec_result);
-    
-    free(source);
-    
-    if (result_code != INTERPRET_OK) {
-        LOG_ERROR("Failed to execute module: %s", module_path);
-        Value result;
-        result.type = VALUE_BOOL;
-        result.as.boolean = false;
-        return result;
     }
     
     LOG_INFO("Module loaded successfully: %s", clean_name);
@@ -1407,12 +1573,15 @@ static void derive_library_name(const char* path, char* out, size_t outsz) {
 // Runtime: load a shared library by filesystem path and register its functions
 // Usage from script: @loadlib("./libs/libkylstr.so");
 Value vm_loadlib(int arg_count, Value* args) {
+    LOG_INFO("[vm_loadlib] CALLED with %d arguments", arg_count);
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
+        LOG_ERROR("loadlib: Missing or invalid path argument");
         Value result = {VALUE_NIL};
         return result;
     }
 
     const char* path = args[0].as.string;
+    LOG_INFO("loadlib called with path: %s", path);
 
     // Derive name if provided as second arg, prefer explicit name
     char name_buf[128];
@@ -1472,14 +1641,79 @@ Value vm_loadlib(int arg_count, Value* args) {
         result.as.boolean = false;
         return result;
     }
+    
+    // For known libraries that have specialized loaders, call them to populate functions
+    if (strcmp(lib->name, "webview") == 0 && lib->function_count == 0) {
+        fprintf(stderr, "[vm_loadlib] Using specialized webview loader\n");
+        load_webview_functions(lib);
+    }
+    if (strcmp(lib->name, "system") == 0 && lib->function_count == 0) {
+        fprintf(stderr, "[vm_loadlib] Using specialized system loader\n");
+        load_system_functions(lib);
+    }
 
     // No library-specific behavior here; handled in loader
 
     // Register the newly loaded library's functions into dynamic dispatch
+    fprintf(stderr, "[vm_loadlib] Registering %d functions from library\n", lib->function_count);
     for (int j = 0; j < lib->function_count; j++) {
         LibraryFunction* f = &lib->functions[j];
         if (!f->is_loaded) continue;
+        fprintf(stderr, "[vm_loadlib]   - %s\n", f->name);
         register_dynamic_function(f->name, f->function_ptr, f->signature);
+    }
+    
+    fprintf(stderr, "[vm_loadlib] Checking library name: '%s'\n", lib->name);
+    // Library-specific alias registration to prevent conflicts
+    // For webview library, explicitly bind short aliases to webview functions
+    if (strcmp(lib->name, "webview") == 0) {
+        fprintf(stderr, "[vm_loadlib] Applying explicit alias fixes for webview library\n");
+        // Find the registered functions and create/update aliases
+        int idx;
+        
+        // bind -> webview_bind
+        idx = find_dynamic_function_idx("webview_bind");
+        fprintf(stderr, "[vm_loadlib] webview_bind function index: %d\n", idx);
+        if (idx >= 0) {
+            DynamicFunction* df = &g_dynamic_functions[idx];
+            int alias_idx = find_alias_binding("bind");
+            fprintf(stderr, "[vm_loadlib] Existing 'bind' alias index: %d\n", alias_idx);
+            if (alias_idx >= 0) {
+                // Update existing alias with correct target and return spec
+                fprintf(stderr, "[vm_loadlib] Updating bind alias to point to webview_bind\n");
+                free(g_alias_bindings[alias_idx].target);
+                g_alias_bindings[alias_idx].target = strdup("webview_bind");
+                g_alias_bindings[alias_idx].target_df.name = df->name;
+                g_alias_bindings[alias_idx].target_df.library_func_ptr = df->library_func_ptr;
+                g_alias_bindings[alias_idx].target_df.signature = df->signature;
+                if (g_alias_bindings[alias_idx].return_spec) free(g_alias_bindings[alias_idx].return_spec);
+                g_alias_bindings[alias_idx].return_spec = strdup("bool");
+            } else {
+                // Create new alias
+                fprintf(stderr, "[vm_loadlib] Creating new bind alias\n");
+                add_alias_binding_entry("bind", "webview_bind", df, 0, NULL, "bool");
+            }
+        }
+        
+        // eval -> webview_eval  
+        idx = find_dynamic_function_idx("webview_eval");
+        if (idx >= 0) {
+            DynamicFunction* df = &g_dynamic_functions[idx];
+            int alias_idx = find_alias_binding("eval");
+            if (alias_idx >= 0) {
+                // Update existing alias with correct target and return spec
+                free(g_alias_bindings[alias_idx].target);
+                g_alias_bindings[alias_idx].target = strdup("webview_eval");
+                g_alias_bindings[alias_idx].target_df.name = df->name;
+                g_alias_bindings[alias_idx].target_df.library_func_ptr = df->library_func_ptr;
+                g_alias_bindings[alias_idx].target_df.signature = df->signature;
+                if (g_alias_bindings[alias_idx].return_spec) free(g_alias_bindings[alias_idx].return_spec);
+                g_alias_bindings[alias_idx].return_spec = strdup("bool");
+            } else {
+                // Create new alias
+                add_alias_binding_entry("eval", "webview_eval", df, 0, NULL, "bool");
+            }
+        }
     }
 
     // Return loaded library name as string
@@ -1506,6 +1740,7 @@ static int find_dynamic_function_idx(const char* name) {
 //   - "substring" -> str_substring
 //   - "str.substring" -> str_substring (future-friendly; harmless if unused)
 Value vm_bind_interface_method(int arg_count, Value* args) {
+    fprintf(stderr, "[bind_interface_method] Called with %d args\n", arg_count);
     if (arg_count < 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
         Value r = {VALUE_BOOL};
         r.as.boolean = false;
@@ -1521,6 +1756,9 @@ Value vm_bind_interface_method(int arg_count, Value* args) {
     const char* return_spec = NULL;
     if (arg_count >= 3) param_arr = args[2];
     if (arg_count >= 4 && args[3].type == VALUE_STRING) return_spec = args[3].as.string;
+    
+    fprintf(stderr, "[bind_interface_method] iface='%s', method='%s', return_spec='%s'\n", 
+            iface, method, return_spec ? return_spec : "NULL");
 
     // Prefer snake_case for underlying C symbols
     char base[256];
@@ -1630,20 +1868,31 @@ Value vm_bind_interface_method(int arg_count, Value* args) {
     // use file-scope helper add_alias_binding_entry
 
     // Aliases
-    // Primary: as provided
-    add_alias_if_missing(method, target_dup, df, param_count, param_specs, return_spec);
+    // IMPORTANT: Only create QUALIFIED aliases (interface.method) to avoid naming conflicts
+    // Do NOT create bare method name aliases like "bind" which can collide across interfaces
+    
+    // Primary qualified alias: interface.method
     char dotted[256]; snprintf(dotted, sizeof(dotted), "%s.%s", iface, method);
     add_alias_if_missing(dotted, target_dup, df, param_count, param_specs, return_spec);
-    // Also register alternate casing aliases
+    
+    // Also create bare method name alias ONLY if it's a common/safe name
+    // For now, always create it for backward compatibility, but this could be made opt-in
+    fprintf(stderr, "[bind_interface_method] Creating bare alias '%s' with return_spec='%s'\n", 
+            method, return_spec ? return_spec : "NULL");
+    add_alias_if_missing(method, target_dup, df, param_count, param_specs, return_spec);
+    
+    // Also register alternate casing aliases (qualified only)
     if (method_snake && strcmp(method_snake, method) != 0) {
-        add_alias_if_missing(method_snake, target_dup, df, param_count, param_specs, return_spec);
         char d2[256]; snprintf(d2, sizeof(d2), "%s.%s", iface, method_snake);
         add_alias_if_missing(d2, target_dup, df, param_count, param_specs, return_spec);
+        // Bare snake alias for backward compat
+        add_alias_if_missing(method_snake, target_dup, df, param_count, param_specs, return_spec);
     }
     if (method_camel && strcmp(method_camel, method) != 0) {
-        add_alias_if_missing(method_camel, target_dup, df, param_count, param_specs, return_spec);
         char d3[256]; snprintf(d3, sizeof(d3), "%s.%s", iface, method_camel);
         add_alias_if_missing(d3, target_dup, df, param_count, param_specs, return_spec);
+        // Bare camel alias for backward compat  
+        add_alias_if_missing(method_camel, target_dup, df, param_count, param_specs, return_spec);
     }
 
     // Optional extra aliases (arg 5): either a single string or an array of strings

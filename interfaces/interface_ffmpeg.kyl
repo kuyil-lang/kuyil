@@ -1,34 +1,72 @@
 // Interface for FFmpeg library
-@loadlib("./libs/libkylffmpeg.so");
+// Load library at runtime
+loadlib("libs/libkylffmpeg.so")
 
 // General ffmpeg helpers
 interface ffmpeg {
-  string getLastError()
-  bool   clearError()
+  @alias("getLastError")
+  string ffmpeg_getLastError()
+  
+  @alias("clearError")
+  bool ffmpeg_clearError()
 }
 
 // Audio-related functions
 interface audio {
-  float64 getDuration(path: string)
-  int32   getSampleRate(path: string)
-  int32   getChannels(path: string)
-  int32   load(path: string)
-  bool    save(handle: int32, path: string)
-  bool    segmentFree(handle: int32)
-  int32   trim(handle: int32, startMs: float64, endMs: float64)
-  int32   fadeIn(handle: int32, durationMs: float64)
-  int32   fadeOut(handle: int32, durationMs: float64)
-  int32   adjustVolume(handle: int32, factor: float64)
-  int32   normalize(handle: int32)
-  int32   concat(handle1: int32, handle2: int32)
-  int32   merge(handle1: int32, handle2: int32)
-  int32   overlay(base: int32, overlay: int32, positionMs: float64)
-  int32   speedChange(handle: int32, factor: float64)
-  int32   reverse(handle: int32)
+  @alias("getDuration")
+  float64 audio_getDuration(path: string)
+  
+  @alias("getSampleRate")
+  int32 audio_getSampleRate(path: string)
+  
+  @alias("getChannels")
+  int32 audio_getChannels(path: string)
+  
+  @alias("load")
+  int32 audio_load(path: string)
+  
+  @alias("save")
+  bool audio_save(handle: int32, path: string)
+  
+  @alias("segmentFree")
+  bool audio_segmentFree(handle: int32)
+  
+  @alias("trim")
+  int32 audio_trim(handle: int32, startMs: float64, endMs: float64)
+  
+  @alias("fadeIn")
+  int32 audio_fadeIn(handle: int32, durationMs: float64)
+  
+  @alias("fadeOut")
+  int32 audio_fadeOut(handle: int32, durationMs: float64)
+  
+  @alias("adjustVolume")
+  int32 audio_adjustVolume(handle: int32, factor: float64)
+  
+  @alias("normalize")
+  int32 audio_normalize(handle: int32)
+  
+  @alias("concat")
+  int32 audio_concat(handle1: int32, handle2: int32)
+  
+  @alias("merge")
+  int32 audio_merge(handle1: int32, handle2: int32)
+  
+  @alias("overlay")
+  int32 audio_overlay(base: int32, overlay: int32, positionMs: float64)
+  
+  @alias("speedChange")
+  int32 audio_speedChange(handle: int32, factor: float64)
+  
+  @alias("reverse")
+  int32 audio_reverse(handle: int32)
 }
 
 // Audio editor
 interface editor {
-  int32 create()
-  bool  destroy(handle: int32)
+  @alias("create")
+  int32 editor_create()
+  
+  @alias("destroy")
+  bool editor_destroy(handle: int32)
 }

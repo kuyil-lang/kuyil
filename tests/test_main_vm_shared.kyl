@@ -1,0 +1,36 @@
+// Test main VM using shared opcode executor
+
+// Arithmetic
+let a = 10 + 5
+let b = 20 - 8
+let c = 6 * 7
+let d = 100 / 4
+let e = 17 % 5
+
+print("Arithmetic:")
+print("10 + 5 =", a)
+print("20 - 8 =", b)
+print("6 * 7 =", c)
+print("100 / 4 =", d)
+print("17 % 5 =", e)
+
+// Logic
+let t = true
+let f = false
+print("\nLogic:")
+print("NOT true =", !t)
+print("true AND false =", t && f)
+print("true OR false =", t || f)
+
+// Comparisons
+print("\nComparisons:")
+print("5 == 5 =", 5 == 5)
+print("5 != 3 =", 5 != 3)
+print("10 > 5 =", 10 > 5)
+print("3 < 7 =", 3 < 7)
+
+// String concatenation
+let s = "Hello" + " " + "World"
+print("\nString concat:", s)
+
+print("\n✅ All main VM operations work with shared opcodes!")

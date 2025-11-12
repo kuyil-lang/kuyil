@@ -79,6 +79,7 @@ void library_loader_set_kuyil_caller(void* callback_ptr);
 
 // Library-specific function loaders
 void load_webview_functions(SharedLibrary* lib);
+void load_system_functions(SharedLibrary* lib);
 void load_crypto_functions(SharedLibrary* lib);
 void load_compression_functions(SharedLibrary* lib);
 void load_sqlite_functions(SharedLibrary* lib);

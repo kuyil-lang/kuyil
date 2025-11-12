@@ -1,14 +1,29 @@
 // Interface for File I/O library
-@loadlib("./libs/libkylfileio.so");
+// Load library at runtime
+loadlib("libs/libkylfileio.so")
 
 interface file {
-  string readText(path: string)
-  array  readCsv(path: string)
-  object readJson(path: string)
-  object readYaml(path: string)
-  bool   exists(path: string)
-  int32  size(path: string)
-  bool   validate(path: string)
-  bool   writeText(path: string, content: string)
+  @alias("readText")
+  string file_readText(path: string)
+  
+  @alias("readCsv")
+  array file_readCsv(path: string)
+  
+  @alias("readJson")
+  object file_readJson(path: string)
+  
+  @alias("readYaml")
+  object file_readYaml(path: string)
+  
+  @alias("exists")
+  bool file_exists(path: string)
+  
+  @alias("size")
+  int32 file_size(path: string)
+  
+  @alias("validate")
+  bool file_validate(path: string)
+  
+  @alias("writeText")
+  bool file_writeText(path: string, content: string)
 }
-

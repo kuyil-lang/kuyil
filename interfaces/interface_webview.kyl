@@ -1,5 +1,6 @@
 // Interface for WebView library
-@loadlib("./libs/libkylwebview.so");
+// Load library at runtime
+loadlib("libs/libkylwebview.so")
 
 interface webview {
   // Initialization and cleanup
@@ -19,12 +20,27 @@ interface webview {
   
   // Window control
   int32  run(window: int32)
+  bool   step(window: int32)
   bool   setTitle(window: int32, title: string)
   bool   setSize(window: int32, width: int32, height: int32)
   
   // JavaScript execution - CRITICAL for Kuyil→JS communication
+  // Use full C function name, provide short name as alias
+  // C function: kyl_webview_eval
   // Execute JavaScript code in the WebView
-  // Example: eval(win, "alert('Hello from Kuyil!');")
-  bool   eval(window: int32, js_code: string)
+  // Example: webview_eval(win, "alert('Hello from Kuyil!');")
+  @alias("eval")
+  bool   webview_eval(window: int32, js_code: string)
+  
+  // JavaScript→Kuyil bridge
+  // Use full C function name to avoid conflicts, provide short name as alias
+  // C function: kyl_webview_bind
+  // Binds a Kuyil function to be callable from JavaScript
+  // Usage: webview_bind(win, "test", test) or bind(win, "test", test)
+  // JavaScript can then call: window.test("arg")
+  @alias("bind")
+  bool   webview_bind(window: int32, func_name: string, callback: function)
+  
+  // Developer tools
+  bool   enableDevTools(window: int32, enable: bool)
 }
-

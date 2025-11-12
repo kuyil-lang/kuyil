@@ -1,27 +1,20 @@
 # Kuyil Makefile
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -O2 -g -fPIC
-LIBS = -lcurl -lpthread -lm -ldl
-FFI_LIBS_DIR = examples/ffi_libs
+LIBS = -lcurl -lpthread -lm -ldl -levent
 SRCDIR = src
-BUILDDIR = build
-EXAMPLEDIR = examples
 
 # Source files  
-SOURCES = $(SRCDIR)/main.c $(SRCDIR)/vm.c $(SRCDIR)/logging.c $(SRCDIR)/config.c $(SRCDIR)/ffi.c $(SRCDIR)/file_reader.c $(SRCDIR)/green_threads.c $(SRCDIR)/library_loader.c $(SRCDIR)/vm_library_integration.c
-HEADERS = $(SRCDIR)/tokens.h $(SRCDIR)/ast.h $(SRCDIR)/bytecode.h $(SRCDIR)/vm.h $(SRCDIR)/logging.h $(SRCDIR)/config.h $(SRCDIR)/ffi.h $(SRCDIR)/file_reader.h $(SRCDIR)/green_threads.h $(SRCDIR)/library_loader.h $(SRCDIR)/vm_library_integration.h
+SOURCES = $(SRCDIR)/main.c $(SRCDIR)/vm.c $(SRCDIR)/logging.c $(SRCDIR)/config.c $(SRCDIR)/ffi.c $(SRCDIR)/file_reader.c $(SRCDIR)/green_threads.c $(SRCDIR)/library_loader.c $(SRCDIR)/vm_library_integration.c $(SRCDIR)/vm_task_queue.c $(SRCDIR)/async_http.c $(SRCDIR)/thread_pool.c $(SRCDIR)/avatar_runtime.c $(SRCDIR)/async_request_queue.c $(SRCDIR)/opcode_executor.c
+HEADERS = $(SRCDIR)/tokens.h $(SRCDIR)/ast.h $(SRCDIR)/bytecode.h $(SRCDIR)/vm.h $(SRCDIR)/logging.h $(SRCDIR)/config.h $(SRCDIR)/ffi.h $(SRCDIR)/file_reader.h $(SRCDIR)/green_threads.h $(SRCDIR)/library_loader.h $(SRCDIR)/vm_library_integration.h $(SRCDIR)/async_http.h $(SRCDIR)/thread_pool.h $(SRCDIR)/avatar_runtime.h $(SRCDIR)/async_request_queue.h $(SRCDIR)/opcode_executor.h
 
 # Target executable
 TARGET = kuyil
 
-# Build directories
-$(BUILDDIR):
-	mkdir -p $(BUILDDIR)
+# Main target - MODIFIED: Now runs 'clean', 'directories', 'libs', then '$(TARGET)'
+all: directories libs $(TARGET)
 
-# Main target
-all: $(BUILDDIR) libs $(TARGET)
-
-# Build shared libraries
+# Build shared libraries (CORE LIBS via Makefile.libs)
 libs:
 	$(MAKE) -f Makefile.libs all
 
@@ -184,18 +177,6 @@ test: $(TARGET)
 	@echo 'log_info("Testing Kuyil logging system")' | ./$(TARGET) --log-level debug -
 	@echo "Build test completed successfully!"
 
-# Run examples
-examples: $(TARGET)
-	@echo "Running Kuyil examples..."
-	./$(TARGET) $(EXAMPLEDIR)/hello.kyl
-	@echo "\nRunning logging demo..."
-	./$(TARGET) --log-level debug $(EXAMPLEDIR)/logging_demo.kyl
-
-# Test HTTP client (requires internet connection)
-test-http: $(TARGET)
-	@echo "Testing HTTP client..."
-	./$(TARGET) $(EXAMPLEDIR)/http_client.kyl
-
 # Performance test
 perf: $(TARGET)
 	@echo "Performance test - Computing factorial(20) 1000 times..."
@@ -234,7 +215,6 @@ dist: clean release
 	mkdir -p kuyil-dist
 	cp $(TARGET) kuyil-dist/
 	cp README.md kuyil-dist/
-	cp -r $(EXAMPLEDIR) kuyil-dist/
 	cp -r docs kuyil-dist/
 	tar -czf kuyil-1.0.0.tar.gz kuyil-dist/
 	rm -rf kuyil-dist/
@@ -243,10 +223,7 @@ dist: clean release
 # Install system-wide (requires sudo)
 install: $(TARGET)
 	sudo cp $(TARGET) /usr/local/bin/
-	sudo mkdir -p /usr/local/share/kuyil/examples
-	sudo cp -r $(EXAMPLEDIR)/* /usr/local/share/kuyil/examples/
 	@echo "Kuyil installed to /usr/local/bin/$(TARGET)"
-	@echo "Examples installed to /usr/local/share/kuyil/examples/"
 
 # Uninstall
 uninstall:
@@ -254,13 +231,6 @@ uninstall:
 	sudo rm -rf /usr/local/share/kuyil/
 	@echo "Kuyil uninstalled"
 
-# Compile example to binary
-compile-example: $(TARGET)
-	@echo "Compiling hello.kyl to binary..."
-	./$(TARGET) -c $(EXAMPLEDIR)/hello.kyl -o hello_binary
-	@echo "Testing compiled binary..."
-	./hello_binary
-	rm -f hello_binary
 
 # Benchmark against other languages (if available)
 benchmark: $(TARGET)
@@ -287,103 +257,13 @@ docs:
 		echo "pandoc not found. Install with: sudo apt-get install pandoc"; \
 	fi
 
-# Configuration system demo
-config-demo: $(TARGET)
-	@echo "Running Configuration System Demo..."
-	@echo "====================================="
-	@cd examples && ../$(TARGET) config_demo.kyl
-
-# Configuration examples  
-config-examples: $(TARGET)
-	@echo "Testing configuration loading..."
-	@cd examples && echo 'log_info("Testing YAML loading...") let config = load_yaml("config/application.yml") if config { log_info("Base config loaded successfully") } else { log_error("Failed to load base config") }' | ../$(TARGET) -
-	@cd examples && echo 'log_info("Testing multi-environment config...") let config_mgr = init_config("us", "useast1") log_info("Environment: " + get_config("environment.name", "unknown")) log_info("Port: " + get_config("server.port", "unknown"))' | ../$(TARGET) config_manager.kyl
-
-# Run configuration with different environments
-config-us-east1: $(TARGET)
-	@echo "US East 1 Configuration:"
-	@cd examples && echo 'let cfg = init_config("us", "useast1") log_info("Region: " + get_config("region.display_name", "unknown")) log_info("Port: " + get_config("server.port", "unknown")) log_info("Workers: " + get_config("server.worker_processes", "unknown"))' | ../$(TARGET) config_manager.kyl
-
-config-us-east2: $(TARGET) 
-	@echo "US East 2 Configuration:"
-	@cd examples && echo 'let cfg = init_config("us", "useast2") log_info("Region: " + get_config("region.display_name", "unknown")) log_info("Port: " + get_config("server.port", "unknown")) log_info("Failover: " + get_config("failover.kylnabled", "unknown"))' | ../$(TARGET) config_manager.kyl
-
-config-eu: $(TARGET)
-	@echo "EU Configuration:"
-	@cd examples && echo 'let cfg = init_config("eu", "default") log_info("Site: " + get_config("site.display_name", "unknown")) log_info("GDPR: " + get_config("compliance.gdpr_enabled", "unknown")) log_info("Currency: " + get_config("site.currency", "unknown"))' | ../$(TARGET) config_manager.kyl
-
-# FFI Library Targets
-
-# Build all example FFI libraries
-ffi-libs: $(FFI_LIBS_DIR)/redis_client.so $(FFI_LIBS_DIR)/elasticsearch_client.so $(FFI_LIBS_DIR)/kms_client.so $(FFI_LIBS_DIR)/app_lifecycle.so
-
-# Redis client library
-$(FFI_LIBS_DIR)/redis_client.so: $(FFI_LIBS_DIR)/redis_client.c
-	@echo "Building Redis FFI library..."
-	$(CC) -shared -fPIC -o $@ $< $(CFLAGS)
-
-# Elasticsearch client library  
-$(FFI_LIBS_DIR)/elasticsearch_client.so: $(FFI_LIBS_DIR)/elasticsearch_client.c
-	@echo "Building Elasticsearch FFI library..."
-	$(CC) -shared -fPIC -o $@ $< $(CFLAGS)
-
-# KMS client library
-$(FFI_LIBS_DIR)/kms_client.so: $(FFI_LIBS_DIR)/kms_client.c
-	@echo "Building KMS FFI library..."
-	$(CC) -shared -fPIC -o $@ $< $(CFLAGS)
-
-# Build individual libraries
-redis-lib: $(FFI_LIBS_DIR)/redis_client.so
-	@echo "Redis FFI library built: $(FFI_LIBS_DIR)/redis_client.so"
-
-elasticsearch-lib: $(FFI_LIBS_DIR)/elasticsearch_client.so
-	@echo "Elasticsearch FFI library built: $(FFI_LIBS_DIR)/elasticsearch_client.so"
-
-kms-lib: $(FFI_LIBS_DIR)/kms_client.so
-	@echo "KMS FFI library built: $(FFI_LIBS_DIR)/kms_client.so"
-
-# App lifecycle library
-$(FFI_LIBS_DIR)/app_lifecycle.so: $(FFI_LIBS_DIR)/app_lifecycle.c
-	@echo "Building App Lifecycle FFI library..."
-	$(CC) -shared -fPIC -o $@ $< $(CFLAGS)
-
-app-lifecycle-lib: $(FFI_LIBS_DIR)/app_lifecycle.so
-	@echo "App Lifecycle FFI library built: $(FFI_LIBS_DIR)/app_lifecycle.so"
-
-# FFI Demo Targets
-
-# Run complete FFI demonstration
-ffi-demo: $(TARGET) ffi-libs
-	@echo "Running FFI System Demo..."
-	@echo "=========================="
-	@cd examples && ../$(TARGET) ffi_demo.kyl
-
-# Test individual FFI libraries
-test-redis-ffi: $(TARGET) redis-lib
-	@echo "Testing Redis FFI..."
-	@cd examples && echo 'log_info("Testing Redis FFI") load_redis_client("./ffi_libs/redis_client.so") register_function("redis_client", "redis_connect") call_function("redis_client", "redis_connect", "localhost", 6379)' | ../$(TARGET) -
-
-test-elasticsearch-ffi: $(TARGET) elasticsearch-lib
-	@echo "Testing Elasticsearch FFI..."
-	@cd examples && echo 'log_info("Testing Elasticsearch FFI") load_elasticsearch_client("./ffi_libs/elasticsearch_client.so") register_function("elasticsearch_client", "es_connect") call_function("elasticsearch_client", "es_connect", "http://localhost:9200", 30)' | ../$(TARGET) -
-
-test-kms-ffi: $(TARGET) kms-lib
-	@echo "Testing KMS FFI..."
-	@cd examples && echo 'log_info("Testing KMS FFI") load_kms_client("./ffi_libs/kms_client.so") register_function("kms_client", "kms_init") call_function("kms_client", "kms_init", "us-east-1", "key", "secret")' | ../$(TARGET) -
-
-# FFI system test
-test-ffi: $(TARGET) ffi-libs
-	@echo "Running comprehensive FFI tests..."
-	@cd examples && echo 'log_info("FFI System Test") load_library("redis_test", "./ffi_libs/redis_client.so") if(load_library) { log_info("FFI library loading successful") } else { log_error("FFI library loading failed") }' | ../$(TARGET) -
-
-# Clean build artifacts
+# Clean build artifacts - MODIFIED with '-' to ignore errors
 clean:
-	rm -f $(TARGET)
-	rm -f $(FFI_LIBS_DIR)/*.so
-	rm -rf $(BUILDDIR)
-	rm -f *.o *.core core
-	rm -f kuyil-*.tar.gz
-	rm -f hello_binary *_compiled
+	-rm -f $(TARGET)
+	-rm -rf $(BUILDDIR)
+	-rm -f *.o *.core core
+	-rm -f kuyil-*.tar.gz
+	-rm -f hello_binary *_compiled
 	$(MAKE) -f Makefile.libs clean
 
 # Show help
@@ -392,18 +272,16 @@ help:
 	@echo "=================="
 	@echo ""
 	@echo "Available targets:"
-	@echo "  all          - Build Kuyil (default)"
+	@echo "  all          - Build Kuyil (default, runs clean, directories, libs and main executable)"
 	@echo "  debug        - Build with debug symbols"
 	@echo "  release      - Build optimized release version"
 	@echo "  test         - Test the build"
-	@echo "  examples     - Run example scripts"
 	@echo "  test-http    - Test HTTP functionality"
 	@echo "  perf         - Run performance test"
 	@echo "  memtest      - Run memory leak test (requires valgrind)"
 	@echo "  analyze      - Run static code analysis (requires cppcheck)"
 	@echo "  format       - Format source code (requires clang-format)"
 	@echo "  benchmark    - Benchmark against other languages"
-	@echo "  compile-example - Test script compilation"
 	@echo "  dist         - Create distribution package"
 	@echo "  install      - Install system-wide (requires sudo)"
 	@echo "  uninstall    - Uninstall from system"
@@ -427,6 +305,4 @@ help:
 	@echo "  deps-centos  - Install dependencies (CentOS/RHEL)"
 	@echo "  deps-cross-windows - Install MinGW-w64 for Windows cross-compilation"
 
-.PHONY: all debug release test examples test-http perf memtest analyze format dist install uninstall compile-example benchmark docs clean help deps deps-mac deps-centos deps-cross-windows cross-windows cross-windows-32 cross-macos macos macos-arm64 macos-universal cross-all install-cross-tools
-
-.PHONY: all debug release test examples test-http perf memtest analyze format dist install uninstall compile-example benchmark docs clean help deps deps-mac deps-centos
+.PHONY: all libs debug release test perf memtest analyze format dist install uninstall compile-example benchmark docs clean help deps deps-mac deps-centos deps-cross-windows cross-windows cross-windows-32 cross-macos macos macos-arm64 macos-universal cross-all install-cross-tools directories

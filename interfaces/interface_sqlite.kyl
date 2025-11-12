@@ -1,22 +1,42 @@
 // Interface for SQLite library
-@loadlib("./libs/libkylsqlite.so");
+// Load library at runtime
+loadlib("libs/libkylsqlite.so")
 
 interface sqlite {
-  int32 openDatabase(path: string, flags: int32)
-  int32 closeDatabase(handle: int32)
-  int32 executeSql(handle: int32, sql: string)
-  int32 executeQuery(handle: int32, sql: string)
-  int32 freeResult(handle: int32)
-  string getLastError(handle: int32)
+  @alias("openDatabase")
+  int32 sqlite_openDatabase(path: string, flags: int32)
+  
+  @alias("closeDatabase")
+  int32 sqlite_closeDatabase(handle: int32)
+  
+  @alias("executeSql")
+  int32 sqlite_executeSql(handle: int32, sql: string)
+  
+  @alias("executeQuery")
+  int32 sqlite_executeQuery(handle: int32, sql: string)
+  
+  @alias("freeResult")
+  int32 sqlite_freeResult(handle: int32)
+  
+  @alias("getLastError")
+  string sqlite_getLastError(handle: int32)
 }
 
 interface result {
-  int32 firstRow(handle: int32)
-  int32 nextRow(handle: int32)
+  @alias("firstRow")
+  int32 result_firstRow(handle: int32)
+  
+  @alias("nextRow")
+  int32 result_nextRow(handle: int32)
 }
 
 interface row {
-  int32   getInt(rowHandle: int32, colIndex: int32)
-  string  getText(rowHandle: int32, colIndex: int32)
-  float64 getReal(rowHandle: int32, colIndex: int32)
+  @alias("getInt")
+  int32 row_getInt(rowHandle: int32, colIndex: int32)
+  
+  @alias("getText")
+  string row_getText(rowHandle: int32, colIndex: int32)
+  
+  @alias("getReal")
+  float64 row_getReal(rowHandle: int32, colIndex: int32)
 }

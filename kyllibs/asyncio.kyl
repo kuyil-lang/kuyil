@@ -1,0 +1,115 @@
+// Asyncio Library - Standard library for async I/O operations
+print("[kyllibs/asyncio] About to loadlib...")
+// Load the native asyncio shared library
+loadlib("libs/libkylasyncio.so")
+print("[kyllibs/asyncio] loadlib completed")
+
+// Available functions after loading:
+// - kyl_asyncio_httpGet(url) -> requestId
+// - kyl_asyncio_httpPost(url) -> requestId
+// - kyl_asyncio_httpGetEx(url, headers, dns_ms, connect_ms, read_ms, write_ms) -> requestId
+// - kyl_asyncio_httpPostEx(url, body, headers, dns_ms, connect_ms, read_ms, write_ms) -> requestId
+// - kyl_asyncio_waitResult(requestId, timeout_ms) -> byte_array
+// - kyl_asyncio_isComplete(requestId) -> bool
+// - kyl_asyncio_getResult(requestId) -> byte_array or nil
+// - kyl_asyncio_fileRead(path) -> requestId
+// - kyl_asyncio_fileWrite(path, data) -> requestId
+
+print("[kyllibs/asyncio] Asyncio functions registered")
+
+// ═══════════════════════════════════════════════════════════════
+//  Wrapper Functions with Options Support
+// ═══════════════════════════════════════════════════════════════
+
+// HTTP GET with optional options parameter
+// Usage:
+//   httpGet("https://api.example.com", nil)  // Simple GET
+//   httpGet("https://api.example.com", options)  // With options
+//
+// Options format:
+//   { 
+//     headers: ["Content-Type: application/json", "Authorization: Bearer xxx"],
+//     timeout: { dns: 30, connect: 500, read: 2000, write: 500 }
+//   }
+fn httpGet(url, options) {
+  if (options == nil) {
+    return kyl_asyncio_httpGet(url)
+  }
+  
+  let headers = []
+  if (options.headers != nil) {
+    headers = options.headers
+  }
+  
+  let dns = 0
+  let conn = 0
+  let read = 0
+  let write = 0
+  
+  if (options.timeout != nil) {
+    if (options.timeout.dns != nil) { dns = options.timeout.dns }
+    if (options.timeout.connect != nil) { conn = options.timeout.connect }
+    if (options.timeout.read != nil) { read = options.timeout.read }
+    if (options.timeout.write != nil) { write = options.timeout.write }
+  }
+  
+  return kyl_asyncio_httpGetEx(url, headers, dns, conn, read, write)
+}
+
+// HTTP POST with optional options parameter  
+// Usage:
+//   httpPost("https://api.example.com", body, nil)  // Simple POST
+//   httpPost("https://api.example.com", body, options)  // With options
+fn httpPost(url, body, options) {
+  if (options == nil) {
+    return kyl_asyncio_httpPost(url, body)
+  }
+  
+  let headers = []
+  if (options.headers != nil) {
+    headers = options.headers
+  }
+  
+  let dns = 0
+  let conn = 0
+  let read = 0
+  let write = 0
+  
+  if (options.timeout != nil) {
+    if (options.timeout.dns != nil) { dns = options.timeout.dns }
+    if (options.timeout.connect != nil) { conn = options.timeout.connect }
+    if (options.timeout.read != nil) { read = options.timeout.read }
+    if (options.timeout.write != nil) { write = options.timeout.write }
+  }
+  
+  return kyl_asyncio_httpPostEx(url, body, headers, dns, conn, read, write)
+}
+
+// Wait for request to complete and get result
+fn waitFor(requestId, timeoutMs) {
+  if (timeoutMs == nil) {
+    timeoutMs = 0
+  }
+  return kyl_asyncio_waitResult(requestId, timeoutMs)
+}
+
+// Check if request is complete (non-blocking)
+fn isDone(requestId) {
+  return kyl_asyncio_isComplete(requestId)
+}
+
+// Get result without blocking (returns nil if not ready)
+fn getResult(requestId) {
+  return kyl_asyncio_getResult(requestId)
+}
+
+// File operations
+fn fileRead(path) {
+  return kyl_asyncio_fileRead(path)
+}
+
+fn fileWrite(path, data) {
+  return kyl_asyncio_fileWrite(path, data)
+}
+
+print("[kyllibs/asyncio] Loaded asyncio wrappers")

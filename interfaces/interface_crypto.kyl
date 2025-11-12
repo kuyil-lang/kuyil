@@ -1,19 +1,39 @@
 // Interface for Crypto library
-@loadlib("./libs/libkylcrypto.so");
+// Load library at runtime
+loadlib("libs/libkylcrypto.so")
 
 interface crypto {
-  string md5(input: string)
-  string sha256(input: string)
-  string sha512(input: string)
-  string blake2b(input: string)
+  @alias("md5")
+  string crypto_md5(input: string)
+  
+  @alias("sha256")
+  string crypto_sha256(input: string)
+  
+  @alias("sha512")
+  string crypto_sha512(input: string)
+  
+  @alias("blake2b")
+  string crypto_blake2b(input: string)
 
-  string base64Encode(input: string)
-  string base64Decode(input: string)
+  @alias("base64Encode")
+  string crypto_base64Encode(input: string)
+  
+  @alias("base64Decode")
+  string crypto_base64Decode(input: string)
 
   // Random helpers
-  bool randomInit()
-  string randomHex(length: int32)
-  int32 randomInt(min: int32, max: int32)
-  string generateUuid()
-  string generateToken(length: int32)
+  @alias("randomInit")
+  bool crypto_randomInit()
+  
+  @alias("randomHex")
+  string crypto_randomHex(length: int32)
+  
+  @alias("randomInt")
+  int32 crypto_randomInt(min: int32, max: int32)
+  
+  @alias("generateUuid")
+  string crypto_generateUuid()
+  
+  @alias("generateToken")
+  string crypto_generateToken(length: int32)
 }

@@ -74,16 +74,21 @@ static void set_node_location(ASTNode* node, Token* token) {
     node->column = token->column;
 }
 
+// Skip any newline tokens (for multiline arrays, function calls, etc.)
+static void skip_newlines(Parser* parser) {
+    while (check(parser, TOKEN_NEWLINE)) {
+        parser_advance(parser);
+    }
+}
+
 static Token* consume(Parser* parser, KuyilTokenType type, const char* message) {
     if (current_token(parser)->type == type) {
         return parser_advance(parser);
     }
-    
+
     error_at_current(parser, message);
     return current_token(parser);
-}
-
-static void synchronize(Parser* parser) {
+}static void synchronize(Parser* parser) {
     parser->panic_mode = false;
     
     while (current_token(parser)->type != TOKEN_EOF) {
@@ -167,6 +172,12 @@ void ast_node_free(ASTNode* node) {
         case AST_RETURN_STMT:
             ast_node_free(node->as.return_stmt.value);
             break;
+        case AST_AVATAR_STMT:
+            ast_node_free(node->as.avatar_stmt.call_expr);
+            break;
+        case AST_AWAIT_EXPR:
+            ast_node_free(node->as.await_expr.avatar_handle);
+            break;
         case AST_BINARY_OP:
             ast_node_free(node->as.binary.left);
             ast_node_free(node->as.binary.right);
@@ -222,6 +233,9 @@ static ASTNode* struct_declaration(Parser* parser);
 static ASTNode* interface_declaration(Parser* parser);
 static ASTNode* method_declaration(Parser* parser);
 static ASTNode* switch_statement(Parser* parser);
+static ASTNode* avatar_statement(Parser* parser);
+static ASTNode* block_statement(Parser* parser);
+static ASTNode* call(Parser* parser);
 static ASTNode* parse_array_literal(Parser* parser);
 static ASTNode* directive_statement(Parser* parser);
 
@@ -234,6 +248,8 @@ static ASTNode* parse_array_literal(Parser* parser) {
     node->as.array_literal.capacity = 8;
     node->as.array_literal.elements = malloc(sizeof(ASTNode*) * node->as.array_literal.capacity);
     
+    skip_newlines(parser);  // Skip newlines after '['
+    
     // Empty array []
     if (check(parser, TOKEN_RIGHT_BRACKET)) {
         parser_advance(parser);
@@ -242,6 +258,13 @@ static ASTNode* parse_array_literal(Parser* parser) {
     
     // Parse array elements
     do {
+        skip_newlines(parser);  // Skip newlines after comma or after '['
+        
+        // Check for trailing comma before ']'
+        if (check(parser, TOKEN_RIGHT_BRACKET)) {
+            break;
+        }
+        
         if (node->as.array_literal.count >= node->as.array_literal.capacity) {
             node->as.array_literal.capacity *= 2;
             node->as.array_literal.elements = realloc(node->as.array_literal.elements, 
@@ -250,8 +273,11 @@ static ASTNode* parse_array_literal(Parser* parser) {
         
         node->as.array_literal.elements[node->as.array_literal.count++] = expression(parser);
         
+        skip_newlines(parser);  // Skip newlines after element
+        
     } while (parser_match(parser, TOKEN_COMMA));
     
+    skip_newlines(parser);  // Skip newlines before ']'
     consume(parser, TOKEN_RIGHT_BRACKET, "Expect ']' after array elements.");
     return node;
 }
@@ -379,11 +405,38 @@ static ASTNode* primary(Parser* parser) {
         // Ensure we have a valid string length
         if (str_len < 0) str_len = 0;
         
+        // Allocate buffer for processed string (may be smaller after escape processing)
         char* str = malloc(str_len + 1);
-        if (str_len > 0 && token->start) {
-            memcpy(str, token->start + 1, str_len);
+        int write_pos = 0;
+        
+        // Process escape sequences
+        for (int i = 1; i < token->length - 1; i++) {  // Skip opening and closing quotes
+            if (token->start[i] == '\\' && i + 1 < token->length - 1) {
+                // Escape sequence
+                i++;  // Move to next character
+                switch (token->start[i]) {
+                    case 'n':  str[write_pos++] = '\n'; break;
+                    case 't':  str[write_pos++] = '\t'; break;
+                    case 'r':  str[write_pos++] = '\r'; break;
+                    case '\\': str[write_pos++] = '\\'; break;
+                    case '"':  str[write_pos++] = '"'; break;
+                    case '\'': str[write_pos++] = '\''; break;
+                    case '`':  str[write_pos++] = '`'; break;
+                    case '0':  str[write_pos++] = '\0'; break;
+                    case 'b':  str[write_pos++] = '\b'; break;
+                    case 'f':  str[write_pos++] = '\f'; break;
+                    case 'v':  str[write_pos++] = '\v'; break;
+                    default:
+                        // Unknown escape, keep the backslash and character
+                        str[write_pos++] = '\\';
+                        str[write_pos++] = token->start[i];
+                        break;
+                }
+            } else {
+                str[write_pos++] = token->start[i];
+            }
         }
-        str[str_len] = '\0';
+        str[write_pos] = '\0';
         
         node->as.literal.as.string = str;
         return node;
@@ -429,6 +482,88 @@ static ASTNode* primary(Parser* parser) {
         return parse_anonymous_function(parser, false);
     }
     
+    if (parser_match(parser, TOKEN_AVATAR)) {
+        // Parse avatar expression: avatar functionName(args) or avatar func() {...}
+        ASTNode* avatar_node = ast_node_new(AST_AVATAR_STMT);
+        set_node_location(avatar_node, previous_token(parser));
+        
+        // Check if it's an anonymous function: avatar func() { ... } or avatar fn() { ... }
+        if (parser_match(parser, TOKEN_FN) || check(parser, TOKEN_LEFT_PAREN)) {
+            // Parse anonymous function directly
+            // Back up if we consumed TOKEN_FN
+            if (previous_token(parser)->type == TOKEN_FN) {
+                // Already consumed TOKEN_FN, continue
+            }
+            
+            // Parse parameters
+            consume(parser, TOKEN_LEFT_PAREN, "Expect '(' for avatar function.");
+            
+            ASTNode* anon_func = ast_node_new(AST_ANONYMOUS_FUNCTION);
+            set_node_location(anon_func, previous_token(parser));
+            anon_func->as.anonymous_function.params = NULL;
+            anon_func->as.anonymous_function.param_count = 0;
+            anon_func->as.anonymous_function.is_arrow = false;
+            
+            // Parse parameters
+            if (!check(parser, TOKEN_RIGHT_PAREN)) {
+                int capacity = 4;
+                anon_func->as.anonymous_function.params = malloc(sizeof(char*) * capacity);
+                
+                do {
+                    if (anon_func->as.anonymous_function.param_count >= capacity) {
+                        capacity *= 2;
+                        anon_func->as.anonymous_function.params = realloc(anon_func->as.anonymous_function.params, sizeof(char*) * capacity);
+                    }
+                    
+                    Token* param = consume(parser, TOKEN_IDENTIFIER, "Expect parameter name.");
+                    char* param_name = malloc(param->length + 1);
+                    memcpy(param_name, param->start, param->length);
+                    param_name[param->length] = '\0';
+                    anon_func->as.anonymous_function.params[anon_func->as.anonymous_function.param_count++] = param_name;
+                } while (parser_match(parser, TOKEN_COMMA));
+            }
+            
+            consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+            
+            // Parse body
+            consume(parser, TOKEN_LEFT_BRACE, "Expect '{' before avatar function body.");
+            anon_func->as.anonymous_function.body = block_statement(parser);
+            
+            avatar_node->as.avatar_stmt.call_expr = anon_func;
+            avatar_node->as.avatar_stmt.is_anonymous = true;
+        } else {
+            // Parse named function call: avatar functionName(args)
+            ASTNode* call_expr = call(parser); // This will parse function and args
+            
+            // Validate it's actually a call expression
+            if (call_expr->type != AST_CALL) {
+                error_at(parser, previous_token(parser), "Expected function call after 'avatar'.");
+            }
+            
+            avatar_node->as.avatar_stmt.call_expr = call_expr;
+            avatar_node->as.avatar_stmt.is_anonymous = false;
+        }
+        
+        return avatar_node;
+    }
+    
+    if (parser_match(parser, TOKEN_AWAIT)) {
+        // Parse await expression: await avatar_handle or await (for all)
+        ASTNode* await_node = ast_node_new(AST_AWAIT_EXPR);
+        set_node_location(await_node, previous_token(parser));
+        
+        // Check if there's an expression after await
+        if (check(parser, TOKEN_SEMICOLON) || check(parser, TOKEN_NEWLINE) || check(parser, TOKEN_RIGHT_PAREN)) {
+            // await without argument - wait for all avatars
+            await_node->as.await_expr.avatar_handle = NULL;
+        } else {
+            // await with expression - wait for specific avatar
+            await_node->as.await_expr.avatar_handle = primary(parser);
+        }
+        
+        return await_node;
+    }
+    
     if (parser_match(parser, TOKEN_LEFT_BRACKET)) {
         return parse_array_literal(parser);
     }
@@ -449,19 +584,32 @@ static ASTNode* call(Parser* parser) {
             call_node->as.call.args = NULL;
             call_node->as.call.arg_count = 0;
             
+            skip_newlines(parser);  // Skip newlines after '('
+            
             if (!check(parser, TOKEN_RIGHT_PAREN)) {
                 int capacity = 4;
                 call_node->as.call.args = malloc(sizeof(ASTNode*) * capacity);
                 
                 do {
+                    skip_newlines(parser);  // Skip newlines after comma or after '('
+                    
+                    // Check for trailing comma before ')'
+                    if (check(parser, TOKEN_RIGHT_PAREN)) {
+                        break;
+                    }
+                    
                     if (call_node->as.call.arg_count >= capacity) {
                         capacity *= 2;
                         call_node->as.call.args = realloc(call_node->as.call.args, sizeof(ASTNode*) * capacity);
                     }
                     call_node->as.call.args[call_node->as.call.arg_count++] = expression(parser);
+                    
+                    skip_newlines(parser);  // Skip newlines after argument
+                    
                 } while (parser_match(parser, TOKEN_COMMA));
             }
             
+            skip_newlines(parser);  // Skip newlines before ')'
             consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
             expr = call_node;
         } else if (!parser->suppress_struct_literal && expr->type == AST_IDENTIFIER && parser_match(parser, TOKEN_LEFT_BRACE)) {
@@ -872,7 +1020,149 @@ static ASTNode* return_statement(Parser* parser) {
     return return_node;
 }
 
+static ASTNode* avatar_statement(Parser* parser) {
+    ASTNode* avatar_node = ast_node_new(AST_AVATAR_STMT);
+    set_node_location(avatar_node, previous_token(parser)); // 'avatar'
+    
+    // Check if it's an anonymous function: avatar func() { ... } or avatar fn() { ... }
+    if (parser_match(parser, TOKEN_FN) || check(parser, TOKEN_LEFT_PAREN)) {
+        // Parse anonymous function directly
+        // Back up if we consumed TOKEN_FN
+        if (previous_token(parser)->type == TOKEN_FN) {
+            // Already consumed TOKEN_FN, continue
+        }
+        
+        // Parse parameters
+        consume(parser, TOKEN_LEFT_PAREN, "Expect '(' for avatar function.");
+        
+        ASTNode* anon_func = ast_node_new(AST_ANONYMOUS_FUNCTION);
+        set_node_location(anon_func, previous_token(parser));
+        anon_func->as.anonymous_function.params = NULL;
+        anon_func->as.anonymous_function.param_count = 0;
+        anon_func->as.anonymous_function.is_arrow = false;
+        
+        // Parse parameters
+        if (!check(parser, TOKEN_RIGHT_PAREN)) {
+            int capacity = 4;
+            anon_func->as.anonymous_function.params = malloc(sizeof(char*) * capacity);
+            
+            do {
+                if (anon_func->as.anonymous_function.param_count >= capacity) {
+                    capacity *= 2;
+                    anon_func->as.anonymous_function.params = realloc(anon_func->as.anonymous_function.params, sizeof(char*) * capacity);
+                }
+                
+                Token* param = consume(parser, TOKEN_IDENTIFIER, "Expect parameter name.");
+                char* param_name = malloc(param->length + 1);
+                memcpy(param_name, param->start, param->length);
+                param_name[param->length] = '\0';
+                anon_func->as.anonymous_function.params[anon_func->as.anonymous_function.param_count++] = param_name;
+            } while (parser_match(parser, TOKEN_COMMA));
+        }
+        
+        consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+        
+        // Parse body
+        consume(parser, TOKEN_LEFT_BRACE, "Expect '{' before avatar function body.");
+        anon_func->as.anonymous_function.body = block_statement(parser);
+        
+        avatar_node->as.avatar_stmt.call_expr = anon_func;
+        avatar_node->as.avatar_stmt.is_anonymous = true;
+    } else {
+        // Parse named function call: avatar functionName(args)
+        ASTNode* call_expr = expression(parser); // This should be a call expression
+        
+        // Validate it's actually a call expression
+        if (call_expr->type != AST_CALL) {
+            error_at(parser, previous_token(parser), "Expected function call after 'avatar'.");
+        }
+        
+        avatar_node->as.avatar_stmt.call_expr = call_expr;
+        avatar_node->as.avatar_stmt.is_anonymous = false;
+    }
+    
+    return avatar_node;
+}
+
 static ASTNode* expression_statement(Parser* parser) {
+    // Check for import "string" syntax (without parentheses)
+    if (check(parser, TOKEN_IDENTIFIER)) {
+        Token* id_token = current_token(parser);
+        if (id_token->length == 6 && memcmp(id_token->start, "import", 6) == 0) {
+            int lookahead_pos = parser->current + 1;
+            if (lookahead_pos < parser->count && parser->tokens[lookahead_pos].type == TOKEN_STRING) {
+                // It's import "path" statement
+                parser_advance(parser); // consume 'import' identifier
+                Token* path_token = consume(parser, TOKEN_STRING, "Expect string path after 'import'.");
+                
+                // Extract the path string (remove quotes)
+                int path_len = path_token->length - 2; // Remove opening and closing quotes
+                char* path = malloc(path_len + 1);     // +1 for null terminator
+                memcpy(path, path_token->start + 1, path_len);
+                path[path_len] = '\0';
+                
+                // Check for 'as namespace' syntax
+                if (parser_match(parser, TOKEN_AS)) {
+                    Token* ns_token = consume(parser, TOKEN_IDENTIFIER, "Expect namespace identifier after 'as'.");
+                    char* ns_name = malloc(ns_token->length + 1);
+                    memcpy(ns_name, ns_token->start, ns_token->length);
+                    ns_name[ns_token->length] = '\0';
+                    
+                    // Create import_as() call: import_as("path", "namespace")
+                    ASTNode* import_call = ast_node_new(AST_CALL);
+                    set_node_location(import_call, path_token);
+                    
+                    ASTNode* func_name = ast_node_new(AST_IDENTIFIER);
+                    func_name->as.identifier = strdup("import_as");
+                    import_call->as.call.function = func_name;
+                    
+                    import_call->as.call.arg_count = 2;
+                    import_call->as.call.args = malloc(sizeof(ASTNode*) * 2);
+                    
+                    // First arg: path string
+                    ASTNode* path_lit = ast_node_new(AST_LITERAL);
+                    path_lit->as.literal.type = VALUE_STRING;
+                    path_lit->as.literal.as.string = path;
+                    import_call->as.call.args[0] = path_lit;
+                    
+                    // Second arg: namespace string
+                    ASTNode* ns_lit = ast_node_new(AST_LITERAL);
+                    ns_lit->as.literal.type = VALUE_STRING;
+                    ns_lit->as.literal.as.string = ns_name;
+                    import_call->as.call.args[1] = ns_lit;
+                    
+                    // Wrap in variable declaration: let namespace = import_as(...)
+                    ASTNode* var_decl = ast_node_new(AST_VAR_DECL);
+                    set_node_location(var_decl, ns_token);
+                    var_decl->as.var_decl.name = strdup(ns_name);
+                    var_decl->as.var_decl.value = import_call;
+                    
+                    return var_decl;
+                } else {
+                    // Simple import("path") as expression statement
+                    ASTNode* import_call = ast_node_new(AST_CALL);
+                    set_node_location(import_call, path_token);
+                    
+                    ASTNode* func_name = ast_node_new(AST_IDENTIFIER);
+                    func_name->as.identifier = strdup("import");
+                    import_call->as.call.function = func_name;
+                    
+                    import_call->as.call.arg_count = 1;
+                    import_call->as.call.args = malloc(sizeof(ASTNode*));
+                    
+                    ASTNode* path_lit = ast_node_new(AST_LITERAL);
+                    path_lit->as.literal.type = VALUE_STRING;
+                    path_lit->as.literal.as.string = path;
+                    import_call->as.call.args[0] = path_lit;
+                    
+                    ASTNode* stmt = ast_node_new(AST_EXPRESSION_STMT);
+                    stmt->as.expression = import_call;
+                    return stmt;
+                }
+            }
+        }
+    }
+    
     // Handle empty expression statements (just semicolons)
     if (check(parser, TOKEN_SEMICOLON)) {
         // Create a nil expression for empty statements
@@ -1134,6 +1424,7 @@ static ASTNode* statement(Parser* parser) {
     if (parser_match(parser, TOKEN_SWITCH)) return switch_statement(parser);
     if (parser_match(parser, TOKEN_WHILE)) return while_statement(parser);
     if (parser_match(parser, TOKEN_FOR)) return for_statement(parser);
+    if (parser_match(parser, TOKEN_AVATAR)) return avatar_statement(parser);
     if (parser_match(parser, TOKEN_RETURN)) return return_statement(parser);
     if (parser_match(parser, TOKEN_LEFT_BRACE)) return block_statement(parser);
     
@@ -1144,6 +1435,7 @@ static ASTNode* var_declaration(Parser* parser) {
     Token* let_token = previous_token(parser); // 'let'
     Token* name = consume(parser, TOKEN_IDENTIFIER, "Expect variable name.");
     
+    // Normal single variable declaration
     ASTNode* var_node = ast_node_new(AST_VAR_DECL);
     set_node_location(var_node, let_token);
     char* var_name = malloc(name->length + 1);
@@ -1173,6 +1465,7 @@ static ASTNode* function_declaration(Parser* parser) {
     memcpy(fn_name, name->start, name->length);
     fn_name[name->length] = '\0';
     fn_node->as.function_decl.name = fn_name;
+    fn_node->as.function_decl.is_exported = false;  // Default to not exported
     
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
     
@@ -1320,13 +1613,63 @@ static ASTNode* interface_declaration(Parser* parser) {
     Token* interface_token = previous_token(parser); // 'interface'
     Token* name = consume(parser, TOKEN_IDENTIFIER, "Expect interface name.");
 
+    // Check for optional "from" clause: interface NAME from "path" {
+    char* library_path = NULL;
+    if (check(parser, TOKEN_IDENTIFIER)) {
+        Token* maybe_from = current_token(parser);
+        if (maybe_from->length == 4 && strncmp(maybe_from->start, "from", 4) == 0) {
+            parser_advance(parser); // consume 'from'
+            Token* path_token = consume(parser, TOKEN_STRING, "Expect library path after 'from'.");
+            // Extract path string (strip quotes)
+            int path_len = path_token->length - 2;
+            if (path_len < 0) path_len = 0;
+            library_path = malloc(path_len + 1);
+            if (path_len > 0) {
+                memcpy(library_path, path_token->start + 1, path_len);
+            }
+            library_path[path_len] = '\0';
+        }
+    }
+
     // We'll lower the interface declaration into a block of runtime calls:
+    //   loadlib("path") if from clause present
     //   bind_interface_method("<iface>", "<method>") for each method
     ASTNode* block = ast_node_new(AST_BLOCK);
     set_node_location(block, interface_token);
     block->as.block.statements = NULL;
     block->as.block.count = 0;
     block->as.block.capacity = 0;
+
+    // If library_path was specified, inject loadlib() call first
+    if (library_path) {
+        // Build: loadlib("path")
+        ASTNode* loadlib_ident = ast_node_new(AST_IDENTIFIER);
+        set_node_location(loadlib_ident, interface_token);
+        loadlib_ident->as.identifier = strdup("loadlib");
+        
+        ASTNode* path_lit = ast_node_new(AST_LITERAL);
+        set_node_location(path_lit, interface_token);
+        path_lit->as.literal.type = VALUE_STRING;
+        path_lit->as.literal.as.string = library_path; // ownership transferred
+        
+        ASTNode* loadlib_call = ast_node_new(AST_CALL);
+        set_node_location(loadlib_call, interface_token);
+        loadlib_call->as.call.function = loadlib_ident;
+        loadlib_call->as.call.arg_count = 1;
+        loadlib_call->as.call.args = malloc(sizeof(ASTNode*));
+        loadlib_call->as.call.args[0] = path_lit;
+        
+        ASTNode* loadlib_stmt = ast_node_new(AST_EXPRESSION_STMT);
+        set_node_location(loadlib_stmt, interface_token);
+        loadlib_stmt->as.expression = loadlib_call;
+        
+        // Add to block
+        if (block->as.block.count >= block->as.block.capacity) {
+            block->as.block.capacity = block->as.block.capacity < 8 ? 8 : block->as.block.capacity * 2;
+            block->as.block.statements = realloc(block->as.block.statements, sizeof(ASTNode*) * block->as.block.capacity);
+        }
+        block->as.block.statements[block->as.block.count++] = loadlib_stmt;
+    }
 
     // Capture interface name string now
     char* iface_name = malloc(name->length + 1);
@@ -1647,6 +1990,22 @@ static ASTNode* declaration(Parser* parser) {
     }
     if (parser_match(parser, TOKEN_INTERFACE)) {
         return interface_declaration(parser);
+    }
+    if (parser_match(parser, TOKEN_EXPORT)) {
+        // export fn name() { ... }
+        if (parser_match(parser, TOKEN_FN)) {
+            if (check(parser, TOKEN_IDENTIFIER)) {
+                ASTNode* fn_node = function_declaration(parser);
+                fn_node->as.function_decl.is_exported = true;
+                return fn_node;
+            } else {
+                error_at_current(parser, "export can only be used with named functions.");
+                return NULL;
+            }
+        } else {
+            error_at_current(parser, "export can only be used with function declarations.");
+            return NULL;
+        }
     }
     if (parser_match(parser, TOKEN_FN)) {
         // Check if it's a method declaration fn (Type) method()

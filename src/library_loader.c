@@ -353,19 +353,21 @@ bool load_library(const char* library_name) {
 void load_webview_functions(SharedLibrary* lib) {
     // Define WebView functions - using value_args for new functions that take Value* args
     const char* webview_functions[][3] = {
-        {"webview_init", "webview_init", "int_void"},
-        {"webview_create", "webview_create", "ptr_string_ptr"},
-        {"webview_create_default_settings", "webview_create_default_settings", "ptr_void"},
-        {"webview_load_html", "webview_load_html", "int_ptr_string"},
-        {"webview_load_url", "webview_load_url", "int_ptr_string"},
-        {"webview_run", "webview_run", "int_ptr"},
-        {"webview_show", "webview_show", "void_ptr"},
-        {"webview_hide", "webview_hide", "void_ptr"},
-        {"webview_destroy", "webview_destroy", "void_ptr"},
-        {"webview_cleanup", "webview_cleanup", "void_void"},
+        {"webview_init", "kyl_webview_init", "value_args"},
+        {"webview_create", "kyl_webview_create", "value_args"},
+        {"webview_create_default_settings", "kyl_webview_create_default_settings", "value_args"},
+        {"webview_load_html", "kyl_webview_load_html", "value_args"},
+        {"webview_load_url", "kyl_webview_load_url", "value_args"},
+        {"webview_run", "kyl_webview_run", "value_args"},
+        {"webview_show", "kyl_webview_show", "value_args"},
+        {"webview_hide", "kyl_webview_hide", "value_args"},
+        {"webview_destroy", "kyl_webview_destroy", "value_args"},
+        {"webview_cleanup", "kyl_webview_cleanup", "value_args"},
         {"webview_eval", "kyl_webview_eval", "value_args"},
         {"webview_set_title", "kyl_webview_set_title", "value_args"},
         {"webview_set_size", "kyl_webview_set_size", "value_args"},
+        {"webview_bind", "kyl_webview_bind", "value_args"},
+        {"webview_step", "kyl_webview_step", "value_args"},
         {NULL, NULL, NULL} // Terminator
     };
     
@@ -403,6 +405,36 @@ void load_webview_functions(SharedLibrary* lib) {
             LOG_INFO("Loaded WebView function: %s", func->name);
         } else {
             LOG_WARNING("Failed to load WebView function: %s (%s)", func->name, dlerror());
+        }
+    }
+}
+
+void load_system_functions(SharedLibrary* lib) {
+    // Define System functions - using value_args signature
+    const char* system_functions[][3] = {
+        {"system_sleep", "kyl_system_sleep", "value_args"},
+        {"system_timestamp", "kyl_system_timestamp", "value_args"},
+        {NULL, NULL, NULL} // Terminator
+    };
+    
+    for (int i = 0; system_functions[i][0] != NULL; i++) {
+        LibraryFunction* func = &lib->functions[lib->function_count];
+        strncpy(func->name, system_functions[i][0], MAX_NAME_LENGTH - 1);
+        strncpy(func->symbol_name, system_functions[i][1], MAX_NAME_LENGTH - 1);
+        
+        // Set signature
+        if (strcmp(system_functions[i][2], "value_args") == 0) {
+            func->signature = FUNC_SIG_VALUE_ARGS;
+        }
+        
+        // Load the function symbol
+        func->function_ptr = dlsym(lib->handle, func->symbol_name);
+        if (func->function_ptr) {
+            func->is_loaded = true;
+            lib->function_count++;
+            LOG_INFO("Loaded System function: %s", func->name);
+        } else {
+            LOG_WARNING("Failed to load System function: %s (%s)", func->name, dlerror());
         }
     }
 }

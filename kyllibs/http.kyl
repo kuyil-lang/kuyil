@@ -1,0 +1,20 @@
+// HTTP Library - Simple wrappers for HTTP operations
+// Load the native HTTP library
+loadlib("libs/libkylhttp.so")
+
+print("[kyllibs/http] HTTP library loaded")
+
+// Note: Due to Kuyil's import scoping, functions defined here are not
+// automatically exported to the importing script.
+//
+// To use these wrappers, either:
+// 1. Copy them to your script after loading this library
+// 2. Use the direct kyl_http_* functions from the native library
+//
+// Available native functions:
+//   kyl_http_server(port) -> handle
+//   kyl_http_listen(handle) -> bool
+//   kyl_http_get(handle, path, handler_fn) -> bool
+//   kyl_http_post(handle, path, handler_fn) -> bool
+//   kyl_http_client_get(url) -> string
+//   kyl_http_client_post(url, body) -> string

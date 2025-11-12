@@ -151,7 +151,16 @@ static KuyilTokenType check_keyword(int start, int length, const char* rest, Kuy
 
 static KuyilTokenType identifier_type(Lexer* lexer) {
     switch (lexer->start[0]) {
-        case 'a': return check_keyword(1, 1, "s", TOKEN_AS, lexer);
+        case 'a': 
+            if (lexer->current - lexer->start > 1) {
+                switch (lexer->start[1]) {
+                    case 'n': return check_keyword(1, 2, "nd", TOKEN_AND, lexer);
+                    case 's': return check_keyword(1, 1, "s", TOKEN_AS, lexer);
+                    case 'v': return check_keyword(1, 5, "vatar", TOKEN_AVATAR, lexer);
+                    case 'w': return check_keyword(1, 4, "wait", TOKEN_AWAIT, lexer);
+                }
+            }
+            break;
         case 'b': return check_keyword(1, 4, "reak", TOKEN_BREAK, lexer);
         case 'c': 
             if (lexer->current - lexer->start > 1) {
@@ -162,7 +171,14 @@ static KuyilTokenType identifier_type(Lexer* lexer) {
             }
             break;
         case 'd': return check_keyword(1, 6, "efault", TOKEN_DEFAULT, lexer);
-        case 'e': return check_keyword(1, 3, "lse", TOKEN_ELSE, lexer);
+        case 'e': 
+            if (lexer->current - lexer->start > 1) {
+                switch (lexer->start[1]) {
+                    case 'l': return check_keyword(1, 3, "lse", TOKEN_ELSE, lexer);
+                    case 'x': return check_keyword(1, 5, "xport", TOKEN_EXPORT, lexer);
+                }
+            }
+            break;
         case 'f': 
             if (lexer->current - lexer->start > 1) {
                 switch (lexer->start[1]) {
@@ -187,6 +203,7 @@ static KuyilTokenType identifier_type(Lexer* lexer) {
             return check_keyword(1, 1, "f", TOKEN_IF, lexer);
         case 'l': return check_keyword(1, 2, "et", TOKEN_LET, lexer);
         case 'n': return check_keyword(1, 2, "il", TOKEN_NIL, lexer);
+        case 'o': return check_keyword(1, 1, "r", TOKEN_OR, lexer);
         case 'r': return check_keyword(1, 5, "eturn", TOKEN_RETURN, lexer);
         case 's': 
             if (lexer->current - lexer->start > 1) {
@@ -223,11 +240,44 @@ static Token number(Lexer* lexer) {
 
 static Token string(Lexer* lexer) {
     while (peek(lexer) != '"' && !is_at_end(lexer)) {
-        if (peek(lexer) == '\n') {
-            lexer->line++;
-            lexer->column = 0;
+        if (peek(lexer) == '\\') {
+            // Handle escape sequences
+            advance(lexer);  // Skip backslash
+            if (!is_at_end(lexer)) {
+                advance(lexer);  // Skip escaped character
+            }
+        } else {
+            if (peek(lexer) == '\n') {
+                lexer->line++;
+                lexer->column = 0;
+            }
+            advance(lexer);
         }
-        advance(lexer);
+    }
+
+    if (is_at_end(lexer)) return error_token(lexer, "Unterminated string.");
+
+    // The closing quote.
+    advance(lexer);
+    return make_token(lexer, TOKEN_STRING);
+}
+
+// Single-quoted string (allows double quotes inside)
+static Token single_quote_string(Lexer* lexer) {
+    while (peek(lexer) != '\'' && !is_at_end(lexer)) {
+        if (peek(lexer) == '\\') {
+            // Handle escape sequences
+            advance(lexer);  // Skip backslash
+            if (!is_at_end(lexer)) {
+                advance(lexer);  // Skip escaped character
+            }
+        } else {
+            if (peek(lexer) == '\n') {
+                lexer->line++;
+                lexer->column = 0;
+            }
+            advance(lexer);
+        }
     }
 
     if (is_at_end(lexer)) return error_token(lexer, "Unterminated string.");
@@ -254,11 +304,19 @@ static Token backtick_string(Lexer* lexer) {
     if (!has_interpolation) {
         // Simple backtick string without interpolation
         while (peek(lexer) != '`' && !is_at_end(lexer)) {
-            if (peek(lexer) == '\n') {
-                lexer->line++;
-                lexer->column = 0;
+            if (peek(lexer) == '\\') {
+                // Handle escape sequences
+                advance(lexer);  // Skip backslash
+                if (!is_at_end(lexer)) {
+                    advance(lexer);  // Skip escaped character
+                }
+            } else {
+                if (peek(lexer) == '\n') {
+                    lexer->line++;
+                    lexer->column = 0;
+                }
+                advance(lexer);
             }
-            advance(lexer);
         }
 
         if (is_at_end(lexer)) return error_token(lexer, "Unterminated backtick string.");
@@ -337,6 +395,7 @@ Token lexer_scan_token(Lexer* lexer) {
         case '.': return make_token(lexer, TOKEN_DOT);
         case ':': return make_token(lexer, TOKEN_COLON);
         case '"': return string(lexer);
+        case '\'': return single_quote_string(lexer);
         case '`': return backtick_string(lexer);
         case '@': return make_token(lexer, TOKEN_AT);
         case '\n':
@@ -399,6 +458,10 @@ const char* token_type_string(KuyilTokenType type) {
         case TOKEN_BREAK: return "BREAK";
         case TOKEN_CONTINUE: return "CONTINUE";
         case TOKEN_AS: return "AS";
+        case TOKEN_AVATAR: return "AVATAR";
+        case TOKEN_AWAIT: return "AWAIT";
+        case TOKEN_EXPORT: return "EXPORT";
+        case TOKEN_IMPORT: return "IMPORT";
         case TOKEN_PLUS: return "PLUS";
         case TOKEN_MINUS: return "MINUS";
         case TOKEN_MULTIPLY: return "MULTIPLY";

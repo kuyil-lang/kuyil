@@ -3,10 +3,15 @@
 #include "logging.h"
 #include "config.h"
 #include "ffi.h"
+#include "vm_task_queue.h"
+#include "avatar_runtime.h"
+#include "async_http.h"
+#include "async_request_queue.h"
 // HTTP functionality now in shared libraries
 #include "file_reader.h"
 #include "green_threads.h"
 #include "vm_library_integration.h"
+#include "opcode_executor.h"
 #include "lexer.c"
 #include "parser.c"
 #include "compiler.c"
@@ -48,6 +53,12 @@
 
 // Global FFI context
 static FFIContext* g_ffi_context = NULL;
+
+// Global task queue for thread-safe VM operations
+static TaskQueue* g_vm_task_queue = NULL;
+
+// Global VM instance for avatar runtime access
+static VM* g_current_vm = NULL;
 
 static void reset_stack(VM* vm) {
     vm->stack_top = vm->stack;
@@ -144,19 +155,7 @@ static bool is_falsey(Value value) {
            (value.type == VALUE_BOOL && !value.as.boolean);
 }
 
-static bool values_equal(Value a, Value b) {
-    if (a.type != b.type) return false;
-    
-    switch (a.type) {
-        case VALUE_BOOL:   return a.as.boolean == b.as.boolean;
-        case VALUE_NIL:    return true;
-        case VALUE_NUMBER: return a.as.number == b.as.number;
-        case VALUE_STRING: return strcmp(a.as.string, b.as.string) == 0;
-        case VALUE_ARRAY:  return false; // Arrays are not compared for equality
-        case VALUE_OBJECT: return false; // Objects are not compared for equality
-        default:           return false; // Unreachable.
-    }
-}
+// values_equal is now in opcode_executor.c (shared)
 
 // Public helpers for test and coverage modes
 void vm_enable_test_mode(VM* vm, bool enabled) {
@@ -232,15 +231,44 @@ static void concatenate(VM* vm) {
     Value b = vm_pop(vm);
     Value a = vm_pop(vm);
     
-    if (a.type != VALUE_STRING || b.type != VALUE_STRING) {
-        runtime_error(vm, "Operands must be strings.");
-        return;
+    // Convert both values to strings
+    char buf_a[64] = {0};
+    char buf_b[64] = {0};
+    const char* str_a;
+    const char* str_b;
+    
+    // Convert a to string
+    if (a.type == VALUE_STRING) {
+        str_a = a.as.string ? a.as.string : "";
+    } else if (a.type == VALUE_NUMBER) {
+        snprintf(buf_a, sizeof(buf_a), "%g", a.as.number);
+        str_a = buf_a;
+    } else if (a.type == VALUE_BOOL) {
+        str_a = a.as.boolean ? "true" : "false";
+    } else if (a.type == VALUE_NIL) {
+        str_a = "nil";
+    } else {
+        str_a = "[object]";
     }
     
-    int length = strlen(a.as.string) + strlen(b.as.string);
+    // Convert b to string
+    if (b.type == VALUE_STRING) {
+        str_b = b.as.string ? b.as.string : "";
+    } else if (b.type == VALUE_NUMBER) {
+        snprintf(buf_b, sizeof(buf_b), "%g", b.as.number);
+        str_b = buf_b;
+    } else if (b.type == VALUE_BOOL) {
+        str_b = b.as.boolean ? "true" : "false";
+    } else if (b.type == VALUE_NIL) {
+        str_b = "nil";
+    } else {
+        str_b = "[object]";
+    }
+    
+    int length = strlen(str_a) + strlen(str_b);
     char* chars = malloc(length + 1);
-    strcpy(chars, a.as.string);
-    strcat(chars, b.as.string);
+    strcpy(chars, str_a);
+    strcat(chars, str_b);
     
     Value result;
     result.type = VALUE_STRING;
@@ -292,6 +320,26 @@ static bool set_global(VM* vm, const char* name, Value value) {
     
     vm->globals[index].value = value;
     return true;
+}
+
+// Public function to get a global value from a VM
+bool vm_get_global_value(VM* vm, const char* name, Value* out_value) {
+    return get_global(vm, name, out_value);
+}
+
+// Copy a global variable from one VM to another
+void vm_copy_global(VM* dest_vm, VM* src_vm, const char* name) {
+    Value value;
+    if (get_global(src_vm, name, &value)) {
+        // Check if it already exists in dest - if so, update it
+        int index = find_global(dest_vm, name);
+        if (index != -1) {
+            dest_vm->globals[index].value = value;
+        } else {
+            // Define as new global
+            define_global(dest_vm, name, value);
+        }
+    }
 }
 
 // Built-in functions
@@ -435,6 +483,45 @@ static const char* value_type_name(ValueType t) {
     }
 }
 
+// Shared frame setup utility for both main VM and avatars
+// This extracts the common logic from call_value() to ensure consistency
+// add_reserve: if true, add extra stack space for expression evaluation (avatars need this)
+CallFrame* vm_setup_call_frame_ex(CallFrame* frames, int* frame_count, 
+                                    Value** stack_top_ptr, Function* function, 
+                                    int arg_count, bool add_reserve) {
+    if (*frame_count >= FRAMES_MAX) {
+        return NULL;  // Stack overflow
+    }
+    
+    CallFrame* frame = &frames[(*frame_count)++];
+    frame->function = function;
+    frame->ip = function->chunk.code;
+    
+    // Stack layout before: [... arg0] [arg1] ... [argN] [callee] <- stack_top
+    // Set slots to point to arg0 (at stack_top - arg_count - 1)
+    frame->slots = *stack_top_ptr - arg_count - 1;
+    
+    // Adjust stack_top to point after the arguments (overwriting where callee was)
+    // This is where local variables will be pushed
+    *stack_top_ptr = frame->slots + arg_count;
+    
+    // Avatar runtime needs extra space to prevent expression evaluation from
+    // overwriting local variables during recursive calls
+    if (add_reserve) {
+        #define TEMP_STACK_RESERVE 16
+        *stack_top_ptr += TEMP_STACK_RESERVE;
+    }
+    
+    return frame;
+}
+
+// Wrapper for backward compatibility (main VM doesn't need reserve)
+CallFrame* vm_setup_call_frame(CallFrame* frames, int* frame_count, 
+                                 Value** stack_top_ptr, Function* function, 
+                                 int arg_count) {
+    return vm_setup_call_frame_ex(frames, frame_count, stack_top_ptr, function, arg_count, false);
+}
+
 static bool call_value(VM* vm, Value callee, int arg_count) {
     if (callee.type == VALUE_FUNCTION) {
         // Function call
@@ -453,22 +540,13 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             return true;
         }
         
-        // Create a new call frame for the function
-        if (vm->frame_count >= FRAMES_MAX) {
+        // Create a new call frame for the function using shared logic
+        CallFrame* frame = vm_setup_call_frame(vm->frames, &vm->frame_count, 
+                                                 &vm->stack_top, function, arg_count);
+        if (!frame) {
             runtime_error(vm, "Stack overflow.");
             return false;
         }
-        
-        CallFrame* frame = &vm->frames[vm->frame_count++];
-        frame->function = function;
-        frame->ip = function->chunk.code;
-        // Stack layout before: [... arg0] [arg1] ... [argN] [function] <- stack_top
-        // Set slots to point to arg0 (or to function position if no args)
-        frame->slots = vm->stack_top - arg_count - 1;
-        // Adjust stack_top to point after the arguments, so local variables can be pushed
-        // For arg_count args, we want stack_top to point to where slot[arg_count] is
-        // which is frame->slots + arg_count
-        vm->stack_top = frame->slots + arg_count;
         
         return true;
     }
@@ -665,6 +743,28 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             Value result = native_print(arg_count, args);
             vm->stack_top -= arg_count + 1; // Pop args and function
             vm_push(vm, result);
+            return true;
+        }
+        if (strcmp(callee.as.string, "typeof") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            const char* type_str = "unknown";
+            if (arg_count >= 1) {
+                type_str = value_type_name(args[0].type);
+            }
+            // Allocate string on heap and copy type name
+            size_t len = strlen(type_str);
+            char* result_str = (char*)malloc(len + 1);
+            if (result_str) {
+                strcpy(result_str, type_str);
+                Value result = {VALUE_STRING, .as.string = result_str};
+                vm->stack_top -= arg_count + 1; // Pop args and function
+                vm_push(vm, result);
+            } else {
+                // Out of memory, return nil
+                Value result = {VALUE_NIL};
+                vm->stack_top -= arg_count + 1;
+                vm_push(vm, result);
+            }
             return true;
         }
         if (strcmp(callee.as.string, "array_length") == 0) {
@@ -1837,6 +1937,21 @@ InterpretResult vm_run(VM* vm) {
     (vm->frames[vm->frame_count - 1].function->chunk.constants[READ_BYTE()])
 #define READ_STRING() READ_CONSTANT().as.string
     
+    // Set up execution context for shared opcode executor
+    bool exec_error = false;
+    char exec_error_msg[256] = {0};
+    ExecContext exec_ctx = {
+        .stack = vm->stack,
+        .stack_top = &vm->stack_top,
+        .stack_capacity = STACK_MAX,
+        .current_frame_slots = NULL,  // Updated per operation
+        .has_error = &exec_error,
+        .error_message = exec_error_msg,
+        .error_msg_size = sizeof(exec_error_msg),
+        .type = EXEC_CTX_VM,
+        .vm_ptr = vm
+    };
+    
     for (;;) {
         uint8_t instruction = READ_BYTE();
         // Coverage instrumentation: increment hit for current instruction
@@ -1881,28 +1996,17 @@ InterpretResult vm_run(VM* vm) {
                 vm_push(vm, constant);
                 break;
             }
-            case OP_NIL: {
-                Value nil;
-                nil.type = VALUE_NIL;
-                vm_push(vm, nil);
+            case OP_NIL:
+                exec_push_nil(&exec_ctx);
                 break;
-            }
-            case OP_TRUE: {
-                Value true_val;
-                true_val.type = VALUE_BOOL;
-                true_val.as.boolean = true;
-                vm_push(vm, true_val);
+            case OP_TRUE:
+                exec_push_true(&exec_ctx);
                 break;
-            }
-            case OP_FALSE: {
-                Value false_val;
-                false_val.type = VALUE_BOOL;
-                false_val.as.boolean = false;
-                vm_push(vm, false_val);
+            case OP_FALSE:
+                exec_push_false(&exec_ctx);
                 break;
-            }
             case OP_POP: 
-                vm_pop(vm); 
+                exec_pop_discard(&exec_ctx);
                 break;
             case OP_DUP: {
                 Value value = vm_peek(vm, 0);
@@ -2065,66 +2169,30 @@ InterpretResult vm_run(VM* vm) {
                 vm_push(vm, result);
                 break;
             }
-            case OP_ADD: {
-                if (vm_peek(vm, 0).type == VALUE_STRING && 
-                    vm_peek(vm, 1).type == VALUE_STRING) {
-                    concatenate(vm);
-                } else if (vm_peek(vm, 0).type == VALUE_NUMBER && 
-                           vm_peek(vm, 1).type == VALUE_NUMBER) {
-                    double b = vm_pop(vm).as.number;
-                    double a = vm_pop(vm).as.number;
-                    Value result;
-                    result.type = VALUE_NUMBER;
-                    result.as.number = a + b;
-                    vm_push(vm, result);
-                } else {
-                    runtime_error(vm, "Operands must be two numbers or two strings.");
+            case OP_ADD:
+                if (!exec_add(&exec_ctx)) {
+                    runtime_error(vm, "%s", exec_error_msg);
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
-            }
-            case OP_SUBTRACT: {
-                if (vm_peek(vm, 0).type != VALUE_NUMBER || 
-                    vm_peek(vm, 1).type != VALUE_NUMBER) {
-                    runtime_error(vm, "Operands must be numbers.");
+            case OP_SUBTRACT:
+                if (!exec_subtract(&exec_ctx)) {
+                    runtime_error(vm, "%s", exec_error_msg);
                     return INTERPRET_RUNTIME_ERROR;
                 }
-                double b = vm_pop(vm).as.number;
-                double a = vm_pop(vm).as.number;
-                Value result;
-                result.type = VALUE_NUMBER;
-                result.as.number = a - b;
-                vm_push(vm, result);
                 break;
-            }
-            case OP_MULTIPLY: {
-                if (vm_peek(vm, 0).type != VALUE_NUMBER || 
-                    vm_peek(vm, 1).type != VALUE_NUMBER) {
-                    runtime_error(vm, "Operands must be numbers.");
+            case OP_MULTIPLY:
+                if (!exec_multiply(&exec_ctx)) {
+                    runtime_error(vm, "%s", exec_error_msg);
                     return INTERPRET_RUNTIME_ERROR;
                 }
-                double b = vm_pop(vm).as.number;
-                double a = vm_pop(vm).as.number;
-                Value result;
-                result.type = VALUE_NUMBER;
-                result.as.number = a * b;
-                vm_push(vm, result);
                 break;
-            }
-            case OP_DIVIDE: {
-                if (vm_peek(vm, 0).type != VALUE_NUMBER || 
-                    vm_peek(vm, 1).type != VALUE_NUMBER) {
-                    runtime_error(vm, "Operands must be numbers.");
+            case OP_DIVIDE:
+                if (!exec_divide(&exec_ctx)) {
+                    runtime_error(vm, "%s", exec_error_msg);
                     return INTERPRET_RUNTIME_ERROR;
                 }
-                double b = vm_pop(vm).as.number;
-                double a = vm_pop(vm).as.number;
-                Value result;
-                result.type = VALUE_NUMBER;
-                result.as.number = a / b;
-                vm_push(vm, result);
                 break;
-            }
             case OP_MODULO: {
                 if (vm_peek(vm, 0).type != VALUE_NUMBER || 
                     vm_peek(vm, 1).type != VALUE_NUMBER) {
@@ -2238,8 +2306,110 @@ InterpretResult vm_run(VM* vm) {
                     return INTERPRET_OK;
                 }
                 
-                vm->stack_top = vm->frames[vm->frame_count].slots;
+                Value* caller_slots = vm->frames[vm->frame_count].slots;
+                vm->stack_top = caller_slots;
                 vm_push(vm, result);
+                break;
+            }
+            case OP_AVATAR: {
+                // OP_AVATAR launches a function asynchronously using avatar runtime
+                // Stack layout: [function, arg1, arg2, ..., argN]
+                
+                int arg_count = READ_BYTE();
+                Value function_value = vm_peek(vm, arg_count);
+                
+                if (function_value.type != VALUE_FUNCTION) {
+                    runtime_error(vm, "Avatar can only launch functions");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!vm->avatar_runtime) {
+                    // Fallback to inline execution if avatar runtime not available
+                    kuyil_log_warning("[AVATAR] Runtime not available, executing inline");
+                    if (!call_value(vm, function_value, arg_count)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                } else {
+                    // Collect arguments from stack
+                    Value* args = malloc(sizeof(Value) * arg_count);
+                    for (int i = arg_count - 1; i >= 0; i--) {
+                        args[i] = vm_pop(vm);
+                    }
+                    
+                    // Pop function value
+                    Value func_val = vm_pop(vm);
+                    Function* func = func_val.as.function.function;
+                    
+                    // Submit to avatar runtime
+                    AvatarHandle* handle = avatar_runtime_submit(
+                        vm->avatar_runtime,
+                        func,
+                        args,
+                        arg_count,
+                        vm,
+                        NULL,  // No completion callback for now
+                        NULL
+                    );
+                    
+                    free(args);
+                    
+                    if (!handle) {
+                        runtime_error(vm, "Failed to submit avatar");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    
+                    // Push avatar handle onto stack (wrapped as number for now)
+                    // TODO: Create proper VALUE_AVATAR_HANDLE type
+                    Value handle_val;
+                    handle_val.type = VALUE_NUMBER;
+                    handle_val.as.number = (double)(uintptr_t)handle;
+                    vm_push(vm, handle_val);
+                    
+                    kuyil_log_info("[AVATAR] Function submitted to thread pool");
+                }
+                break;
+            }
+            case OP_AWAIT: {
+                // OP_AWAIT waits for an avatar to complete
+                // Stack: [avatar_handle] -> [avatar_result]
+                
+                Value handle_val = vm_pop(vm);
+                
+                if (!vm->avatar_runtime) {
+                    // If no avatar runtime, value is already result from inline execution
+                    vm_push(vm, handle_val);
+                    kuyil_log_info("[AWAIT] Pass-through (no avatar runtime)");
+                } else {
+                    // Extract handle
+                    AvatarHandle* handle = (AvatarHandle*)(uintptr_t)handle_val.as.number;
+                    
+                    // Poll for completion instead of blocking indefinitely
+                    // This allows completions to be processed
+                    const int poll_interval_ms = 10;
+                    const int max_polls = 10000; // 100 seconds total timeout
+                    int polls = 0;
+                    
+                    while (!avatar_runtime_is_complete(handle) && polls < max_polls) {
+                        // Process pending completions
+                        avatar_runtime_process_completions(vm->avatar_runtime, 100);
+                        
+                        // Small sleep to avoid busy-wait
+                        struct timespec ts = {0, poll_interval_ms * 1000000};
+                        nanosleep(&ts, NULL);
+                        
+                        polls++;
+                    }
+                    
+                    if (!avatar_runtime_is_complete(handle)) {
+                        runtime_error(vm, "Avatar await timeout");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    
+                    // Get the result
+                    Value result = avatar_runtime_get_result(handle);
+                    vm_push(vm, result);
+                    kuyil_log_info("[AWAIT] Avatar completed, result retrieved");
+                }
                 break;
             }
             case OP_CLOSURE: {
@@ -2506,6 +2676,15 @@ InterpretResult vm_run(VM* vm) {
                 break;
             }
             case OP_HALT:
+                // For nested execution (imports), pop the frame before returning
+                if (vm->frame_count > 1) {
+                    vm->frame_count--;
+                    // Restore stack to caller's position
+                    vm->stack_top = vm->frames[vm->frame_count - 1].slots;
+                    // Push nil as the return value
+                    Value nil_val = {VALUE_NIL};
+                    vm_push(vm, nil_val);
+                }
                 return INTERPRET_OK;
             default:
 
@@ -2729,11 +2908,12 @@ static void vm_init_limited(VM* vm, LibraryFlags allowed_libraries) {
     if (allowed_libraries & LIBRARY_CORE) {
         Value print_val = {VALUE_STRING, {.string = strdup("print")}};
         define_global(vm, "print", print_val);
+        Value typeof_val = {VALUE_STRING, {.string = strdup("typeof")}};
+        define_global(vm, "typeof", typeof_val);
         // Core utility: array_length
         Value array_length_val = (Value){VALUE_STRING, {.string = strdup("array_length")}};
         define_global(vm, "array_length", array_length_val);
     }
-    
     // Legacy hardcoded library functions removed - now handled by modular library system
     
     // Logging functions - logger should be initialized by main() before VM creation
@@ -2894,6 +3074,44 @@ void vm_init(VM* vm) {
     vm->coverage.count = 0;
     vm->current_source_path = NULL;
     
+    // Set global VM instance
+    g_current_vm = vm;
+    
+    // Initialize event loop for async operations
+    vm->event_base = event_base_new();
+    if (!vm->event_base) {
+        LOG_ERROR("Failed to create libevent base");
+    }
+    
+    // Initialize avatar runtime for async execution
+    vm->avatar_runtime = avatar_runtime_create(0);  // 0 = auto-detect thread count
+    if (!vm->avatar_runtime) {
+        LOG_ERROR("Failed to create avatar runtime");
+    } else {
+        LOG_INFO("Avatar runtime initialized with %zu threads", 
+                 avatar_runtime_thread_count(vm->avatar_runtime));
+    }
+    
+    // Initialize async HTTP client
+    vm->async_http = async_http_client_create(vm->event_base);
+    if (!vm->async_http) {
+        LOG_ERROR("Failed to create async HTTP client");
+    }
+    
+    // Initialize async request queue for non-blocking I/O
+    vm->request_queue = async_request_queue_create();
+    if (!vm->request_queue) {
+        LOG_ERROR("Failed to create async request queue");
+    } else {
+        // Link request queue to async HTTP client
+        async_request_queue_set_http_client(vm->async_http);
+    }
+    
+    // Initialize global task queue for thread-safe operations
+    if (!g_vm_task_queue) {
+        g_vm_task_queue = task_queue_create(1024);  // Queue capacity: 1024 tasks
+    }
+    
 #ifndef _WIN32
     // Install basic crash handlers to improve diagnostics on segfaults
     struct sigaction sa;
@@ -2915,6 +3133,12 @@ void vm_init(VM* vm) {
     print_val.type = VALUE_STRING;
     print_val.as.string = strdup("print");
     define_global(vm, "print", print_val);
+    
+    Value typeof_val;
+    typeof_val.type = VALUE_STRING;
+    typeof_val.as.string = strdup("typeof");
+    define_global(vm, "typeof", typeof_val);
+    
     // Core utility: array_length (allow bare identifier calls)
     Value array_length_val = (Value){VALUE_STRING, {.string = strdup("array_length")}};
     define_global(vm, "array_length", array_length_val);
@@ -3077,6 +3301,32 @@ void vm_init(VM* vm) {
 
 void vm_free(VM* vm) {
     LOG_INFO("Kuyil VM shutting down");
+    
+    // Cleanup avatar runtime
+    if (vm->avatar_runtime) {
+        LOG_INFO("Shutting down avatar runtime");
+        avatar_runtime_destroy(vm->avatar_runtime);
+        vm->avatar_runtime = NULL;
+    }
+    
+    // Cleanup async HTTP client
+    if (vm->async_http) {
+        async_http_client_destroy(vm->async_http);
+        vm->async_http = NULL;
+    }
+    
+    // Cleanup event base
+    if (vm->event_base) {
+        event_base_free(vm->event_base);
+        vm->event_base = NULL;
+    }
+    
+    // Shutdown and cleanup task queue
+    if (g_vm_task_queue) {
+        task_queue_shutdown(g_vm_task_queue);
+        task_queue_destroy(g_vm_task_queue);
+        g_vm_task_queue = NULL;
+    }
     
     // Ensure shutdown functions are called before cleanup
     if (g_ffi_context) {
@@ -3405,4 +3655,72 @@ InterpretResult vm_interpret_bytecode(VM* vm, const char* bytecode_path) {
     }
 
     return result;
+}
+
+// ====================================================================================
+// Task Queue API - Thread-safe VM operations
+// ====================================================================================
+
+// Get global task queue (for external libraries like HTTP)
+TaskQueue* vm_get_task_queue(void) {
+    return g_vm_task_queue;
+}
+
+// Process pending tasks (called from main thread/event loop)
+int vm_process_pending_tasks(int max_tasks) {
+    if (!g_vm_task_queue) return 0;
+    return task_queue_process(g_vm_task_queue, max_tasks);
+}
+
+// Check if task queue is empty
+bool vm_task_queue_empty(void) {
+    if (!g_vm_task_queue) return true;
+    return task_queue_is_empty(g_vm_task_queue);
+}
+
+// Get task queue size
+size_t vm_task_queue_size(void) {
+    if (!g_vm_task_queue) return 0;
+    return task_queue_size(g_vm_task_queue);
+}
+
+// Process completed avatars (called from main thread/event loop)
+int vm_process_avatar_completions(int max_avatars) {
+    if (!g_current_vm || !g_current_vm->avatar_runtime) return 0;
+    return avatar_runtime_process_completions(g_current_vm->avatar_runtime, max_avatars);
+}
+
+// Get number of pending avatars
+size_t vm_avatar_pending_count(void) {
+    if (!g_current_vm || !g_current_vm->avatar_runtime) return 0;
+    return avatar_runtime_pending_count(g_current_vm->avatar_runtime);
+}
+// Process async requests (called from main thread/GTK idle callback)
+int vm_process_async_requests(int max_requests) {
+    if (!g_current_vm || !g_current_vm->request_queue) return 0;
+    return async_request_queue_process(g_current_vm->request_queue, max_requests);
+}
+
+// Process event loop for async operations
+// timeout_ms: milliseconds to wait for events  
+int vm_process_events(int timeout_ms) {
+    if (!g_current_vm || !g_current_vm->event_base) return 0;
+    
+    // Process libevent loop (non-blocking)
+    event_base_loop(g_current_vm->event_base, EVLOOP_NONBLOCK);
+    
+    // Process curl multi (this drives the HTTP requests)
+    if (g_current_vm->async_http) {
+        async_http_process(g_current_vm->async_http);
+    }
+    
+    // Also process async requests (moves PENDING to PROCESSING)
+    return vm_process_async_requests(10);
+}
+
+// Get global request queue for asyncio library
+void* async_request_queue_get_global(void) {
+    extern VM* g_current_vm;
+    if (!g_current_vm) return NULL;
+    return g_current_vm->request_queue;
 }

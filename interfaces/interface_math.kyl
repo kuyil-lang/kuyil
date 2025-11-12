@@ -1,14 +1,32 @@
 // Interface for Math library
-@loadlib("./libs/libkylmath.so");
+// Load library at runtime
+loadlib("libs/libkylmath.so")
 
 interface math {
-  float64 abs(x: float64)
-  float64 floor(x: float64)
-  float64 ceil(x: float64)
-  float64 round(x: float64)
-  float64 sqrt(x: float64)
-  float64 pow(x: float64, y: float64)
-  float64 sin(x: float64)
-  float64 cos(x: float64)
-  float64 tan(x: float64)
+  @alias("abs")
+  float64 math_abs(x: float64)
+  
+  @alias("floor")
+  float64 math_floor(x: float64)
+  
+  @alias("ceil")
+  float64 math_ceil(x: float64)
+  
+  @alias("round")
+  float64 math_round(x: float64)
+  
+  @alias("sqrt")
+  float64 math_sqrt(x: float64)
+  
+  @alias("pow")
+  float64 math_pow(x: float64, y: float64)
+  
+  @alias("sin")
+  float64 math_sin(x: float64)
+  
+  @alias("cos")
+  float64 math_cos(x: float64)
+  
+  @alias("tan")
+  float64 math_tan(x: float64)
 }

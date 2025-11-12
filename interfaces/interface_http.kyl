@@ -1,47 +1,108 @@
 // Interface for HTTP library
-@loadlib("./libs/libkylhttp.so");
+// Load library at runtime
+loadlib("libs/libkylhttp.so")
 
 // HTTP Server functions
 interface http {
-  int32 server(port: int32)
-  bool get(path: string, handler: string)
-  bool post(path: string, handler: string)
-  bool put(path: string, handler: string)
-  bool delete(path: string, handler: string)
-  bool listen(port: int32)
-  bool startServer(port: int32)
-  bool registerRoute(method: string, path: string, handler: string)
-  string clientGet(url: string)
-  string clientPost(url: string, body: string)
-  bool cleanup()
-  bool static(root: string)
-  bool staticAdd(route: string, dir: string)
-  bool staticBypass(path: string)
-  bool staticBypassClear()
+  @alias("server")
+  int32 http_server(port: int32)
+  
+  @alias("get")
+  bool http_get(path: string, handler: string)
+  
+  @alias("post")
+  bool http_post(path: string, handler: string)
+  
+  @alias("put")
+  bool http_put(path: string, handler: string)
+  
+  @alias("delete")
+  bool http_delete(path: string, handler: string)
+  
+  @alias("listen")
+  bool http_listen(port: int32)
+  
+  @alias("startServer")
+  bool http_startServer(port: int32)
+  
+  @alias("registerRoute")
+  bool http_registerRoute(method: string, path: string, handler: string)
+  
+  @alias("clientGet")
+  string http_clientGet(url: string)
+  
+  @alias("clientPost")
+  string http_clientPost(url: string, body: string)
+  
+  @alias("cleanup")
+  bool http_cleanup()
+  
+  @alias("static")
+  bool http_static(root: string)
+  
+  @alias("staticAdd")
+  bool http_staticAdd(route: string, dir: string)
+  
+  @alias("staticBypass")
+  bool http_staticBypass(path: string)
+  
+  @alias("staticBypassClear")
+  bool http_staticBypassClear()
 }
 
 // Response builder functions
 interface response {
-  bool setStatus(response: int32, status: int32)
-  bool setBody(response: int32, body: string)
-  bool setJson(response: int32, json: string)
-  bool addHeader(response: int32, name: string, value: string)
+  @alias("setStatus")
+  bool response_setStatus(response: int32, status: int32)
+  
+  @alias("setBody")
+  bool response_setBody(response: int32, body: string)
+  
+  @alias("setJson")
+  bool response_setJson(response: int32, json: string)
+  
+  @alias("addHeader")
+  bool response_addHeader(response: int32, name: string, value: string)
 }
 
 // Request accessor functions
 interface request {
-  string getMethod(request: int32)
-  string getPath(request: int32)
-  string getBody(request: int32)
-  string getParam(request: int32, name: string)
-  string getHeader(request: int32, name: string)
-  bool parseMultipart(request: int32)
-  string getMultipartField(request: int32, name: string)
-  array parseMultipartFields(request: int32)
-  object parseMultipartFile(request: int32, fieldname: string)
-  bool saveMultipartFile(request: int32, fieldname: string, destpath: string)
-  string getJsonString(request: int32, path: string)
-  float64 getJsonNumber(request: int32, path: string)
-  bool getJsonBool(request: int32, path: string)
+  @alias("getMethod")
+  string request_getMethod(request: int32)
+  
+  @alias("getPath")
+  string request_getPath(request: int32)
+  
+  @alias("getBody")
+  string request_getBody(request: int32)
+  
+  @alias("getParam")
+  string request_getParam(request: int32, name: string)
+  
+  @alias("getHeader")
+  string request_getHeader(request: int32, name: string)
+  
+  @alias("parseMultipart")
+  bool request_parseMultipart(request: int32)
+  
+  @alias("getMultipartField")
+  string request_getMultipartField(request: int32, name: string)
+  
+  @alias("parseMultipartFields")
+  array request_parseMultipartFields(request: int32)
+  
+  @alias("parseMultipartFile")
+  object request_parseMultipartFile(request: int32, fieldname: string)
+  
+  @alias("saveMultipartFile")
+  bool request_saveMultipartFile(request: int32, fieldname: string, destpath: string)
+  
+  @alias("getJsonString")
+  string request_getJsonString(request: int32, path: string)
+  
+  @alias("getJsonNumber")
+  float64 request_getJsonNumber(request: int32, path: string)
+  
+  @alias("getJsonBool")
+  bool request_getJsonBool(request: int32, path: string)
 }
-
