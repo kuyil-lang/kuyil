@@ -1,0 +1,16 @@
+// Interface for System utilities library
+// Load library at runtime
+loadlib("libs/libkylsystem.so")
+
+interface system {
+  // Sleep for specified milliseconds
+  // Example: sleep(1000) - sleep for 1 second
+  bool sleep(milliseconds: int32)
+  
+  // Get current timestamp in milliseconds since epoch
+  int64 timestamp()
+  
+  // Unescape a JSON string: convert \" to " and \\ to \
+  // Example: unescape("{\"key\":\"value\"}") returns {"key":"value"}
+  string unescape(str: string)
+}

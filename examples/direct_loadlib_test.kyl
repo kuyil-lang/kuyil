@@ -1,0 +1,11 @@
+// Test: Does loadlib directly in main script work?
+
+loadlib("libs/libkylasyncio.so")
+
+print("Testing direct loadlib in main script...")
+
+// Try to use the C function
+let req = kyl_asyncio_httpGet("https://httpbin.org/get")
+
+print("✅ Function is available after direct loadlib!")
+print("Request ID:", req)

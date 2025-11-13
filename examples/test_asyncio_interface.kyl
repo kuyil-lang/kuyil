@@ -1,0 +1,32 @@
+// Test importing asyncio interface with wrapper functions
+import "interfaces/interface_asyncio.kyl"
+
+print("\n═══════════════════════════════════════")
+print("  Asyncio Interface with Wrappers")
+print("═══════════════════════════════════════\n")
+
+// Test 1: Simple GET using wrapper
+print("1. Simple GET (wrapper):")
+let req1 = httpGet("https://httpbin.org/get", nil)
+print("   Request ID: " + req1)
+
+// Test 2: GET with headers array (no timeout)
+print("\n2. GET with headers:")
+let opts2 = nil  // We'll use direct Ex call for now
+let headers2 = ["User-Agent: Kuyil/1.0", "Accept: application/json"]
+let req2 = kyl_asyncio_httpGetEx("https://httpbin.org/headers", headers2, 0, 1000, 2000, 500)
+print("   Request ID: " + req2)
+
+// Test 3: POST using wrapper
+print("\n3. Simple POST (wrapper):")
+let body3 = '{"test": "data"}'
+let req3 = httpPost("https://httpbin.org/post", body3, nil)
+print("   Request ID: " + req3)
+
+// Test 4: Check status using helper
+print("\n4. Check completion (helper):")
+print("   Req1 done: " + isDone(req1))
+print("   Req2 done: " + isDone(req2))
+print("   Req3 done: " + isDone(req3))
+
+print("\n✓ Wrapper functions from interface work!")

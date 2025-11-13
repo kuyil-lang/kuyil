@@ -16,6 +16,10 @@ static Token* current_token(Parser* parser) {
 }
 
 static Token* previous_token(Parser* parser) {
+    if (!parser || !parser->tokens || parser->current == 0) {
+        static Token error_tok = {TOKEN_ERROR, "No previous token", 17, 0, 0};
+        return &error_tok;
+    }
     return &parser->tokens[parser->current - 1];
 }
 
@@ -45,17 +49,19 @@ static void error_at(Parser* parser, Token* token, const char* message) {
     if (parser->panic_mode) return;
     parser->panic_mode = true;
     
-    fprintf(stderr, "[line %d] Error", token->line);
+    char error_msg[512];
+    int pos = snprintf(error_msg, sizeof(error_msg), "[line %d] Error", token->line);
     
     if (token->type == TOKEN_EOF) {
-        fprintf(stderr, " at end");
+        pos += snprintf(error_msg + pos, sizeof(error_msg) - pos, " at end");
     } else if (token->type == TOKEN_ERROR) {
         // Nothing.
     } else {
-        fprintf(stderr, " at '%.*s'", token->length, token->start);
+        pos += snprintf(error_msg + pos, sizeof(error_msg) - pos, " at '%.*s'", token->length, token->start);
     }
     
-    fprintf(stderr, ": %s\n", message);
+    snprintf(error_msg + pos, sizeof(error_msg) - pos, ": %s", message);
+    LOG_ERROR("%s", error_msg);
     parser->had_error = true;
 }
 
@@ -115,7 +121,7 @@ static Token* consume(Parser* parser, KuyilTokenType type, const char* message) 
 ASTNode* ast_node_new(ASTNodeType type) {
     ASTNode* node = malloc(sizeof(ASTNode));
     if (node == NULL) {
-        fprintf(stderr, "Error: Could not allocate memory for AST node.\n");
+        LOG_ERROR("Could not allocate memory for AST node");
         exit(1);
     }
     node->type = type;
@@ -124,10 +130,20 @@ ASTNode* ast_node_new(ASTNodeType type) {
     return node;
 }
 
+// Create an error node to prevent crashes after parse errors
+static ASTNode* error_node(Parser* parser) {
+    ASTNode* node = ast_node_new(AST_ERROR);
+    set_node_location(node, current_token(parser));
+    return node;
+}
+
 void ast_node_free(ASTNode* node) {
     if (node == NULL) return;
     
     switch (node->type) {
+        case AST_ERROR:
+            // Error nodes have no allocated data
+            break;
         case AST_IDENTIFIER:
             free(node->as.identifier);
             break;
@@ -248,6 +264,13 @@ static ASTNode* parse_array_literal(Parser* parser) {
     node->as.array_literal.capacity = 8;
     node->as.array_literal.elements = malloc(sizeof(ASTNode*) * node->as.array_literal.capacity);
     
+    if (!node->as.array_literal.elements) {
+        LOG_ERROR("Out of memory allocating array elements");
+        // Return empty array node rather than crashing
+        node->as.array_literal.capacity = 0;
+        return node;
+    }
+    
     skip_newlines(parser);  // Skip newlines after '['
     
     // Empty array []
@@ -267,8 +290,13 @@ static ASTNode* parse_array_literal(Parser* parser) {
         
         if (node->as.array_literal.count >= node->as.array_literal.capacity) {
             node->as.array_literal.capacity *= 2;
-            node->as.array_literal.elements = realloc(node->as.array_literal.elements, 
-                                                      sizeof(ASTNode*) * node->as.array_literal.capacity);
+            ASTNode** new_elements = realloc(node->as.array_literal.elements, 
+                                             sizeof(ASTNode*) * node->as.array_literal.capacity);
+            if (!new_elements) {
+                LOG_ERROR("Out of memory reallocating array elements");
+                break; // Stop adding elements but return what we have
+            }
+            node->as.array_literal.elements = new_elements;
         }
         
         node->as.array_literal.elements[node->as.array_literal.count++] = expression(parser);
@@ -310,6 +338,22 @@ static ASTNode* parse_interpolated_string(Parser* parser) {
     node->as.interpolated_string.string_parts = malloc(sizeof(char*) * string_part_count);
     node->as.interpolated_string.expressions = malloc(sizeof(ASTNode*) * interpolation_count);
     
+    if (!node->as.interpolated_string.string_parts || 
+        (interpolation_count > 0 && !node->as.interpolated_string.expressions)) {
+        LOG_ERROR("Out of memory allocating interpolated string");
+        // Clean up and return empty string node
+        if (node->as.interpolated_string.string_parts) {
+            free(node->as.interpolated_string.string_parts);
+        }
+        if (node->as.interpolated_string.expressions) {
+            free(node->as.interpolated_string.expressions);
+        }
+        node->type = AST_LITERAL;
+        node->as.literal.type = VALUE_STRING;
+        node->as.literal.as.string = strdup("");
+        return node;
+    }
+    
     // Parse string parts and expressions
     int part_index = 0;
     int expr_index = 0;
@@ -319,10 +363,18 @@ static ASTNode* parse_interpolated_string(Parser* parser) {
         if ((i < content_len - 1 && content[i] == '$' && content[i + 1] == '{') || i == content_len) {
             // Extract string part
             int part_len = i - start;
+            if (part_len < 0) part_len = 0; // Safety check
             char* part = malloc(part_len + 1);
-            memcpy(part, content + start, part_len);
-            part[part_len] = '\0';
-            node->as.interpolated_string.string_parts[part_index++] = part;
+            if (!part) {
+                LOG_ERROR("Out of memory in interpolated string part");
+                part = strdup(""); // Fallback to empty string
+            } else {
+                memcpy(part, content + start, part_len);
+                part[part_len] = '\0';
+            }
+            if (part_index < string_part_count) {
+                node->as.interpolated_string.string_parts[part_index++] = part;
+            }
             
             if (i < content_len - 1) {
                 // Find the matching }
@@ -338,14 +390,22 @@ static ASTNode* parse_interpolated_string(Parser* parser) {
                 
                 // Extract expression content
                 int expr_len = i - brace_start - 1;
+                if (expr_len < 0) expr_len = 0; // Safety check
                 char* expr_str = malloc(expr_len + 1);
-                memcpy(expr_str, content + brace_start, expr_len);
-                expr_str[expr_len] = '\0';
+                if (!expr_str) {
+                    LOG_ERROR("Out of memory in interpolated string expression");
+                    expr_str = strdup(""); // Fallback
+                } else {
+                    memcpy(expr_str, content + brace_start, expr_len);
+                    expr_str[expr_len] = '\0';
+                }
                 
                 // Create a simple identifier node for now (could be enhanced to parse full expressions)
                 ASTNode* expr_node = ast_node_new(AST_IDENTIFIER);
                 expr_node->as.identifier = expr_str;
-                node->as.interpolated_string.expressions[expr_index++] = expr_node;
+                if (expr_index < interpolation_count) {
+                    node->as.interpolated_string.expressions[expr_index++] = expr_node;
+                }
                 
                 start = i;
                 i--; // Adjust for the for loop increment
@@ -386,11 +446,23 @@ static ASTNode* primary(Parser* parser) {
         node->as.literal.type = VALUE_NUMBER;
         Token* token = previous_token(parser);
         set_node_location(node, token);
-        char* number_str = malloc(token->length + 1);
-        memcpy(number_str, token->start, token->length);
-        number_str[token->length] = '\0';
-        node->as.literal.as.number = strtod(number_str, NULL);
-        free(number_str);
+        
+        // Bounds check token length
+        int safe_length = token->length;
+        if (safe_length < 0 || safe_length > 1000) {
+            safe_length = 1;
+        }
+        
+        char* number_str = malloc(safe_length + 1);
+        if (!number_str) {
+            LOG_ERROR("Out of memory parsing number");
+            node->as.literal.as.number = 0.0;
+        } else {
+            memcpy(number_str, token->start, safe_length);
+            number_str[safe_length] = '\0';
+            node->as.literal.as.number = strtod(number_str, NULL);
+            free(number_str);
+        }
         return node;
     }
     
@@ -567,12 +639,10 @@ static ASTNode* primary(Parser* parser) {
     if (parser_match(parser, TOKEN_LEFT_BRACKET)) {
         return parse_array_literal(parser);
     }
-    
-    error_at_current(parser, "Expect expression.");
-    return NULL;
-}
 
-static ASTNode* call(Parser* parser) {
+    error_at_current(parser, "Expect expression.");
+    return error_node(parser);
+}static ASTNode* call(Parser* parser) {
     ASTNode* expr = primary(parser);
     
     while (true) {

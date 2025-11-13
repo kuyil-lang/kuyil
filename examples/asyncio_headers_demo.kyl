@@ -1,0 +1,45 @@
+// Example: Using asyncio with headers and timeout options
+// Import the asyncio interface and wrapper library
+import "interfaces/interface_asyncio.kyl"
+import "libraries/asyncio_wrappers.kyl"
+
+print("═══════════════════════════════════════")
+print("  Asyncio with Headers & Timeouts")
+print("═══════════════════════════════════════")
+
+// Example 1: Direct use of _Ex functions
+print("\n1. Using asyncio_httpGetEx directly:")
+let headers1 = [
+  "User-Agent: Kuyil/1.0",
+  "Accept: application/json"
+]
+// Parameters: url, headers, dns_timeout, connect_timeout, read_timeout, write_timeout
+let req1 = asyncio_httpGetEx("https://httpbin.org/get", headers1, 0, 1000, 2000, 500)
+print("  Request ID: " + req1)
+
+// Example 2: Using wrapper with nil options (simple GET)
+print("\n2. Simple GET with wrapper:")
+let req2 = httpGet("https://api.github.com/zen", nil)
+print("  Request ID: " + req2)
+
+// Example 3: POST with headers using direct Ex function
+print("\n3. POST with headers:")
+let postHeaders = [
+  "Content-Type: application/json",
+  "Accept: application/json"
+]
+let postData = '{"test": "data"}'
+// Parameters: url, body, headers, dns_timeout, connect_timeout, read_timeout, write_timeout
+let req3 = asyncio_httpPostEx("https://httpbin.org/post", postData, postHeaders, 0, 1000, 3000, 500)
+print("  Request ID: " + req3)
+
+// Example 4: Check status without blocking
+print("\n4. Checking request status:")
+print("  Request 1 complete: " + isDone(req1))
+print("  Request 2 complete: " + isDone(req2))
+print("  Request 3 complete: " + isDone(req3))
+
+print("\n✓ All requests submitted successfully!")
+print("  Use waitFor(requestId, timeoutMs) to get results")
+print("  Use isDone(requestId) to check completion")
+print("  Use getResult(requestId) for non-blocking result fetch")

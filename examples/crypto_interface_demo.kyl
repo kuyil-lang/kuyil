@@ -1,12 +1,15 @@
 // Crypto Interface Demo
 import("../interfaces/interface_crypto.kyl")
-import("../interfaces/interface_str.kyl")
 
 print("=== Crypto Demo ===")
-// Use random APIs that return strings reliably
-random_init()
-let hex = random_hex(16)
-print("random_hex(16):", hex)
-print("hex len:", length(hex))
-let r = random_int(1, 100)
-print("random_int(1..100):", r)
+// Test basic hashing
+let input = "Hello, Kuyil!"
+print("Input:", input)
+
+let hash_md5 = crypto_md5(input)
+print("MD5:", hash_md5)
+
+let hash_sha256 = crypto_sha256(input)
+print("SHA256:", hash_sha256)
+
+print("\n✓ Crypto demo complete!")

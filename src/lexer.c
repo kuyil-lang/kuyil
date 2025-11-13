@@ -54,14 +54,20 @@ static Token make_token(Lexer* lexer, KuyilTokenType type) {
 static Token error_token(Lexer* lexer, const char* message) {
     Token token;
     token.type = TOKEN_ERROR;
-    token.start = message;
-    token.length = (int)strlen(message);
-    token.line = lexer->line;
-    token.column = lexer->column;
+    token.start = message ? message : "Unknown error";
+    token.length = message ? (int)strlen(message) : 13;
+    token.line = lexer ? lexer->line : 0;
+    token.column = lexer ? lexer->column : 0;
     return token;
 }
 
 void print_lexical_error_with_context(const char* source, Token token) {
+    // Validate inputs
+    if (!source || !token.start) {
+        LOG_ERROR("Lexical Error: Invalid error context");
+        return;
+    }
+    
     // Find the start of the current line
     const char* line_start = source;
     const char* current = source;
@@ -86,20 +92,32 @@ void print_lexical_error_with_context(const char* source, Token token) {
     int column = (int)(token.start - line_start) + 1;
     if (column < 1) column = 1;
     
-    // Print error header
-    fprintf(stderr, "\n❌ Lexical Error at line %d, column %d:\n", token.line, column);
-    fprintf(stderr, "   %.*s\n", token.length, token.start);
+    // Bounds check for token.length
+    int safe_length = token.length;
+    if (safe_length < 0 || safe_length > 1000) {
+        safe_length = 1;
+    }
     
-    // Print the problematic line
-    fprintf(stderr, "\n%4d | ", token.line);
-    fprintf(stderr, "%.*s\n", (int)(line_end - line_start), line_start);
+    // Print error header
+    LOG_ERROR("Lexical Error at line %d, column %d:", token.line, column);
+    LOG_ERROR("   %.*s", safe_length, token.start);
+    
+    // Print the problematic line with bounds checking
+    int line_length = (int)(line_end - line_start);
+    if (line_length < 0 || line_length > 10000) {
+        line_length = 100; // Cap at reasonable length
+    }
+    LOG_ERROR("%4d | %.*s", token.line, line_length, line_start);
     
     // Print pointer to the error location
-    fprintf(stderr, "     | ");
-    for (int i = 1; i < column; i++) {
-        fprintf(stderr, " ");
+    char pointer_line[256];
+    int pos = 0;
+    pos += snprintf(pointer_line + pos, sizeof(pointer_line) - pos, "     | ");
+    for (int i = 1; i < column && i < 200 && pos < sizeof(pointer_line) - 2; i++) {
+        pointer_line[pos++] = ' ';
     }
-    fprintf(stderr, "^ Unexpected character here\n\n");
+    snprintf(pointer_line + pos, sizeof(pointer_line) - pos, "^ Unexpected character here");
+    LOG_ERROR("%s", pointer_line);
 }
 
 static void skip_whitespace(Lexer* lexer) {

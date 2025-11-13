@@ -323,6 +323,9 @@ FileType file_reader_detect_type(const char* filepath) {
 }
 
 // Native function: read lines from text file
+// DEPRECATED: Replaced by shared library version in libkylfileio.so
+// This old implementation incorrectly returns ARRAY instead of STRING
+/*
 Value kuyil_file_read_text(int arg_count, Value* args) {
     Value nil_result = {VALUE_NIL};
     
@@ -345,8 +348,11 @@ Value kuyil_file_read_text(int arg_count, Value* args) {
     
     return result;
 }
+*/
 
 // Native function: read CSV file
+// DEPRECATED: Replaced by shared library version in libkylfileio.so
+/*
 Value kuyil_file_read_csv(int arg_count, Value* args) {
     Value nil_result = {VALUE_NIL};
     
@@ -374,8 +380,11 @@ Value kuyil_file_read_csv(int arg_count, Value* args) {
     
     return result;
 }
+*/
 
 // Native function: read JSON file
+// DEPRECATED: Replaced by shared library version in libkylfileio.so
+/*
 Value kuyil_file_read_json(int arg_count, Value* args) {
     Value nil_result = {VALUE_NIL};
     
@@ -398,8 +407,11 @@ Value kuyil_file_read_json(int arg_count, Value* args) {
     
     return result;
 }
+*/
 
 // Native function: read YAML file
+// DEPRECATED: Replaced by shared library version in libkylfileio.so
+/*
 Value kuyil_file_read_yaml(int arg_count, Value* args) {
     Value nil_result = {VALUE_NIL};
     
@@ -422,3 +434,4 @@ Value kuyil_file_read_yaml(int arg_count, Value* args) {
     
     return result;
 }
+*/

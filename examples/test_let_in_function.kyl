@@ -1,0 +1,8 @@
+fn testLet() {
+    let x = 5
+    let y = 10
+    print("x=", x, " y=", y)
+    return x + y
+}
+
+print("Result:", testLet())

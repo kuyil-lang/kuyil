@@ -1,0 +1,30 @@
+// Kuyil Event Loop Interface
+// Functions to integrate with WebView and process async tasks
+// Load library at runtime
+loadlib("libs/libkyleventloop.so")
+
+interface eventloop {
+  // Process pending HTTP callbacks and other async tasks
+  // Call this regularly from your event loop
+  // Returns: number of tasks processed
+  @alias("processPendingTasks")
+  int32 eventloop_processPendingTasks(maxTasks: int32)
+
+  // Check if task queue is empty
+  @alias("tasksEmpty")
+  bool eventloop_tasksEmpty()
+
+  // Get number of pending tasks
+  @alias("taskCount")
+  int32 eventloop_taskCount()
+  
+  // Process completed avatars (green threads)
+  // Call this regularly to process avatar completions
+  // Returns: number of avatars processed
+  @alias("processAvatarCompletions")
+  int32 eventloop_processAvatarCompletions(maxAvatars: int32)
+  
+  // Get number of pending avatars
+  @alias("avatarPendingCount")
+  int32 eventloop_avatarPendingCount()
+}

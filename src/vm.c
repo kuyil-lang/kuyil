@@ -1610,7 +1610,10 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             return true;
         }
         
-        // File Reading functions
+        // File Reading functions - DEPRECATED: Now handled by libkylfileio.so
+        // These hardcoded fallbacks should never execute because the library system
+        // intercepts these calls first. Commenting out to prevent symbol conflicts.
+        /*
         if (strcmp(callee.as.string, "file_read_text") == 0) {
             Value* args = vm->stack_top - arg_count;
             if (arg_count > 0 && args[0].type == VALUE_STRING) {
@@ -1666,6 +1669,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             vm_push(vm, nil_result);
             return true;
         }
+        */
 
         // Green-thread / background task functions
         if (strcmp(callee.as.string, "start_bg") == 0) {

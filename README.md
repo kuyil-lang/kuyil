@@ -1,175 +1,348 @@
+# Kuyil Programming Language# Kuyil
+
 # Kuyil
-# Kuyil
+
+<div align="center">
 
 A fast, compiled scripting language designed for quick script and binary generation with built-in HTTP/REST support.
 
-## Table of Contents
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Project Structure](#project-structure)
-- [Language Syntax](#language-syntax)
-- [Building](#building)
-- [Architecture](#architecture)
-- [Documentation](#documentation)
-- [License](#license)
+**A modern, fast scripting language with built-in concurrency, FFI support, and comprehensive standard libraries**
 
-## Features
-- **Fast Execution**: Bytecode compilation with optional native binary generation
-- **HTTP/REST Built-in**: Native HTTP client and server functionality with static file serving
-- **Static File Serving**: Comprehensive web server with MIME type detection and security
-- **Logging Framework**: 5-level logging with automatic context tracking
-- **Configuration System**: YAML-based configuration with multi-environment support
+## Table of Contents
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)- [Features](#features)
+
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/kuyil-lang/kuyil)- [Quick Start](#quick-start)
+
+- [Project Structure](#project-structure)
+
+</div>- [Language Syntax](#language-syntax)
+
+- [Building](#building)
+
+## 🌟 Features- [Architecture](#architecture)
+
+- [Documentation](#documentation)
+
+- **⚡ Fast Execution**: Bytecode compilation with VM execution- [License](#license)
+
+- **🔄 Async/Await**: Avatar system for concurrent programming  
+
+- **🔌 FFI System**: Load and use C libraries (.so files) natively## Features
+
+- **📚 Rich Standard Library**: Math, string, HTTP, file I/O, datetime, and more- **Fast Execution**: Bytecode compilation with optional native binary generation
+
+- **🌐 HTTP Built-in**: Native HTTP client and server with JSON support- **HTTP/REST Built-in**: Native HTTP client and server functionality with static file serving
+
+- **📦 Module System**: Import scripts with `import "path"` or `import("path")`- **Static File Serving**: Comprehensive web server with MIME type detection and security
+
+- **🎯 Modern Syntax**: Clean syntax with structs, interfaces, and methods- **Logging Framework**: 5-level logging with automatic context tracking
+
+- **🔧 Cross-platform**: Works on Linux, macOS, and Windows- **Configuration System**: YAML-based configuration with multi-environment support
+
 - **FFI System**: Foreign Function Interface for loading custom .so libraries
-- **Development Tools**: File watching and auto-reload capabilities
+
+## 📥 Quick Start- **Development Tools**: File watching and auto-reload capabilities
+
 - **Simple Syntax**: Clean, readable syntax inspired by modern languages
-- **Binary Generation**: Compile scripts to standalone executables
+
+### Installation- **Binary Generation**: Compile scripts to standalone executables
+
 - **Cross-platform**: Works on Linux, macOS, and Windows
 
-## Quick Start
-
-### Build Kuyil
 ```bash
-make all
+
+# Clone the repository## Quick Start
+
+git clone https://github.com/kuyil-lang/kuyil.git
+
+cd kuyil### Build Kuyil
+
+```bash
+
+# Build Kuyil (includes all libraries)make all
+
+make all```
+
+
+
+# Run your first program### Run a script
+
+./kuyil examples/hello.kyl```bash
+
+```./kuyil examples/hello.kyl
+
 ```
 
-### Run a script
-```bash
-./kuyil examples/hello.kyl
-```
+### Hello World
 
 ### Compile to binary
-```bash
-./kuyil --compile examples/http_server.kyl -o server
-./server
+
+```kuyil```bash
+
+print("Hello, World!")./kuyil --compile examples/http_server.kyl -o server
+
+```./server
+
 ```
+
+### More Examples
 
 ### Run tests
-```bash
-# Run a specific test
-./kuyil tests/dynamic_execution_demo.kyl
 
-# Run all tests
-for test in tests/*test*.kyl; do ./kuyil "$test"; done
+```kuyil```bash
+
+// Variables and operators# Run a specific test
+
+let x = 10./kuyil tests/dynamic_execution_demo.kyl
+
+let y = 20
+
+let sum = x + y# Run all tests
+
+print("Sum:", sum)for test in tests/*test*.kyl; do ./kuyil "$test"; done
+
 ```
 
-### Docker Quick Start
-```bash
-# Build Docker image
-./docker-run.sh build
+// New syntax: 'and' and 'or' keywords
 
-# Run a script in Docker
+let a = true### Docker Quick Start
+
+let b = false```bash
+
+print("a and b:", a and b)   // false# Build Docker image
+
+print("a or b:", a or b)      // true./docker-run.sh build
+
+print("a && b:", a && b)      // Also works!
+
+print("a || b:", a || b)      // Also works!# Run a script in Docker
+
 ./docker-run.sh run examples/hello.kyl
 
-# Run with GUI support (webview, etc.)
-./docker-run.sh webview
+// Functions
+
+fn greet(name) {# Run with GUI support (webview, etc.)
+
+    return "Hello, " + name + "!"./docker-run.sh webview
+
+}
 
 # Interactive shell
-./docker-run.sh shell
+
+print(greet("Kuyil"))./docker-run.sh shell
+
 ```
 
-📦 **Docker Documentation:**
-- **[DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)** - Get started in 3 steps
+// Import modules (both syntaxes work)
+
+import "my_module.kyl"           // New: without parentheses📦 **Docker Documentation:**
+
+import("another_module.kyl")     // Traditional: with parentheses- **[DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)** - Get started in 3 steps
+
 - **[DOCKER_DISPLAY_GUIDE.md](DOCKER_DISPLAY_GUIDE.md)** - Platform-specific display forwarding
-- **[docker-run.sh](docker-run.sh)** - Helper script for common tasks
 
-## Project Structure
+// Async functions (Avatars)- **[docker-run.sh](docker-run.sh)** - Helper script for common tasks
 
-```
+avatar fn fetchData(url) {
+
+    let response = http.get(url)## Project Structure
+
+    return response.json()
+
+}```
+
 kuyil-lang/
-├── src/           # Core language implementation
-├── examples/      # Example scripts and tutorials  
-├── tests/         # Test suite and demonstrations
+
+let data = await fetchData("https://api.example.com/data")├── src/           # Core language implementation
+
+print("Data:", data)├── examples/      # Example scripts and tutorials  
+
+```├── tests/         # Test suite and demonstrations
+
 ├── docs/          # Documentation and guides
-├── build/         # Compiled artifacts
+
+## 📖 Documentation├── build/         # Compiled artifacts
+
 └── README.md      # This file
-```
 
-## Language Syntax
+### Core Language```
 
-### Basic Example
-```kuyil
-// Hello World
-print("Hello, World!")
+
+
+- **[Operators](docs/operators.md)** - Arithmetic, logical, comparison operators## Language Syntax
+
+- **[Conditionals](docs/conditionals.md)** - if/else, switch/case
+
+- **[Loops](docs/loops.md)** - for, while, break, continue### Basic Example
+
+- **[Functions](docs/functions.md)** - Function declaration and usage```kuyil
+
+- **[Structs & Methods](docs/structs-and-methods.md)** - Object-oriented programming// Hello World
+
+- **[Avatars (Async)](docs/avatars.md)** - Concurrent programmingprint("Hello, World!")
+
+- **[Import System](docs/import-system.md)** - Module imports
 
 // Variables
-let name = "Alice"
+
+### Advanced Featureslet name = "Alice"
+
 let age = 30
-let pi = 3.14159
+
+- **[FFI Guide](docs/ffi-guide.md)** - Creating and loading .so librarieslet pi = 3.14159
+
+- **[Interface System](docs/INTERFACE_SYSTEM_GUIDE.md)** - Define and use interfaces
 
 // Functions
-fn greet(name) {
+
+### Standard Librariesfn greet(name) {
+
     return "Hello, " + name + "!"
-}
 
-print(greet("World"))
-```
+#### Core Libraries (shared_libs/)}
 
-### HTTP Server Example
-```kuyil
-// Create HTTP server
-let server = http.server(8080)
+- **[Math Library](docs/libraries/math.md)** - Mathematical functions
 
-server.get("/", fn(req, res) {
-    res.json({"message": "Hello, World!"})
+- **[String Library](docs/libraries/str.md)** - String manipulationprint(greet("World"))
+
+- **[HTTP Library](docs/libraries/http.md)** - HTTP client and server```
+
+- **[DateTime Library](docs/libraries/datetime.md)** - Date and time operations
+
+- **[File I/O Library](docs/libraries/fileio.md)** - File operations### HTTP Server Example
+
+- **[Event Loop Library](docs/libraries/eventloop.md)** - Event-driven programming```kuyil
+
+- **[System Library](docs/libraries/system.md)** - System operations// Create HTTP server
+
+- **[Async I/O Library](docs/libraries/asyncio.md)** - Asynchronous I/Olet server = http.server(8080)
+
+
+
+#### Additional Libraries (additional_libs/)server.get("/", fn(req, res) {
+
+- **[Crypto Library](docs/libraries/crypto.md)** - Cryptographic functions    res.json({"message": "Hello, World!"})
+
+- **[FFmpeg Library](docs/libraries/ffmpeg.md)** - Audio/video processing})
+
+- **[RPC Library](docs/libraries/rpc.md)** - Remote procedure calls
+
+- **[SQLite Library](docs/libraries/sqlite.md)** - Database operationsserver.get("/users/:id", fn(req, res) {
+
+- **[Transcoder Library](docs/libraries/transcoder.md)** - Data encoding/compression    let userId = req.params.id
+
+- **[Webview Library](docs/libraries/webview.md)** - GUI with web technologies    res.json({"user_id": userId, "name": "User " + userId})
+
 })
 
-server.get("/users/:id", fn(req, res) {
-    let userId = req.params.id
-    res.json({"user_id": userId, "name": "User " + userId})
-})
+## 🏗️ Project Structure
 
 print("Server running on http://localhost:8080")
-server.listen()
-```
 
-### HTTP Client Example
-```kuyil
-// Make HTTP requests
-let response = http.get("https://api.github.com/users/octocat")
-if response.status == 200 {
-    let user = response.json()
-    print("User: " + user.name)
+```server.listen()
+
+kuyil/```
+
+├── src/                    # Core language implementation
+
+├── shared_libs/           # Core standard libraries### HTTP Client Example
+
+├── additional_libs/       # Optional extended libraries```kuyil
+
+├── examples/              # Example scripts// Make HTTP requests
+
+├── tests/                 # Test suitelet response = http.get("https://api.github.com/users/octocat")
+
+├── docs/                  # Documentationif response.status == 200 {
+
+└── README.md             # This file    let user = response.json()
+
+```    print("User: " + user.name)
+
 } else {
-    print("Error: " + response.status)
+
+## 🔧 Building    print("Error: " + response.status)
+
 }
 
+### Requirements
+
 // POST request
-let data = {"name": "John", "email": "john@example.com"}
-let postResponse = http.post("https://httpbin.org/post", data)
-print("Response: " + postResponse.text)
+
+- GCC or Clanglet data = {"name": "John", "email": "john@example.com"}
+
+- Makelet postResponse = http.post("https://httpbin.org/post", data)
+
+- libcurl (for HTTP support)print("Response: " + postResponse.text)
+
 ```
 
-### Static File Serving Example
-```kuyil
+```bash
+
+# Build everything### Static File Serving Example
+
+make all```kuyil
+
 // Create server with static file support
-let server = http.server(8080)
+
+# Build only interpreterlet server = http.server(8080)
+
+make kuyil
 
 // Set static file root directory
-server.static("/public", "./static")
+
+# Build librariesserver.static("/public", "./static")
+
+make libs
 
 // API routes
-server.get("/api/status", fn(req, res) {
-    res.json({"status": "running", "files": "enabled"})
+
+# Cleanserver.get("/api/status", fn(req, res) {
+
+make clean    res.json({"status": "running", "files": "enabled"})
+
 })
 
-// Static files served automatically:
-// GET / -> ./static/index.html
+# Run tests
+
+make test// Static files served automatically:
+
+```// GET / -> ./static/index.html
+
 // GET /style.css -> ./static/style.css  
-// GET /app.js -> ./static/app.js
+
+## 🚀 Language Features// GET /app.js -> ./static/app.js
+
 // GET /images/logo.png -> ./static/images/logo.png
 
-server.listen()
-```
+See [docs/operators.md](docs/operators.md), [docs/conditionals.md](docs/conditionals.md), and other documentation for detailed syntax.
 
-**Static File Features:**
+server.listen()
+
+## 📄 License```
+
+
+
+MIT License - see [LICENSE](LICENSE) for details.**Static File Features:**
+
 - 25+ MIME types supported (HTML, CSS, JS, images, fonts, etc.)
-- Path traversal protection (blocks `../` attacks)
+
+## 📮 Contact- Path traversal protection (blocks `../` attacks)
+
 - Multi-threaded request handling
-- Caching headers for performance
-- URL decoding with validation
+
+- GitHub: [https://github.com/kuyil-lang/kuyil](https://github.com/kuyil-lang/kuyil)- Caching headers for performance
+
+- Issues: [https://github.com/kuyil-lang/kuyil/issues](https://github.com/kuyil-lang/kuyil/issues)- URL decoding with validation
+
 - Automatic `index.html` serving for `/`
 
+---
+
 ## Building
+
+**Made with ❤️ by the Kuyil community**
 
 Requirements:
 - GCC or Clang

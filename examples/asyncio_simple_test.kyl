@@ -1,0 +1,19 @@
+// Simple asyncio test without external dependencies
+import "interfaces/interface_asyncio.kyl"
+
+print("Testing asyncio with short timeout...")
+
+// Test with a fast endpoint and short timeout
+let req = httpGet("https://httpbin.org/get", nil)
+print("Request ID: " + req)
+
+// Wait with a 2-second timeout
+let result = waitFor(req, 2000)
+
+if (result != nil) {
+    print("✓ Got result")
+} else {
+    print("✗ Timeout or error")
+}
+
+print("Done!")

@@ -77,20 +77,6 @@ void library_loader_cleanup(void);
 // Optional: VM can provide a function pointer for libraries that accept a Kuyil caller bridge
 void library_loader_set_kuyil_caller(void* callback_ptr);
 
-// Library-specific function loaders
-void load_webview_functions(SharedLibrary* lib);
-void load_system_functions(SharedLibrary* lib);
-void load_crypto_functions(SharedLibrary* lib);
-void load_compression_functions(SharedLibrary* lib);
-void load_sqlite_functions(SharedLibrary* lib);
-void load_http_functions(SharedLibrary* lib);
-void load_math_functions(SharedLibrary* lib);
-void load_str_functions(SharedLibrary* lib);
-void load_datetime_functions(SharedLibrary* lib);
-void load_rpc_functions(SharedLibrary* lib);
-void load_fileio_functions(SharedLibrary* lib);
-void load_generic_functions(SharedLibrary* lib, const char* functions[][3], const char* category);
-
 // Native function wrappers for different signatures
 Value native_library_call_void_void(int arg_count, Value* args, void* func_ptr);
 Value native_library_call_int_void(int arg_count, Value* args, void* func_ptr);

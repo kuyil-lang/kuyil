@@ -1,0 +1,182 @@
+// Async I/O library - Non-blocking HTTP and file operations
+// All operations return a request ID and execute asynchronously
+// Load library at runtime
+loadlib("libs/libkylasyncio.so")
+
+interface asyncio {
+  // Submit async HTTP POST request
+  // body: string or byte array
+  // Returns request ID (>0) or -1 on error
+  @alias("httpPost")
+  int32 asyncio_httpPost(url: string, body: any)
+
+  // Submit async HTTP GET request
+  // Returns request ID (>0) or -1 on error
+  @alias("httpGet")
+  int32 asyncio_httpGet(url: string)
+  
+  // Submit async HTTP GET with headers and timeouts
+  // headers: array of strings like ["Authorization: Bearer xxx", "Accept: application/json"]
+  // timeouts in milliseconds (0 = default)
+  @alias("httpGetEx")
+  int32 asyncio_httpGetEx(url: string, headers: any, dns_timeout: int32, 
+                           connect_timeout: int32, read_timeout: int32, write_timeout: int32)
+  
+  // Submit async HTTP POST with headers and timeouts
+  @alias("httpPostEx")
+  int32 asyncio_httpPostEx(url: string, body: any, headers: any, 
+                            dns_timeout: int32, connect_timeout: int32, 
+                            read_timeout: int32, write_timeout: int32)
+
+  // Wait for async request to complete and get result
+  // timeout_ms: 0 = wait forever, >0 = timeout in milliseconds
+  // Returns byte array or nil on error/timeout
+  @alias("waitResult")
+  any asyncio_waitResult(requestId: int32, timeout_ms: int32)
+
+  // Check if async request is complete (non-blocking)
+  // Returns true if completed (success or error), false if still pending
+  @alias("isComplete")
+  bool asyncio_isComplete(requestId: int32)
+
+  // Get result of completed request (non-blocking)
+  // Returns byte array or nil if not complete
+  @alias("getResult")
+  any asyncio_getResult(requestId: int32)
+
+  // Submit async file read request
+  // Returns request ID (>0) or -1 on error
+  @alias("fileRead")
+  int32 asyncio_fileRead(path: string)
+
+  // Submit async file write request
+  // Returns request ID (>0) or -1 on error
+  @alias("fileWrite")
+  int32 asyncio_fileWrite(path: string, data: string)
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WRAPPER FUNCTIONS WITH OPTIONS SUPPORT
+// ═══════════════════════════════════════════════════════════════
+
+// Helper: Prepare headers array
+fn _prepareHeaders(headers) {
+  if (headers == nil) {
+    return []
+  }
+  return headers  // Expect array of "Key: Value" strings
+}
+
+// Helper: Get timeout value with default
+fn _getTimeoutValue(options, key, defaultVal) {
+  if (options == nil) { return defaultVal }
+  if (options.timeout == nil) { return defaultVal }
+  
+  // Handle property access - check if timeout is a map
+  if (key == "dns") {
+    let val = options.timeout.dns
+    if (val == nil) { return defaultVal }
+    return val
+  }
+  if (key == "connect") {
+    let val = options.timeout.connect
+    if (val == nil) { return defaultVal }
+    return val
+  }
+  if (key == "read") {
+    let val = options.timeout.read
+    if (val == nil) { return defaultVal }
+    return val
+  }
+  if (key == "write") {
+    let val = options.timeout.write
+    if (val == nil) { return defaultVal }
+    return val
+  }
+  return defaultVal
+}
+
+// HTTP GET with optional options parameter
+// Usage:
+//   httpGet("https://api.example.com", nil)  // Simple GET
+//   httpGet("https://api.example.com", options)  // With options
+//
+// Options format:
+//   { 
+//     headers: ["Content-Type: application/json", "Authorization: Bearer xxx"],
+//     timeout: { dns: 30, connect: 500, read: 2000, write: 500 }
+//   }
+export fn httpGet(url, options) {
+  if (options == nil) {
+    return kyl_asyncio_httpGet(url)
+  }
+  
+  let headers = _prepareHeaders(options.headers)
+  let dnsTimeout = _getTimeoutValue(options, "dns", 0)
+  let connectTimeout = _getTimeoutValue(options, "connect", 0)
+  let readTimeout = _getTimeoutValue(options, "read", 0)
+  let writeTimeout = _getTimeoutValue(options, "write", 0)
+  
+  return kyl_asyncio_httpGetEx(url, headers, dnsTimeout, connectTimeout, readTimeout, writeTimeout)
+}
+
+// HTTP POST with optional options parameter  
+// Usage:
+//   httpPost("https://api.example.com", body, nil)  // Simple POST
+//   httpPost("https://api.example.com", body, options)  // With options
+export fn httpPost(url, body, options) {
+  if (options == nil) {
+    return kyl_asyncio_httpPost(url, body)
+  }
+  
+  let headers = _prepareHeaders(options.headers)
+  let dnsTimeout = _getTimeoutValue(options, "dns", 0)
+  let connectTimeout = _getTimeoutValue(options, "connect", 0)
+  let readTimeout = _getTimeoutValue(options, "read", 0)
+  let writeTimeout = _getTimeoutValue(options, "write", 0)
+  
+  return kyl_asyncio_httpPostEx(url, body, headers, dnsTimeout, connectTimeout, readTimeout, writeTimeout)
+}
+
+// Wait for request to complete and get result
+export fn waitFor(requestId, timeoutMs) {
+  if (timeoutMs == nil) {
+    timeoutMs = 0
+  }
+  return kyl_asyncio_waitResult(requestId, timeoutMs)
+}
+
+// Check if request is complete (non-blocking)
+export fn isDone(requestId) {
+  return kyl_asyncio_isComplete(requestId)
+}
+
+// Get result without blocking (returns nil if not ready)
+export fn getResult(requestId) {
+  return kyl_asyncio_getResult(requestId)
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DIRECT API USAGE (Available after loadlib)
+// ═══════════════════════════════════════════════════════════════
+//
+// Simple GET/POST:
+//   kyl_asyncio_httpGet(url) -> requestId
+//   kyl_asyncio_httpPost(url, body) -> requestId
+//
+// GET/POST with headers and timeouts:
+//   kyl_asyncio_httpGetEx(url, headers[], dns_ms, connect_ms, read_ms, write_ms)
+//   kyl_asyncio_httpPostEx(url, body, headers[], dns_ms, connect_ms, read_ms, write_ms)
+//
+//   headers: ["User-Agent: Kuyil", "Content-Type: application/json"]
+//   timeouts: milliseconds (0 = default)
+//
+// Wait and check:
+//   kyl_asyncio_waitResult(requestId, timeout_ms) -> data or nil
+//   kyl_asyncio_isComplete(requestId) -> bool
+//   kyl_asyncio_getResult(requestId) -> data or nil (non-blocking)
+//
+// File operations:
+//   kyl_asyncio_fileRead(path) -> requestId
+//   kyl_asyncio_fileWrite(path, data) -> requestId
+

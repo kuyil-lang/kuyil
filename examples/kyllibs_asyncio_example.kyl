@@ -1,0 +1,44 @@
+// Complete example: Using kyllibs/asyncio
+// This shows the correct way to use kyllibs with current Kuyil
+
+// Import loads the native library
+import "asyncio"
+
+print("\n═══════════════════════════════════════")
+print("  Using kyllibs/asyncio")
+print("═══════════════════════════════════════\n")
+
+// The import loaded libs/libkylasyncio.so
+// Now we can use the C functions directly
+
+print("1. Simple HTTP GET:")
+let req1 = kyl_asyncio_httpGet("https://httpbin.org/get")
+print("   Request ID: " + req1)
+
+print("\n2. GET with headers and timeouts:")
+let headers = [
+  "User-Agent: Kuyil/1.0",
+  "Accept: application/json",
+  "X-Custom-Header: test"
+]
+// Parameters: url, headers, dns_ms, connect_ms, read_ms, write_ms
+let req2 = kyl_asyncio_httpGetEx("https://httpbin.org/headers", headers, 30, 500, 2000, 500)
+print("   Request ID: " + req2)
+print("   Headers: User-Agent, Accept, X-Custom-Header")
+print("   Timeouts: dns=30ms, connect=500ms, read=2000ms, write=500ms")
+
+print("\n3. HTTP POST with JSON:")
+let postHeaders = ["Content-Type: application/json"]
+let postBody = '{"name": "Kuyil", "version": "1.0"}'
+let req3 = kyl_asyncio_httpPostEx("https://httpbin.org/post", postBody, postHeaders, 
+                                    0, 1000, 3000, 500)
+print("   Request ID: " + req3)
+
+print("\n4. Check completion status:")
+print("   Request 1 complete: " + kyl_asyncio_isComplete(req1))
+print("   Request 2 complete: " + kyl_asyncio_isComplete(req2))
+print("   Request 3 complete: " + kyl_asyncio_isComplete(req3))
+
+print("\n✓ All requests submitted successfully!")
+print("\nℹ️  To wait for results, use:")
+print("   kyl_asyncio_waitResult(requestId, timeout_ms)")

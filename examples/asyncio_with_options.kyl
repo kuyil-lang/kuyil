@@ -1,0 +1,55 @@
+// Example: Using asyncio with headers and timeout options
+import "interfaces/interface_asyncio.kyl"
+
+print("═══════════════════════════════════════")
+print("  Asyncio with Headers & Timeouts")
+print("═══════════════════════════════════════")
+
+// Example 1: Simple GET without options
+print("\n1. Simple GET (no options):")
+let req1 = httpGet("https://api.github.com/zen", nil)
+print("  Request ID: " + req1)
+let result1 = waitFor(req1, 5000)
+print("  Result: " + result1)
+
+// Example 2: GET with custom headers as array (direct call to Ex function)
+print("\n2. GET with custom headers:")
+let headers2 = [
+  "User-Agent: Kuyil/1.0",
+  "Accept: application/json"
+]
+let req2 = asyncio_httpGetEx("https://api.github.com/users/github", headers2, 30, 500, 2000, 500)
+print("  Request ID: " + req2)
+let result2 = waitFor(req2, 5000)
+print("  Result received: " + (result2 != nil))
+
+// Example 3: POST with headers
+print("\n3. POST with headers:")
+let postData = '{"test": "data"}'
+let headers3 = [
+  "Content-Type: application/json",
+  "Accept: application/json"
+]
+let req3 = asyncio_httpPostEx("https://httpbin.org/post", postData, headers3, 0, 1000, 3000, 500)
+print("  Request ID: " + req3)
+let result3 = waitFor(req3, 5000)
+print("  Result received: " + (result3 != nil))
+
+// Example 4: Multiple parallel requests with different timeouts
+print("\n4. Parallel requests with different timeouts:")
+let fastHeaders = ["User-Agent: Kuyil-Fast"]
+let slowHeaders = ["User-Agent: Kuyil-Slow"]
+
+let reqA = asyncio_httpGetEx("https://httpbin.org/delay/1", fastHeaders, 0, 200, 1000, 0)
+let reqB = asyncio_httpGetEx("https://httpbin.org/get", slowHeaders, 0, 1000, 5000, 0)
+
+print("  Launched requests: " + reqA + ", " + reqB)
+print("  Waiting for results...")
+
+let resultA = waitFor(reqA, 3000)
+let resultB = waitFor(reqB, 3000)
+
+print("  Result A: " + (resultA != nil))
+print("  Result B: " + (resultB != nil))
+
+print("\n✓ All tests complete!")

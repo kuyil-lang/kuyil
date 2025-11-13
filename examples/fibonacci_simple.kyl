@@ -1,0 +1,127 @@
+// Simple Fibonacci Program in Kuyil
+
+print("╔═══════════════════════════════════════════════════════╗")
+print("║         FIBONACCI SEQUENCE GENERATOR                  ║")
+print("╚═══════════════════════════════════════════════════════╝\n")
+
+// Recursive Fibonacci (simple but slow for large n)
+fn fibRecursive(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fibRecursive(n - 1) + fibRecursive(n - 2)
+}
+
+// Iterative Fibonacci (fast and efficient)
+fn fibIterative(n) {
+    if (n <= 1) {
+        return n
+    }
+    
+    let a = 0
+    let b = 1
+    let i = 2
+    
+    while (i <= n) {
+        let temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    
+    return b
+}
+
+// ============================================================================
+// DEMO 1: First 20 Fibonacci Numbers
+// ============================================================================
+
+print("First 20 Fibonacci Numbers:")
+print("─────────────────────────────────────────────────────────\n")
+
+let i = 0
+while (i < 20) {
+    let fib = fibIterative(i)
+    print("F(", i, ") = ", fib)
+    i = i + 1
+}
+
+// ============================================================================
+// DEMO 2: Large Fibonacci Numbers
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("Large Fibonacci Numbers:")
+print("─────────────────────────────────────────────────────────\n")
+
+let large = [25, 30, 35, 40, 45, 50]
+i = 0
+while (i < 6) {  // Fixed: use literal count instead of len()
+    let n = large[i]
+    let fib = fibIterative(n)
+    print("F(", n, ") = ", fib)
+    i = i + 1
+}
+
+// ============================================================================
+// DEMO 3: Fibonacci Ratios (Golden Ratio)
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("Fibonacci Ratios (converging to Golden Ratio φ ≈ 1.618):")
+print("─────────────────────────────────────────────────────────\n")
+
+i = 2
+while (i <= 20) {
+    let current = fibIterative(i)
+    let previous = fibIterative(i - 1)
+    let ratio = current / previous
+    print("F(", i, ") / F(", i - 1, ") = ", ratio)
+    i = i + 1
+}
+
+// ============================================================================
+// DEMO 4: Performance Comparison
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("Performance Test (F(20)):")
+print("─────────────────────────────────────────────────────────\n")
+
+print("Iterative approach:")
+let iterResult = fibIterative(20)
+print("F(20) =", iterResult)
+
+print("\nRecursive approach (slower):")
+let recResult = fibRecursive(20)
+print("F(20) =", recResult)
+
+// ============================================================================
+// SUMMARY
+// ============================================================================
+
+print("\n╔═══════════════════════════════════════════════════════╗")
+print("║                  SUMMARY                              ║")
+print("╚═══════════════════════════════════════════════════════╝\n")
+
+print("✅ Recursive Fibonacci: fibRecursive(n)")
+print("   • Simple implementation")
+print("   • Time complexity: O(2^n) - exponential")
+print("   • Good for small n (< 20)\n")
+
+print("✅ Iterative Fibonacci: fibIterative(n)")
+print("   • Efficient implementation")
+print("   • Time complexity: O(n) - linear")
+print("   • Good for large n\n")
+
+print("🎯 Golden Ratio (φ):")
+print("   • Fibonacci ratios converge to φ ≈ 1.618033...")
+print("   • F(n+1) / F(n) → φ as n → ∞\n")
+
+print("📚 Applications:")
+print("   • Nature: spirals, branching, petals")
+print("   • Art: proportions, aesthetics")
+print("   • Mathematics: number theory")
+print("   • Computer Science: algorithms, data structures\n")
+
+print("✨ Fibonacci demonstration complete!\n")

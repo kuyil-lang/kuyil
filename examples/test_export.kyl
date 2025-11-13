@@ -1,0 +1,20 @@
+// Test file demonstrating the use of the export keyword
+print("Testing export keyword functionality...\n");
+
+// Import a module with exported functions
+import("export_demo.kyl");
+
+print("--- Testing exported functions ---");
+
+// Call exported functions
+print("1. Greeting:", public_greet("World"));
+print("2. Calculate:", public_calculate(5, 3));
+print("3. Info:", public_info());
+
+print("\n--- Export feature working! ---");
+
+// Note: private_multiply() and private_internal() are NOT accessible here
+// They were not marked with 'export' so they remain module-private
+
+// Uncomment to see error:
+// private_multiply(2, 3);  // Would show: Undefined variable 'private_multiply'

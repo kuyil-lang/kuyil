@@ -1,6 +1,14 @@
 // GNU extension for strdup - must be defined before includes
 #define _GNU_SOURCE
 
+// Standard headers required for file operations
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <errno.h>
+
 #include "fileio_utils.h"
 
 // Kuyil interface signature metadata
@@ -48,7 +56,8 @@ const char* file_get_error_string(int error_code) {
 
 int file_exists(const char* filepath) {
     if (!filepath) return 0;
-    return access(filepath, F_OK) == 0;
+    int ok = access(filepath, F_OK) == 0;
+    return ok;
 }
 
 size_t file_get_size(const char* filepath) {
@@ -604,23 +613,37 @@ FileResult* file_read_yaml(const char* filepath) {
 // ============================================================================
 
 Value kuyil_file_read_text(int arg_count, Value* args) {
-    Value result = {VALUE_NIL, .as = {.number = 0}};
-    
+    fprintf(stderr, "[fileio] === kuyil_file_read_text ENTRY ===\n"); fflush(stderr);
+    Value result; memset(&result, 0, sizeof(Value)); result.type = VALUE_NIL;
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
+        fprintf(stderr, "[fileio] readText: invalid args (expected 1 string)\n"); fflush(stderr);
         return result;
     }
-    
-    FileResult* file_result = file_read_text(args[0].as.string);
-    if (!file_result) {
-        return result;
-    }
-    
+    const char* path = args[0].as.string;
+    fprintf(stderr, "[fileio] readText: path='%s'\n", path ? path : "(null)"); fflush(stderr);
+    if (!path) return result;
+    int validation = file_validate_path(path);
+    fprintf(stderr, "[fileio] readText: validation=%d\n", validation); fflush(stderr);
+    if (validation != FILE_SUCCESS) return result;
+    int existsFlag = file_exists(path);
+    fprintf(stderr, "[fileio] readText: exists=%d\n", existsFlag); fflush(stderr);
+    if (!existsFlag) return result;
+    int readable = file_is_readable(path);
+    fprintf(stderr, "[fileio] readText: readable=%d\n", readable); fflush(stderr);
+    if (!readable) return result;
+    size_t sz = file_get_size(path);
+    fprintf(stderr, "[fileio] readText: size=%zu\n", sz); fflush(stderr);
+    FileResult* file_result = file_read_text(path);
+    if (!file_result) { fprintf(stderr, "[fileio] readText: file_read_text returned NULL\n"); fflush(stderr); return result; }
     if (file_result->error_code == FILE_SUCCESS && file_result->content) {
         result.type = VALUE_STRING;
         result.as.string = strdup(file_result->content);
+        fprintf(stderr, "[fileio] readText: SUCCESS, returning string len=%zu\n", strlen(result.as.string)); fflush(stderr);
+    } else {
+        fprintf(stderr, "[fileio] readText: failure code=%d msg=%s\n", file_result->error_code, file_result->error_message ? file_result->error_message : "(none)"); fflush(stderr);
     }
-    
     file_result_free(file_result);
+    fprintf(stderr, "[fileio] === kuyil_file_read_text EXIT type=%d ===\n", result.type); fflush(stderr);
     return result;
 }
 
@@ -815,6 +838,38 @@ Value exists(int arg_count, Value* args) { return kuyil_file_exists(arg_count, a
 Value size(int arg_count, Value* args) { return kuyil_file_size(arg_count, args); }
 Value validate(int arg_count, Value* args) { return kuyil_file_validate(arg_count, args); }
 Value writeText(int arg_count, Value* args) { return kuyil_file_write_text(arg_count, args); }
+
+// CamelCase aliases for interface compatibility
+Value file_readText(int arg_count, Value* args) { 
+    fprintf(stderr, "[fileio_wrapper] *** file_readText wrapper at %p ***\n", (void*)file_readText); fflush(stderr);
+    fprintf(stderr, "[fileio_wrapper] *** About to call kuyil_file_read_text at %p ***\n", (void*)kuyil_file_read_text); fflush(stderr);
+    fprintf(stderr, "[fileio_wrapper] file_readText called with %d args\n", arg_count);
+    if (arg_count > 0) {
+        fprintf(stderr, "[fileio_wrapper]   arg[0] type=%d\n", args[0].type);
+        if (args[0].type == VALUE_STRING) {
+            fprintf(stderr, "[fileio_wrapper]   arg[0] string='%s'\n", args[0].as.string ? args[0].as.string : "(null)");
+        }
+    }
+    Value result = kuyil_file_read_text(arg_count, args); 
+    fprintf(stderr, "[fileio_wrapper] kuyil_file_read_text returned type=%d\n", result.type);
+    if (result.type == VALUE_ARRAY) {
+        fprintf(stderr, "[fileio_wrapper]   ARRAY count=%d\n", result.as.array.count);
+    }
+    return result;
+}
+Value file_readCsv(int arg_count, Value* args) { return kuyil_file_read_csv(arg_count, args); }
+Value file_readJson(int arg_count, Value* args) { return kuyil_file_read_json(arg_count, args); }
+Value file_readYaml(int arg_count, Value* args) { return kuyil_file_read_yaml(arg_count, args); }
+// NOTE: Removed Value file_exists() alias to avoid symbol conflict with int file_exists().
+Value file_size(int arg_count, Value* args) { return kuyil_file_size(arg_count, args); }
+Value file_validate(int arg_count, Value* args) { return kuyil_file_validate(arg_count, args); }
+Value file_writeText(int arg_count, Value* args) { return kuyil_file_write_text(arg_count, args); }
+
+// Snake-case no-underscore variants to satisfy interface binder fallback (e.g. file_readtext)
+Value file_readtext(int arg_count, Value* args) { return kuyil_file_read_text(arg_count, args); }
+Value file_readcsv(int arg_count, Value* args) { return kuyil_file_read_csv(arg_count, args); }
+Value file_readjson(int arg_count, Value* args) { return kuyil_file_read_json(arg_count, args); }
+Value file_readyaml(int arg_count, Value* args) { return kuyil_file_read_yaml(arg_count, args); }
 
 // Library entry point for dynamic loading
 __attribute__((constructor))

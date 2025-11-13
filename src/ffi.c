@@ -102,13 +102,23 @@ FFILibrary* ffi_load_library(FFIContext* ctx, const char* name, const char* path
     
     // Expand libraries array if needed
     if (ctx->library_count >= ctx->max_libraries) {
-        ctx->max_libraries *= 2;
-        ctx->libraries = realloc(ctx->libraries, ctx->max_libraries * sizeof(FFILibrary));
-        if (!ctx->libraries) {
+        int new_max = ctx->max_libraries * 2;
+        
+        // Prevent integer overflow
+        if (new_max < ctx->max_libraries) {
+            g_last_error = FFI_ERROR_MEMORY_ERROR;
+            kuyil_log_error("Library array size overflow");
+            return NULL;
+        }
+        
+        FFILibrary* new_libraries = realloc(ctx->libraries, new_max * sizeof(FFILibrary));
+        if (!new_libraries) {
             g_last_error = FFI_ERROR_MEMORY_ERROR;
             kuyil_log_error("Failed to expand libraries array");
             return NULL;
         }
+        ctx->libraries = new_libraries;
+        ctx->max_libraries = new_max;
     }
     
     // Load the shared library
@@ -123,6 +133,16 @@ FFILibrary* ffi_load_library(FFIContext* ctx, const char* name, const char* path
     FFILibrary* lib = &ctx->libraries[ctx->library_count];
     lib->name = strdup(name);
     lib->path = strdup(path);
+    
+    if (!lib->name || !lib->path) {
+        g_last_error = FFI_ERROR_MEMORY_ERROR;
+        kuyil_log_error("Failed to duplicate library name/path");
+        if (lib->name) free(lib->name);
+        if (lib->path) free(lib->path);
+        dlclose(handle);
+        return NULL;
+    }
+    
     lib->handle = handle;
     lib->function_count = 0;
     lib->functions = NULL;
@@ -178,7 +198,14 @@ FFIFunction* ffi_register_function(FFILibrary* lib, const char* name,
         return NULL;
     }
     
-    kuyil_log_debug("Registering FFI function: %s in library %s", name, lib->name);
+    kuyil_log_debug("Registering FFI function: %s in library %s", name, lib->name ? lib->name : "unknown");
+    
+    // Validate library handle
+    if (!lib->handle) {
+        g_last_error = FFI_ERROR_INVALID_SIGNATURE;
+        kuyil_log_error("Library handle is NULL for function: %s", name);
+        return NULL;
+    }
     
     // Look up the function symbol in the loaded library
     void* func_ptr = dlsym(lib->handle, name);
@@ -189,17 +216,20 @@ FFIFunction* ffi_register_function(FFILibrary* lib, const char* name,
     }
     
     // Expand functions array if needed
+    FFIFunction* new_functions = NULL;
     if (lib->function_count == 0) {
-        lib->functions = malloc(sizeof(FFIFunction));
+        new_functions = malloc(sizeof(FFIFunction));
     } else {
-        lib->functions = realloc(lib->functions, (lib->function_count + 1) * sizeof(FFIFunction));
+        new_functions = realloc(lib->functions, (lib->function_count + 1) * sizeof(FFIFunction));
     }
     
-    if (!lib->functions) {
+    if (!new_functions) {
         g_last_error = FFI_ERROR_MEMORY_ERROR;
         kuyil_log_error("Failed to allocate memory for function");
         return NULL;
     }
+    
+    lib->functions = new_functions;
     
     // Initialize function structure
     FFIFunction* func = &lib->functions[lib->function_count];

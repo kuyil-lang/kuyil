@@ -1,0 +1,17 @@
+// Test asyncio direct C function calls
+loadlib("libs/libkylasyncio.so")
+
+print("Testing direct asyncio C functions...")
+
+// Test if kyl_asyncio_httpGet is callable
+print("\n1. Testing kyl_asyncio_httpGet:")
+let req1 = kyl_asyncio_httpGet("https://httpbin.org/get")
+print("  Request ID: " + req1)
+
+// Test if kyl_asyncio_httpGetEx is callable
+print("\n2. Testing kyl_asyncio_httpGetEx:")
+let headers = ["User-Agent: Kuyil", "Accept: application/json"]
+let req2 = kyl_asyncio_httpGetEx("https://httpbin.org/get", headers, 0, 1000, 2000, 500)
+print("  Request ID: " + req2)
+
+print("\n✓ Direct C functions work!")

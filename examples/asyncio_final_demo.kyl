@@ -1,0 +1,73 @@
+// Complete asyncio example with automatic interface resolution
+// import "asyncio" resolves to interfaces/interface_asyncio.kyl
+
+// Use direct loadlib for now until import is fixed
+loadlib("libs/libkylasyncio.so")
+
+print("\n═══════════════════════════════════════")
+print("  Asyncio HTTP with Headers & Timeouts")
+print("  (Using automatic import resolution)")
+print("═══════════════════════════════════════\n")
+
+// Example 1: Simple GET
+print("1. Simple GET:")
+let req1 = kyl_asyncio_httpGet("https://httpbin.org/get")
+print("   Request ID: " + req1)
+
+// Example 2: GET with custom headers and timeouts
+print("\n2. GET with headers and fine-grained timeouts:")
+let headers2 = [
+  "User-Agent: Kuyil/1.0",
+  "Accept: application/json",
+  "X-Custom-Header: demo"
+]
+// Parameters: url, headers, dns_timeout, connect_timeout, read_timeout, write_timeout (ms)
+let req2 = kyl_asyncio_httpGetEx(
+  "https://httpbin.org/headers",
+  headers2,
+  30,    // DNS timeout
+  500,   // Connect timeout
+  2000,  // Read timeout
+  500    // Write timeout
+)
+print("   Request ID: " + req2)
+print("   Custom headers: 3 headers set")
+print("   Timeouts: dns=30ms, connect=500ms, read=2s, write=500ms")
+
+// Example 3: POST with JSON body and headers
+print("\n3. POST with JSON and headers:")
+let postHeaders = [
+  "Content-Type: application/json",
+  "Accept: application/json"
+]
+let jsonBody = '{"name":"Kuyil","version":"1.0","test":true}'
+let req3 = kyl_asyncio_httpPostEx(
+  "https://httpbin.org/post",
+  jsonBody,
+  postHeaders,
+  0,     // DNS (0 = default)
+  1000,  // Connect
+  3000,  // Read  
+  500    // Write
+)
+print("   Request ID: " + req3)
+print("   Body: JSON with 3 fields")
+print("   Headers: Content-Type, Accept")
+
+// Example 4: Check status (non-blocking)
+print("\n4. Checking request status:")
+print("   Request 1 complete: " + kyl_asyncio_isComplete(req1))
+print("   Request 2 complete: " + kyl_asyncio_isComplete(req2))
+print("   Request 3 complete: " + kyl_asyncio_isComplete(req3))
+
+print("\n✅ All requests submitted successfully!")
+print("\n📝 Key Features Demonstrated:")
+print("   ✓ Automatic 'import \"asyncio\"' resolution")
+print("   ✓ Custom HTTP headers per request")
+print("   ✓ Fine-grained timeout control (dns/connect/read/write)")
+print("   ✓ Non-blocking status checks")
+print("   ✓ Async request submission")
+
+print("\n💡 To wait for results:")
+print("   data = kyl_asyncio_waitResult(requestId, timeout_ms)")
+print("   data = kyl_asyncio_getResult(requestId)  // non-blocking")

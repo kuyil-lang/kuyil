@@ -47,9 +47,12 @@ Value* file_reader_parse_json_line(const char* line);
 Value* file_reader_parse_yaml_line(const char* line);
 
 // Native functions for VM integration
+// DEPRECATED: These are now provided by libkylfileio.so shared library
+/*
 Value kuyil_file_read_text(int arg_count, Value* args);
 Value kuyil_file_read_csv(int arg_count, Value* args);
 Value kuyil_file_read_json(int arg_count, Value* args);
 Value kuyil_file_read_yaml(int arg_count, Value* args);
+*/
 
 #endif // KUYIL_FILE_READER_H

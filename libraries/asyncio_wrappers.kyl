@@ -1,0 +1,117 @@
+// Asyncio wrapper library with options support
+// This provides convenient wrappers around the asyncio interface
+
+// Load asyncio library
+loadlib("libs/libkylasyncio.so")
+
+// Helper function to convert header map to array of "Key: Value" strings
+fn _headersMapToArray(headersMap) {
+  if (headersMap == nil) {
+    return []
+  }
+  
+  // If already an array, return as-is
+  // Expected format: ["Content-Type: application/json", "Authorization: Bearer xxx"]
+  return headersMap
+}
+
+// HTTP GET with optional options parameter
+// Usage:
+//   httpGet("https://api.example.com/data", nil)  // Simple GET
+//   httpGet("https://api.example.com/data", options)  // With options
+//
+// options format:
+//   headers: array of "Key: Value" strings
+//   timeout: { dns: 30, connect: 500, write: 200, read: 1000 }
+fn httpGet(url, options) {
+  if (options == nil) {
+    // Simple GET without options
+    return kyl_asyncio_httpGet(url)
+  }
+  
+  // Extract headers (expect array format)
+  let headerArray = []
+  if (options.headers != nil) {
+    headerArray = _headersMapToArray(options.headers)
+  }
+  
+  // Extract timeouts (default to 0 if not specified)
+  let dnsTimeout = 0
+  let connectTimeout = 0
+  let readTimeout = 0
+  let writeTimeout = 0
+  
+  if (options.timeout != nil) {
+    if (options.timeout.dns != nil) {
+      dnsTimeout = options.timeout.dns
+    }
+    if (options.timeout.connect != nil) {
+      connectTimeout = options.timeout.connect
+    }
+    if (options.timeout.read != nil) {
+      readTimeout = options.timeout.read
+    }
+    if (options.timeout.write != nil) {
+      writeTimeout = options.timeout.write
+    }
+  }
+  
+  return kyl_asyncio_httpGetEx(url, headerArray, dnsTimeout, connectTimeout, readTimeout, writeTimeout)
+}
+
+// HTTP POST with optional options parameter
+fn httpPost(url, body, options) {
+  if (options == nil) {
+    // Simple POST without options
+    return kyl_asyncio_httpPost(url, body)
+  }
+  
+  // Extract headers
+  let headerArray = []
+  if (options.headers != nil) {
+    headerArray = _headersMapToArray(options.headers)
+  }
+  
+  // Extract timeouts
+  let dnsTimeout = 0
+  let connectTimeout = 0
+  let readTimeout = 0
+  let writeTimeout = 0
+  
+  if (options.timeout != nil) {
+    if (options.timeout.dns != nil) {
+      dnsTimeout = options.timeout.dns
+    }
+    if (options.timeout.connect != nil) {
+      connectTimeout = options.timeout.connect
+    }
+    if (options.timeout.read != nil) {
+      readTimeout = options.timeout.read
+    }
+    if (options.timeout.write != nil) {
+      writeTimeout = options.timeout.write
+    }
+  }
+  
+  return kyl_asyncio_httpPostEx(url, body, headerArray, dnsTimeout, connectTimeout, readTimeout, writeTimeout)
+}
+
+// Helper function to wait for request and get result
+fn waitFor(requestId, timeoutMs) {
+  if (timeoutMs == nil) {
+    timeoutMs = 0  // Wait forever
+  }
+  return kyl_asyncio_waitResult(requestId, timeoutMs)
+}
+
+// Helper function to check if request is done
+fn isDone(requestId) {
+  return kyl_asyncio_isComplete(requestId)
+}
+
+// Helper function to get result without blocking
+fn getResult(requestId) {
+  return kyl_asyncio_getResult(requestId)
+}
+
+print("[asyncio_wrappers] Loaded HTTP wrapper functions with options support")

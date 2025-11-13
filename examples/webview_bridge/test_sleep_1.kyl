@@ -1,0 +1,9 @@
+// Test the sleep function
+
+import("interfaces/interface_system.kyl")
+
+import("../../interfaces/interface_webview.kyl")
+
+sleep(1000)
+
+print("Sleep function works! ✓")

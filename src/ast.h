@@ -11,6 +11,9 @@ typedef struct ASTNode ASTNode;
 typedef struct Block Block;
 
 typedef enum {
+    // Special
+    AST_ERROR,               // Placeholder for parse errors (prevents NULL crashes)
+    
     // Expressions
     AST_LITERAL,
     AST_IDENTIFIER,

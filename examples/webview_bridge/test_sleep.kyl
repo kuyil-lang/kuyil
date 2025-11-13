@@ -1,0 +1,27 @@
+// Test the sleep function
+
+import("interfaces/interface_system.kyl")
+
+print("Testing sleep function...")
+
+let start = timestamp()
+print("Starting timestamp:")
+print(start)
+
+print("Sleeping for 500ms...")
+sleep(500)
+let after500 = timestamp()
+print("After 500ms:")
+print(after500)
+print("Elapsed: ")
+print(after500 - start)
+
+print("Sleeping for 1000ms...")
+sleep(1000)
+let after1500 = timestamp()
+print("After 1000ms more:")
+print(after1500)
+print("Elapsed: ")
+print(after1500 - after500)
+
+print("Sleep function works! ✓")

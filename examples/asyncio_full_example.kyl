@@ -1,0 +1,114 @@
+// Complete asyncio example with inline wrappers
+// This demonstrates the current working approach
+
+loadlib("libs/libkylasyncio.so")
+
+// ═══════════════════════════════════════
+//  Wrapper Functions (copy these to your script)
+// ═══════════════════════════════════════
+
+fn httpGet(url, options) {
+  if (options == nil) {
+    return kyl_asyncio_httpGet(url)
+  }
+  
+  let headers = []
+  if (options.headers != nil) {
+    headers = options.headers
+  }
+  
+  let dns = 0
+  let conn = 0
+  let read = 0
+  let write = 0
+  
+  if (options.timeout != nil) {
+    if (options.timeout.dns != nil) { dns = options.timeout.dns }
+    if (options.timeout.connect != nil) { conn = options.timeout.connect }
+    if (options.timeout.read != nil) { read = options.timeout.read }
+    if (options.timeout.write != nil) { write = options.timeout.write }
+  }
+  
+  return kyl_asyncio_httpGetEx(url, headers, dns, conn, read, write)
+}
+
+fn httpPost(url, body, options) {
+  if (options == nil) {
+    return kyl_asyncio_httpPost(url, body)
+  }
+  
+  let headers = []
+  if (options.headers != nil) {
+    headers = options.headers
+  }
+  
+  let dns = 0
+  let conn = 0
+  let read = 0
+  let write = 0
+  
+  if (options.timeout != nil) {
+    if (options.timeout.dns != nil) { dns = options.timeout.dns }
+    if (options.timeout.connect != nil) { conn = options.timeout.connect }
+    if (options.timeout.read != nil) { read = options.timeout.read }
+    if (options.timeout.write != nil) { write = options.timeout.write }
+  }
+  
+  return kyl_asyncio_httpPostEx(url, body, headers, dns, conn, read, write)
+}
+
+fn waitFor(id, ms) {
+  if (ms == nil) { ms = 0 }
+  return kyl_asyncio_waitResult(id, ms)
+}
+
+fn isDone(id) {
+  return kyl_asyncio_isComplete(id)
+}
+
+//  ═══════════════════════════════════════
+//  Example Usage
+// ═══════════════════════════════════════
+
+print("\n═══════════════════════════════════════")
+print("  Asyncio with Options - Full Example")
+print("═══════════════════════════════════════\n")
+
+// Example 1: Simple requests
+print("1. Simple GET:")
+let req1 = httpGet("https://httpbin.org/get", nil)
+print("   ID: " + req1)
+
+print("\n2. Simple POST:")
+let req2 = httpPost("https://httpbin.org/post", '{"test": true}', nil)
+print("   ID: " + req2)
+
+// Example 2: Direct Ex calls with full control
+print("\n3. GET with all options (direct):")
+let headers3 = [
+  "User-Agent: Kuyil-Test/1.0",
+  "Accept: application/json",
+  "X-Custom: test-value"
+]
+let req3 = kyl_asyncio_httpGetEx("https://httpbin.org/headers", headers3, 30, 500, 2000, 500)
+print("   ID: " + req3)
+print("   Timeouts: dns=30ms, connect=500ms, read=2000ms, write=500ms")
+
+print("\n4. POST with headers (direct):")
+let postHeaders = [
+  "Content-Type: application/json",
+  "Accept: application/json"
+]
+let postBody = '{"name": "Kuyil", "feature": "async-http"}'
+let req4 = kyl_asyncio_httpPostEx("https://httpbin.org/post", postBody, postHeaders, 0, 1000, 3000, 500)
+print("   ID: " + req4)
+
+// Check status
+print("\n5. Status check:")
+print("   Req1 done: " + isDone(req1))
+print("   Req2 done: " + isDone(req2))
+print("   Req3 done: " + isDone(req3))
+print("   Req4 done: " + isDone(req4))
+
+print("\n✓ All requests submitted!")
+print("\nℹ️  Use waitFor(id, timeout_ms) to retrieve results")

@@ -1,0 +1,23 @@
+// Test asyncio library registration and wrapper functions
+import "interfaces/interface_asyncio.kyl"
+
+print("Testing asyncio function wrappers...")
+
+// Test 1: Check if basic functions exist
+print("\n1. Testing basic httpGet wrapper:")
+let req1 = httpGet("https://httpbin.org/get", nil)
+print("  httpGet returned request ID: " + req1)
+
+// Test 2: Check if httpGetEx is accessible
+print("\n2. Testing httpGetEx with headers:")
+let headers = ["User-Agent: Kuyil", "Accept: application/json"]
+let req2 = asyncio_httpGetEx("https://httpbin.org/get", headers, 0, 1000, 2000, 500)
+print("  httpGetEx returned request ID: " + req2)
+
+// Test 3: Check helper functions
+print("\n3. Testing helper functions:")
+print("  isDone(1): " + isDone(1))
+print("  getResult(1): " + getResult(1))
+
+print("\n✓ Function wrappers are working!")
+print("  (Network requests were submitted but not waited for)")

@@ -1,0 +1,86 @@
+
+import("../interfaces/interface_http.kyl")
+
+fn fetchGitHubZen() {
+    print("  → Fetching GitHub Zen quote...")
+    let response = clientGet("https://api.github.com/zen")
+    print("  ✓ Got Zen quote")
+    return response
+}
+
+fn fetchUUID() {
+    print("  → Fetching random UUID...")
+    let response = clientGet("https://httpbin.org/uuid")
+    print("  ✓ Got UUID")
+    return response
+}
+
+fn fetchGitHubUser() {
+    print("  → Fetching GitHub user info...")
+    let response = clientGet("https://api.github.com/users/octocat")
+    print("  ✓ Got user info")
+    return response
+}
+
+print("Making 2 HTTP requests sequentially...")
+
+let result1 = fetchGitHubZen()
+let result2 = fetchUUID()
+
+print("")
+print("Results:")
+print("─────────────────────────────────────────────────────")
+print("Zen Quote: " + result1)
+print("")
+print("UUID: " + result2)
+print("")
+print("✓ Sequential execution complete")
+print("  Time = Request1 + Request2")
+print("")
+
+print("Making 3 HTTP requests sequentially...")
+print("")
+
+let zenQuote = fetchGitHubZen()
+let uuid = fetchUUID()
+let userInfo = fetchGitHubUser()
+
+print("")
+print("All 3 requests completed!")
+print("─────────────────────────────────────────────────────")
+print("Total execution: Sum of all 3 request times")
+print("")
+print("")
+print("═══════════════════════════════════════════════════════")
+print("  EXAMPLE 3: Avatar Syntax Demo (When VM Ready)")
+print("═══════════════════════════════════════════════════════")
+print("")
+print("Attempting to use avatar syntax...")
+print("")
+
+// Uncomment when VM integration is complete:
+let av1 = avatar fetchGitHubZen()
+let av2 = avatar fetchUUID()
+print("Both avatars launched in parallel!")
+print("")
+let result1 = await av1
+let result2 = await av2
+print("Results:")
+print(result1)
+print(result2)
+
+print("")
+print("═══════════════════════════════════════════════════════")
+print("  EXAMPLE 4: Multiple Await with Destructuring")
+print("═══════════════════════════════════════════════════════")
+print("")
+
+let av2_1 = avatar fetchGitHubZen()
+let av2_2 = avatar fetchUUID()
+
+// use explicit array syntax or separate awaits
+// Option 1: Explicit array
+let results = [await av2_2, await av2_1]
+print("Results (array with reversed order):")
+print("UUID: " + results[0])
+print("Zen: " + results[1])

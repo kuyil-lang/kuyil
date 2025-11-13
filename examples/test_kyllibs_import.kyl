@@ -1,0 +1,17 @@
+// Test importing from kyllibs folder
+import "asyncio"
+
+print("\n═══════════════════════════════════════")
+print("  Testing kyllibs/asyncio.kyl Import")
+print("═══════════════════════════════════════\n")
+
+// Test 1: Simple GET using imported wrapper
+print("1. Simple GET (using httpGet wrapper):")
+let req1 = httpGet("https://httpbin.org/get", nil)
+print("   Request ID: " + req1)
+
+// Test 2: Check status
+print("\n2. Check status (using isDone helper):")
+print("   Request 1 done: " + isDone(req1))
+
+print("\n✓ kyllibs import works! Functions are available!")

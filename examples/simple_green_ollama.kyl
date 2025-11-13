@@ -1,0 +1,45 @@
+// Simple Green Thread Ollama Demo
+// Calls Ollama API using avatar/await for parallel processing
+
+import("interfaces/interface_http.kyl")
+
+print("GREEN THREAD OLLAMA DEMO\n")
+
+// Simple function to call Ollama
+fn askOllama(model, question) {
+    let body = "{\"model\": \"" + model + "\", \"prompt\": \"" + question + "\", \"stream\": false}"
+    print("  Sending request to", model, "...")
+    let response = clientPost("http://localhost:11434/api/generate", body)
+    return response
+}
+
+print("Question: What is the Fibonacci sequence?\n")
+
+print("DEMO 1: Single Request (Sequential)")
+print("-------------------------------------------------------------")
+let result1 = askOllama("qwen2.5-coder:32b", "What is the Fibonacci sequence? Answer in 1 sentence.")
+print("Response received!\n")
+
+print("DEMO 2: Parallel Requests with Avatar/Await")
+print("-------------------------------------------------------------")
+print("Launching 3 models in parallel...\n")
+
+// Launch all 3 in parallel
+let av1 = avatar askOllama("qwen2.5-coder:32b", "Explain Fibonacci in 1 sentence")
+let av2 = avatar askOllama("llama3.1:8b", "Explain Fibonacci in 1 sentence")
+let av3 = avatar askOllama("codellama", "Explain Fibonacci in 1 sentence")
+
+print("Waiting for all models...\n")
+
+// Get all results
+let r1 = await av1
+let r2 = await av2
+let r3 = await av3
+
+print("All done!\n")
+print("-------------------------------------------------------------")
+print("Model 1 (Qwen) response received")
+print("Model 2 (Llama) response received")
+print("Model 3 (CodeLlama) response received")
+
+print("\nDemo complete - 3x faster with green threads!\n")

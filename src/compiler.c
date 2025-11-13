@@ -36,8 +36,27 @@ void chunk_write(Chunk* chunk, uint8_t byte, int line) {
     if (chunk->capacity < chunk->count + 1) {
         int old_capacity = chunk->capacity;
         chunk->capacity = old_capacity < 8 ? 8 : old_capacity * 2;
-        chunk->code = realloc(chunk->code, sizeof(uint8_t) * chunk->capacity);
-        chunk->lines = realloc(chunk->lines, sizeof(int) * chunk->capacity);
+        
+        // Prevent integer overflow
+        if (chunk->capacity < old_capacity) {
+            LOG_ERROR("Chunk capacity overflow");
+            return;
+        }
+        
+        uint8_t* new_code = realloc(chunk->code, sizeof(uint8_t) * chunk->capacity);
+        int* new_lines = realloc(chunk->lines, sizeof(int) * chunk->capacity);
+        
+        if (!new_code || !new_lines) {
+            LOG_ERROR("Out of memory expanding chunk (size: %d)", chunk->capacity);
+            // Restore old capacity and abort write
+            chunk->capacity = old_capacity;
+            if (new_code) chunk->code = new_code;
+            if (new_lines) chunk->lines = new_lines;
+            return;
+        }
+        
+        chunk->code = new_code;
+        chunk->lines = new_lines;
     }
     
     chunk->code[chunk->count] = byte;
@@ -49,13 +68,31 @@ int chunk_add_constant(Chunk* chunk, Value value) {
     if (chunk->constant_capacity < chunk->constant_count + 1) {
         int old_capacity = chunk->constant_capacity;
         chunk->constant_capacity = old_capacity < 8 ? 8 : old_capacity * 2;
-        chunk->constants = realloc(chunk->constants, sizeof(Value) * chunk->constant_capacity);
+        
+        // Prevent integer overflow
+        if (chunk->constant_capacity < old_capacity) {
+            LOG_ERROR("Constant pool capacity overflow");
+            return -1;
+        }
+        
+        Value* new_constants = realloc(chunk->constants, sizeof(Value) * chunk->constant_capacity);
+        if (!new_constants) {
+            LOG_ERROR("Out of memory expanding constant pool (size: %d)", chunk->constant_capacity);
+            chunk->constant_capacity = old_capacity;
+            return -1;
+        }
+        chunk->constants = new_constants;
     }
     
     // CRITICAL FIX: Make deep copy of strings to survive AST cleanup
     if (value.type == VALUE_STRING) {
         Value string_copy = value;
-        string_copy.as.string = strdup(value.as.string); // Deep copy!
+        char* copied_str = strdup(value.as.string);
+        if (!copied_str) {
+            LOG_ERROR("Out of memory duplicating string constant");
+            return -1;
+        }
+        string_copy.as.string = copied_str; // Deep copy!
         chunk->constants[chunk->constant_count] = string_copy;
     } else {
         chunk->constants[chunk->constant_count] = value;
@@ -96,7 +133,7 @@ const char** compiler_get_exports(int* count) {
 }
 
 static void error_at_node(ASTNode* node, const char* message) {
-    fprintf(stderr, "[line %d] Error: %s\n", node->line, message);
+    LOG_ERROR("[line %d] %s", node->line, message);
     current->had_error = true;
 }
 
@@ -549,6 +586,10 @@ static void compile_expression(ASTNode* node) {
     current_line = node->line;
     
     switch (node->type) {
+        case AST_ERROR:
+            // Parse error - compiler should bail out
+            // Error already reported by parser
+            break;
         case AST_LITERAL:
             compile_literal(node);
             break;
@@ -1177,7 +1218,18 @@ static void compile_switch_stmt(ASTNode* node) {
     compile_expression(node->as.switch_stmt.value);
     
     int case_count = node->as.switch_stmt.case_count;
+    
+    // Bounds check case_count
+    if (case_count < 0 || case_count > 10000) {
+        LOG_ERROR("Invalid switch case count: %d", case_count);
+        return;
+    }
+    
     int* end_jumps = malloc(sizeof(int) * (case_count + 1));
+    if (!end_jumps) {
+        LOG_ERROR("Out of memory allocating switch jumps");
+        return;
+    }
     int end_jump_count = 0;
     
     // For each case, test equality and skip to next test if not equal
@@ -1364,6 +1416,10 @@ static void compile_statement(ASTNode* node) {
     if (node == NULL) return;
     current_line = node->line;
     switch (node->type) {
+        case AST_ERROR:
+            // Parse error - compiler should bail out
+            // Error already reported by parser
+            break;
         case AST_BLOCK:
             compile_block(node);
             break;

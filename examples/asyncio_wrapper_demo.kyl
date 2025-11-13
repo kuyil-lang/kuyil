@@ -1,0 +1,33 @@
+// Example: Using asyncio wrappers with headers and timeouts
+import "libraries/asyncio_wrappers.kyl"
+
+print("\n═══════════════════════════════════════")
+print("  Asyncio HTTP with Custom Options")
+print("═══════════════════════════════════════\n")
+
+// Example 1: Simple GET (no options)
+print("1. Simple GET:")
+let req1 = httpGet("https://httpbin.org/get", nil)
+print("   Request ID: " + req1)
+
+// Example 2: GET with custom headers using direct Ex call
+print("\n2. GET with headers (direct):")
+let headers2 = ["User-Agent: Kuyil/1.0", "Accept: application/json"]
+let req2 = kyl_asyncio_httpGetEx("https://httpbin.org/headers", headers2, 0, 1000, 3000, 500)
+print("   Request ID: " + req2)
+
+// Example 3: POST with headers
+print("\n3. POST with headers:")
+let postHeaders = ["Content-Type: application/json"]
+let postBody = '{"name": "Kuyil", "type": "test"}'
+let req3 = kyl_asyncio_httpPostEx("https://httpbin.org/post", postBody, postHeaders, 0, 1000, 3000, 500)
+print("   Request ID: " + req3)
+
+// Check status
+print("\n4. Checking completion status:")
+print("   Req1 done: " + isDone(req1))
+print("   Req2 done: " + isDone(req2))
+print("   Req3 done: " + isDone(req3))
+
+print("\n✓ All requests submitted successfully!")
+print("\nNote: Requests are async - use waitFor(id, timeout) to get results")

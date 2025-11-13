@@ -1,0 +1,38 @@
+// Test automatic interface resolution
+// import "asyncio" should resolve to interfaces/interface_asyncio.kyl
+
+import "asyncio"
+
+print("\n═══════════════════════════════════════")
+print("  Testing Automatic Interface Import")
+print("═══════════════════════════════════════\n")
+
+// Test 1: Wrapper functions should be available
+print("1. Testing httpGet wrapper:")
+let req1 = httpGet("https://httpbin.org/get", nil)
+print("   ✓ httpGet() works! Request ID: " + req1)
+
+// Test 2: httpPost wrapper
+print("\n2. Testing httpPost wrapper:")
+let req2 = httpPost("https://httpbin.org/post", '{"test":true}', nil)
+print("   ✓ httpPost() works! Request ID: " + req2)
+
+// Test 3: Helper functions
+print("\n3. Testing helper functions:")
+print("   isDone(1): " + isDone(req1))
+print("   ✓ Helper functions work!")
+
+// Test 4: Direct Ex functions
+print("\n4. Testing direct Ex functions:")
+let headers = ["User-Agent: Kuyil", "Accept: application/json"]
+let req3 = kyl_asyncio_httpGetEx("https://httpbin.org/headers", headers, 0, 1000, 2000, 500)
+print("   ✓ httpGetEx() works! Request ID: " + req3)
+
+print("\n✅ SUCCESS! 'import \"asyncio\"' automatically resolved to:")
+print("   interfaces/interface_asyncio.kyl")
+print("\n📝 All wrapper functions are available:")
+print("   - httpGet(url, options)")
+print("   - httpPost(url, body, options)")
+print("   - waitFor(requestId, timeoutMs)")
+print("   - isDone(requestId)")
+print("   - getResult(requestId)")

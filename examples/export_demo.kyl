@@ -1,0 +1,28 @@
+// Demonstration of the export keyword
+// The export keyword marks functions that should be available when this module is imported
+
+// Public API - exported functions
+export fn public_greet(name) {
+    return "Hello, " + name + "!";
+}
+
+// Private helper - NOT exported
+fn private_multiply(x, y) {
+    return x * y;
+}
+
+export fn public_calculate(a, b) {
+    // Can call private helpers internally  
+    return private_multiply(a, 2) + b;
+}
+
+export fn public_info() {
+    return "This module provides greeting and calculation functions";
+}
+
+// Private helper - NOT exported
+fn private_internal() {
+    print("[Internal] This function is for module use only");
+}
+
+print("Export demo module loaded");
