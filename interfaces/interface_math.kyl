@@ -1,8 +1,5 @@
 // Interface for Math library
-// Load library at runtime
-loadlib("libs/libkylmath.so")
-
-interface math {
+interface math from "libs/libkylmath.so" {
   @alias("abs")
   float64 math_abs(x: float64)
   

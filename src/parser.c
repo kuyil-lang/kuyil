@@ -1710,35 +1710,37 @@ static ASTNode* interface_declaration(Parser* parser) {
     block->as.block.count = 0;
     block->as.block.capacity = 0;
 
-    // If library_path was specified, inject loadlib() call first
+    // If library_path was specified, inject dlopen_only() call first
+    // This opens the library handle without registering all functions
+    // Functions will be registered selectively via bind_interface_method
     if (library_path) {
-        // Build: loadlib("path")
-        ASTNode* loadlib_ident = ast_node_new(AST_IDENTIFIER);
-        set_node_location(loadlib_ident, interface_token);
-        loadlib_ident->as.identifier = strdup("loadlib");
+        // Build: dlopen_only("path")
+        ASTNode* dlopen_ident = ast_node_new(AST_IDENTIFIER);
+        set_node_location(dlopen_ident, interface_token);
+        dlopen_ident->as.identifier = strdup("dlopen_only");
         
         ASTNode* path_lit = ast_node_new(AST_LITERAL);
         set_node_location(path_lit, interface_token);
         path_lit->as.literal.type = VALUE_STRING;
         path_lit->as.literal.as.string = library_path; // ownership transferred
         
-        ASTNode* loadlib_call = ast_node_new(AST_CALL);
-        set_node_location(loadlib_call, interface_token);
-        loadlib_call->as.call.function = loadlib_ident;
-        loadlib_call->as.call.arg_count = 1;
-        loadlib_call->as.call.args = malloc(sizeof(ASTNode*));
-        loadlib_call->as.call.args[0] = path_lit;
+        ASTNode* dlopen_call = ast_node_new(AST_CALL);
+        set_node_location(dlopen_call, interface_token);
+        dlopen_call->as.call.function = dlopen_ident;
+        dlopen_call->as.call.arg_count = 1;
+        dlopen_call->as.call.args = malloc(sizeof(ASTNode*));
+        dlopen_call->as.call.args[0] = path_lit;
         
-        ASTNode* loadlib_stmt = ast_node_new(AST_EXPRESSION_STMT);
-        set_node_location(loadlib_stmt, interface_token);
-        loadlib_stmt->as.expression = loadlib_call;
+        ASTNode* dlopen_stmt = ast_node_new(AST_EXPRESSION_STMT);
+        set_node_location(dlopen_stmt, interface_token);
+        dlopen_stmt->as.expression = dlopen_call;
         
         // Add to block
         if (block->as.block.count >= block->as.block.capacity) {
             block->as.block.capacity = block->as.block.capacity < 8 ? 8 : block->as.block.capacity * 2;
             block->as.block.statements = realloc(block->as.block.statements, sizeof(ASTNode*) * block->as.block.capacity);
         }
-        block->as.block.statements[block->as.block.count++] = loadlib_stmt;
+        block->as.block.statements[block->as.block.count++] = dlopen_stmt;
     }
 
     // Capture interface name string now

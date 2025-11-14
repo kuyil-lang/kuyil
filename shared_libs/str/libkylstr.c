@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <regex.h>
 
 // Export interface signatures for auto-binding (lowerCamel)
 __attribute__((visibility("default")))
@@ -19,7 +20,10 @@ const char* kyl_interface_signature_text =
     "str replace(input: string, from: string, to: string) -> string\n"
     "str split(input: string, delimiter: string) -> string\n"
     "str toNumber(input: string) -> float64\n"
-    "str toString(value: number) -> string\n";
+    "str toString(value: number|bool|string|nil) -> string\n"
+    "str slice(input: string, start: int32, end: int32) -> string\n"
+    "str regexMatch(input: string, pattern: string) -> bool\n"
+    "str regexExtract(input: string, pattern: string) -> string\n";
 
 // String length function
 Value kyl_str_length(int arg_count, Value* args) {
@@ -243,10 +247,12 @@ Value kyl_str_split(int arg_count, Value* args) {
     const char* delimiter = args[1].as.string;
     
     if (strlen(delimiter) == 0) {
-        // Empty delimiter, return original string
-        Value result;
-        result.type = VALUE_STRING;
-        result.as.string = strdup(str);
+        // Empty delimiter, return array with original string
+        Value result = {VALUE_ARRAY};
+        result.as.array.values = malloc(sizeof(Value));
+        result.as.array.count = 1;
+        result.as.array.values[0].type = VALUE_STRING;
+        result.as.array.values[0].as.string = strdup(str);
         return result;
     }
     
@@ -258,28 +264,23 @@ Value kyl_str_split(int arg_count, Value* args) {
         temp += strlen(delimiter);
     }
     
-    // Build result as pipe-separated string
-    char* result_str = malloc(strlen(str) + count * 10); // Extra space for metadata
-    result_str[0] = '\0';
+    // Create array
+    Value result = {VALUE_ARRAY};
+    result.as.array.values = malloc(sizeof(Value) * count);
+    result.as.array.count = 0;
     
+    // Split and populate array
     char* str_copy = strdup(str);
     char* token = strtok(str_copy, delimiter);
-    int first = 1;
     
     while (token != NULL) {
-        if (!first) {
-            strcat(result_str, "|");
-        }
-        strcat(result_str, token);
-        first = 0;
+        Value part = {VALUE_STRING};
+        part.as.string = strdup(token);
+        result.as.array.values[result.as.array.count++] = part;
         token = strtok(NULL, delimiter);
     }
     
     free(str_copy);
-    
-    Value result;
-    result.type = VALUE_STRING;
-    result.as.string = result_str;
     return result;
 }
 
@@ -356,5 +357,121 @@ Value kyl_str_to_string(int arg_count, Value* args) {
             break;
     }
     
+    return result;
+}
+// String slice function (Python-style slicing with negative indices)
+Value kyl_str_slice(int arg_count, Value* args) {
+    if (arg_count < 2 || arg_count > 3 || args[0].type != VALUE_STRING || 
+        args[1].type != VALUE_NUMBER) {
+        Value result = {VALUE_NIL};
+        return result;
+    }
+    
+    const char* str = args[0].as.string;
+    int len = strlen(str);
+    int start = (int)args[1].as.number;
+    int end = (arg_count == 3 && args[2].type == VALUE_NUMBER) ? (int)args[2].as.number : len;
+    
+    // Handle negative indices (Python-style)
+    if (start < 0) start = len + start;
+    if (end < 0) end = len + end;
+    
+    // Bounds checking
+    if (start < 0) start = 0;
+    if (end > len) end = len;
+    if (start >= end) {
+        Value result;
+        result.type = VALUE_STRING;
+        result.as.string = strdup("");
+        return result;
+    }
+    
+    // Create substring
+    int sub_len = end - start;
+    char* result_str = (char*)malloc(sub_len + 1);
+    strncpy(result_str, str + start, sub_len);
+    result_str[sub_len] = '\0';
+    
+    Value result;
+    result.type = VALUE_STRING;
+    result.as.string = result_str;
+    return result;
+}
+
+// Regex match function (returns true if pattern matches)
+Value kyl_str_regexMatch(int arg_count, Value* args) {
+    if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        Value result = {VALUE_BOOL};
+        result.as.boolean = false;
+        return result;
+    }
+    
+    const char* input = args[0].as.string;
+    const char* pattern = args[1].as.string;
+    
+    regex_t regex;
+    int ret = regcomp(&regex, pattern, REG_EXTENDED);
+    
+    Value result;
+    result.type = VALUE_BOOL;
+    
+    if (ret != 0) {
+        // Regex compilation failed
+        result.as.boolean = false;
+        return result;
+    }
+    
+    ret = regexec(&regex, input, 0, NULL, 0);
+    result.as.boolean = (ret == 0);
+    
+    regfree(&regex);
+    return result;
+}
+
+// Regex extract function (returns first match or empty string)
+Value kyl_str_regexExtract(int arg_count, Value* args) {
+    if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        Value result = {VALUE_STRING};
+        result.as.string = strdup("");
+        return result;
+    }
+    
+    const char* input = args[0].as.string;
+    const char* pattern = args[1].as.string;
+    
+    regex_t regex;
+    regmatch_t match[2];  // Support for one capture group
+    
+    int ret = regcomp(&regex, pattern, REG_EXTENDED);
+    
+    if (ret != 0) {
+        // Regex compilation failed
+        Value result = {VALUE_STRING};
+        result.as.string = strdup("");
+        return result;
+    }
+    
+    ret = regexec(&regex, input, 2, match, 0);
+    
+    Value result;
+    result.type = VALUE_STRING;
+    
+    if (ret == 0) {
+        // Match found - extract first capture group if exists, otherwise full match
+        int idx = (match[1].rm_so != -1) ? 1 : 0;
+        int start = match[idx].rm_so;
+        int end = match[idx].rm_eo;
+        int len = end - start;
+        
+        char* extracted = (char*)malloc(len + 1);
+        strncpy(extracted, input + start, len);
+        extracted[len] = '\0';
+        result.as.string = extracted;
+    } else {
+        // No match
+        result.as.string = strdup("");
+    }
+    
+    regfree(&regex);
     return result;
 }

@@ -1,9 +1,6 @@
 // Interface for Date/Time library
-// Load library at runtime
-loadlib("libs/libkyldatetime.so")
-
 // Datetime-specific helpers
-interface datetime {
+interface datetime from "libs/libkyldatetime.so" {
   @alias("now")
   string datetime_now()
   

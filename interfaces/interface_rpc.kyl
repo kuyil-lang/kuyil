@@ -1,8 +1,5 @@
 // Interface for RPC library (subset)
-// Load library at runtime
-loadlib("libs/libkylrpc.so")
-
-interface rpc {
+interface rpc from "libs/libkylrpc.so" {
   @alias("getVersion")
   string rpc_getVersion()
   

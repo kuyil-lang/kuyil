@@ -1,8 +1,5 @@
 // Interface for String library
-// Load library at runtime
-loadlib("libs/libkylstr.so")
-
-interface str {
+interface str from "libs/libkylstr.so" {
   @alias("length")
   int32 str_length(input: string)
   
@@ -38,4 +35,13 @@ interface str {
   
   @alias("toString")
   string str_toString(value: number)
+  
+  @alias("slice")
+  string str_slice(input: string, start: int32, end: int32)
+  
+  @alias("regexMatch")
+  bool str_regexMatch(input: string, pattern: string)
+  
+  @alias("regexExtract")
+  string str_regexExtract(input: string, pattern: string)
 }

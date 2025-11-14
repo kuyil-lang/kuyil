@@ -1,9 +1,6 @@
 // Kuyil Event Loop Interface
 // Functions to integrate with WebView and process async tasks
-// Load library at runtime
-loadlib("libs/libkyleventloop.so")
-
-interface eventloop {
+interface eventloop from "libs/libkyleventloop.so" {
   // Process pending HTTP callbacks and other async tasks
   // Call this regularly from your event loop
   // Returns: number of tasks processed

@@ -1503,7 +1503,16 @@ Function* compiler_compile(ASTNode* ast) {
     Compiler compiler;
     compiler_init(&compiler, "script");
     
-    compile_statement(ast);
+    // Compile the module body WITHOUT creating a new scope
+    // Module-level variables should be globals (scope_depth = 0)
+    // If ast is a BLOCK, compile its statements directly without begin_scope/end_scope
+    if (ast && ast->type == AST_BLOCK) {
+        for (int i = 0; i < ast->as.block.count; i++) {
+            compile_statement(ast->as.block.statements[i]);
+        }
+    } else {
+        compile_statement(ast);
+    }
     
     emit_byte(OP_HALT);
     

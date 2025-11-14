@@ -240,6 +240,8 @@ static Value wrapper_int_ptr(int arg_count, Value* args, void* func_ptr);
 
 // Forward declaration for loadlib runtime function
 Value vm_loadlib(int arg_count, Value* args);
+// Forward declaration for dlopen_only (loads library without registering functions)
+Value vm_dlopen_only(int arg_count, Value* args);
 // Forward declaration for interface method binder
 Value vm_bind_interface_method(int arg_count, Value* args);
 
@@ -389,6 +391,8 @@ static void register_system_functions(VM* vm) {
     register_dynamic_function("clear_libraries", vm_clear_libraries, FUNC_SIG_VALUE_ARGS);
     // Load a shared library dynamically by path (e.g., @loadlib("./libs/libkylstr.so"))
     register_dynamic_function("loadlib", vm_loadlib, FUNC_SIG_VALUE_ARGS);
+    // Load library handle only without registering functions (for interface from syntax)
+    register_dynamic_function("dlopen_only", vm_dlopen_only, FUNC_SIG_VALUE_ARGS);
     // Bind an interface method name to an underlying dynamic function
     register_dynamic_function("bind_interface_method", vm_bind_interface_method, FUNC_SIG_VALUE_ARGS);
     
@@ -1803,6 +1807,82 @@ Value vm_loadlib(int arg_count, Value* args) {
     }
 
     // Return loaded library name as string
+    Value result;
+    result.type = VALUE_STRING;
+    result.as.string = strdup(lib->name);
+    return result;
+}
+
+// dlopen_only: Load library handle WITHOUT registering functions
+// Used by "interface X from" syntax - functions registered later via bind_interface_method
+Value vm_dlopen_only(int arg_count, Value* args) {
+    LOG_INFO("[vm_dlopen_only] CALLED with %d arguments", arg_count);
+    if (arg_count < 1 || args[0].type != VALUE_STRING) {
+        LOG_ERROR("dlopen_only: Missing or invalid path argument");
+        Value result = {VALUE_NIL};
+        return result;
+    }
+
+    const char* path = args[0].as.string;
+    LOG_INFO("dlopen_only called with path: %s", path);
+
+    // Derive library name from path
+    char name_buf[128];
+    derive_library_name(path, name_buf, sizeof(name_buf));
+
+    if (name_buf[0] == '\0') {
+        LOG_WARNING("dlopen_only: could not derive library name from path: %s", path);
+        Value result = {VALUE_BOOL};
+        result.as.boolean = false;
+        return result;
+    }
+
+    // Check if already in registry
+    SharedLibrary* lib = NULL;
+    for (int i = 0; i < g_library_registry.library_count; i++) {
+        if (strcmp(g_library_registry.libraries[i].name, name_buf) == 0) {
+            lib = &g_library_registry.libraries[i];
+            LOG_INFO("dlopen_only: library '%s' already registered", name_buf);
+            break;
+        }
+    }
+
+    // Add to registry if not present
+    if (!lib) {
+        if (g_library_registry.library_count >= MAX_LIBRARIES) {
+            LOG_WARNING("dlopen_only: maximum libraries reached; cannot add %s", name_buf);
+            Value result = {VALUE_BOOL};
+            result.as.boolean = false;
+            return result;
+        }
+        lib = &g_library_registry.libraries[g_library_registry.library_count++];
+        memset(lib, 0, sizeof(*lib));
+        strncpy(lib->name, name_buf, MAX_NAME_LENGTH - 1);
+        lib->name[MAX_NAME_LENGTH - 1] = '\0';
+        strncpy(lib->path, path, MAX_PATH_LENGTH - 1);
+        lib->path[MAX_PATH_LENGTH - 1] = '\0';
+        lib->is_optional = true;
+        lib->is_loaded = false;
+        lib->handle = NULL;
+        lib->function_count = 0;
+        LOG_INFO("dlopen_only: added library '%s' from path '%s'", lib->name, lib->path);
+    }
+
+    // Load ONLY the library handle - do NOT enumerate or register functions
+    // This is the key difference from vm_loadlib
+    if (!lib->is_loaded && lib->handle == NULL) {
+        lib->handle = dlopen(lib->path, RTLD_LAZY);
+        if (!lib->handle) {
+            LOG_WARNING("dlopen_only: failed to open %s: %s", lib->path, dlerror());
+            Value result = {VALUE_BOOL};
+            result.as.boolean = false;
+            return result;
+        }
+        lib->is_loaded = true;
+        LOG_INFO("dlopen_only: opened library handle for '%s'", lib->name);
+    }
+
+    // Return library name
     Value result;
     result.type = VALUE_STRING;
     result.as.string = strdup(lib->name);

@@ -1,8 +1,5 @@
 // Interface for System utilities library
-// Load library at runtime
-loadlib("libs/libkylsystem.so")
-
-interface system {
+interface system from "libs/libkylsystem.so" {
   // Sleep for specified milliseconds
   // Example: sleep(1000) - sleep for 1 second
   bool sleep(milliseconds: int32)

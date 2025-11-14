@@ -1,9 +1,6 @@
 // Interface for Compression/Transcoder library
-// Load library at runtime
-loadlib("libs/libkyltranscoder.so")
-
 // Compression functions
-interface compress {
+interface compress from "libs/libkyltranscoder.so" {
   @alias("compressGzip")
   object compress_compressGzip(input: string)
   
@@ -48,6 +45,9 @@ interface transcode {
   
   @alias("compressionRatio")
   float64 transcode_compressionRatio(original: int32, compressed: int32)
+  
+  @alias("jsonGetField")
+  string transcode_jsonGetField(json: string, key: string)
 }
 
 // Unzip helper

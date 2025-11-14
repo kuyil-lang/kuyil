@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -std=c99 -O2 -fPIC -I../../src
 LDFLAGS = -shared
 
 TARGET = ../../libs/libkylhttp.so
-SOURCES = libkylhttp.c http_server.c
+SOURCES = libkylhttp.c http_server.c http_client_ex.c libkylhttp_client_ex.c
 
 all: $(TARGET)
 

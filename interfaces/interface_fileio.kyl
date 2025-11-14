@@ -1,8 +1,5 @@
 // Interface for File I/O library
-// Load library at runtime
-loadlib("libs/libkylfileio.so")
-
-interface file {
+interface file from "libs/libkylfileio.so" {
   @alias("readText")
   string file_readText(path: string)
   

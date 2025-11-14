@@ -1,8 +1,5 @@
 // Interface for WebView library
-// Load library at runtime
-loadlib("libs/libkylwebview.so")
-
-interface webview {
+interface webview from "libs/libkylwebview.so" {
   // Initialization and cleanup
   bool   init()
   void   cleanup()
@@ -21,6 +18,7 @@ interface webview {
   // Window control
   int32  run(window: int32)
   bool   step(window: int32)
+  bool   is_open(window: int32)
   bool   setTitle(window: int32, title: string)
   bool   setSize(window: int32, width: int32, height: int32)
   

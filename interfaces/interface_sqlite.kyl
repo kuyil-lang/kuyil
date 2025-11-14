@@ -1,8 +1,5 @@
 // Interface for SQLite library
-// Load library at runtime
-loadlib("libs/libkylsqlite.so")
-
-interface sqlite {
+interface sqlite from "libs/libkylsqlite.so" {
   @alias("openDatabase")
   int32 sqlite_openDatabase(path: string, flags: int32)
   

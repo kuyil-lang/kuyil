@@ -1,9 +1,6 @@
 // Async I/O library - Non-blocking HTTP and file operations
 // All operations return a request ID and execute asynchronously
-// Load library at runtime
-loadlib("libs/libkylasyncio.so")
-
-interface asyncio {
+interface asyncio from "libs/libkylasyncio.so" {
   // Submit async HTTP POST request
   // body: string or byte array
   // Returns request ID (>0) or -1 on error

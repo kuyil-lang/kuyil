@@ -248,6 +248,46 @@ static void* avatar_task_func(void* user_data) {
                     return NULL;
                 }
                 break;
+
+            case OP_TO_STRING: {
+                // Convert top-of-stack value to string (mirror vm.c implementation)
+                if (avatar_vm.stack_top <= avatar_vm.stack) {
+                    handle->has_error = true;
+                    snprintf(handle->error_message, sizeof(handle->error_message),
+                             "Stack underflow in TO_STRING");
+                    handle->result.type = VALUE_NIL;
+                    return NULL;
+                }
+                Value value = *(avatar_vm.stack_top - 1);
+                // Pop original value
+                avatar_vm.stack_top--;
+
+                Value result;
+                result.type = VALUE_STRING;
+                switch (value.type) {
+                    case VALUE_STRING:
+                        result.as.string = value.as.string; // Already string
+                        break;
+                    case VALUE_NUMBER: {
+                        char* str = malloc(32);
+                        snprintf(str, 32, "%g", value.as.number);
+                        result.as.string = str;
+                        break;
+                    }
+                    case VALUE_BOOL:
+                        result.as.string = value.as.boolean ? strdup("true") : strdup("false");
+                        break;
+                    case VALUE_NIL:
+                        result.as.string = strdup("nil");
+                        break;
+                    default:
+                        result.as.string = strdup("[Object]");
+                        break;
+                }
+                // Push converted value
+                *avatar_vm.stack_top++ = result;
+                break;
+            }
             
             case OP_NOT:
                 if (!exec_not(&exec_ctx)) {

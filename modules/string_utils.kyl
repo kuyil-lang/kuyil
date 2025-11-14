@@ -1,47 +1,129 @@
 // String Utilities Module
-// This module provides string manipulation functions
+// This module provides string manipulation helpers implemented in pure Kuyil
 
+// Public API
 export_function("capitalize");
-export_function("reverse"); 
+export_function("reverse");
 export_function("count_words");
 export_function("to_upper");
 export_function("to_lower");
+export_function("indexOf");
+export_function("contains");
+export_function("startsWith");
+export_function("endsWith");
+export_function("charAt");
+export_function("json_get");
 
-// Capitalize first letter
+// Capitalize first letter, lower-case the rest
 function capitalize(str) {
-    if (!str || str.length == 0) {
-        return "";
-    }
-    // Note: This is simplified - Kuyil would need actual string methods
-    return str; // Placeholder implementation
+    if str == nil { return "" }
+    let n = length(str)
+    if n == 0 { return "" }
+    if n == 1 { return upper(str) }
+    return upper(substring(str, 0, 1)) + lower(substring(str, 1, n))
 }
 
-// Reverse a string
+// Reverse a string by concatenation
 function reverse(str) {
-    // Placeholder implementation
-    return str; // Would need actual string reversal
+    if str == nil { return "" }
+    let n = length(str)
+    let out = ""
+    let i = n - 1
+    while i >= 0 {
+        out = out + substring(str, i, i + 1)
+        i = i - 1
+    }
+    return out
 }
 
-// Count words in a string
+// Naive word count: sequences separated by spaces
 function count_words(str) {
-    // Placeholder implementation
-    return 1; // Would need actual word counting
+    if str == nil { return 0 }
+    let n = length(str)
+    if n == 0 { return 0 }
+    let i = 0
+    let inWord = false
+    let count = 0
+    while i < n {
+        let ch = substring(str, i, i + 1)
+        if ch == " " or ch == "\n" or ch == "\t" {
+            if inWord == true { inWord = false }
+        } else {
+            if inWord == false { count = count + 1 inWord = true }
+        }
+        i = i + 1
+    }
+    return count
 }
 
-// Convert to uppercase
-function to_upper(str) {
-    return str; // Placeholder
+// Convert to uppercase using core helper
+function to_upper(str) { if str == nil { return "" } return upper(str) }
+// Convert to lowercase using core helper
+function to_lower(str) { if str == nil { return "" } return lower(str) }
+
+// Returns the first index of needle in haystack, or -1 if not found
+function indexOf(haystack, needle) {
+    if haystack == nil or needle == nil { return -1 }
+    let h = length(haystack)
+    let n = length(needle)
+    if n == 0 { return 0 }
+    if h < n { return -1 }
+    let i = 0
+    while i <= h - n {
+        if substring(haystack, i, i + n) == needle { return i }
+        i = i + 1
+    }
+    return -1
 }
 
-// Convert to lowercase
-function to_lower(str) {
-    return str; // Placeholder
+function contains(haystack, needle) { return indexOf(haystack, needle) >= 0 }
+function startsWith(str, prefix) {
+    if str == nil or prefix == nil { return false }
+    let n = length(prefix)
+    if length(str) < n { return false }
+    return substring(str, 0, n) == prefix
+}
+function endsWith(str, suffix) {
+    if str == nil or suffix == nil { return false }
+    let n = length(suffix)
+    let m = length(str)
+    if m < n { return false }
+    return substring(str, m - n, m) == suffix
+}
+function charAt(str, idx) {
+    if str == nil { return "" }
+    let n = length(str)
+    if idx < 0 or idx >= n { return "" }
+    return substring(str, idx, idx + 1)
+}
+
+// Minimal JSON string field extractor for flat objects
+// Example: json_get('{"key":"value"}', "key") => "value"
+function json_get(json, key) {
+    if json == nil or key == nil { return "" }
+    let marker = "\"" + key + "\":\""
+    let tlen = length(json)
+    let mlen = length(marker)
+    if mlen == 0 or tlen < mlen { return "" }
+    let i = 0
+    while i <= tlen - mlen {
+        if substring(json, i, i + mlen) == marker {
+            let start = i + mlen
+            let end = start
+            while end < tlen and substring(json, end, end + 1) != "\"" {
+                end = end + 1
+            }
+            return substring(json, start, end)
+        }
+        i = i + 1
+    }
+    return ""
 }
 
 var module_info = {
-    name: "StringUtils", 
-    version: "1.0.0",
-    description: "String manipulation utilities"
+    name: "StringUtils",
+    version: "1.1.0",
+    description: "String manipulation utilities (pure Kuyil)"
 };
 
 print("String utilities module loaded - " + module_info.description);

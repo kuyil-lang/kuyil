@@ -1,9 +1,6 @@
 // Interface for FFmpeg library
-// Load library at runtime
-loadlib("libs/libkylffmpeg.so")
-
 // General ffmpeg helpers
-interface ffmpeg {
+interface ffmpeg from "libs/libkylffmpeg.so" {
   @alias("getLastError")
   string ffmpeg_getLastError()
   

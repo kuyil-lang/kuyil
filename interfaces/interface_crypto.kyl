@@ -1,8 +1,5 @@
 // Interface for Crypto library
-// Load library at runtime
-loadlib("libs/libkylcrypto.so")
-
-interface crypto {
+interface crypto from "libs/libkylcrypto.so" {
   @alias("md5")
   string crypto_md5(input: string)
   

@@ -1,9 +1,6 @@
 // Interface for HTTP library
-// Load library at runtime
-loadlib("libs/libkylhttp.so")
-
 // HTTP Server functions
-interface http {
+interface http from "libs/libkylhttp.so" {
   @alias("server")
   int32 http_server(port: int32)
   
