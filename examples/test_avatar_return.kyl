@@ -1,0 +1,38 @@
+// Test avatar return values in event loop context
+
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+fn worker(msg) {
+    print("[Worker] Got: " + msg)
+    return "RESULT_" + msg
+}
+
+fn main() {
+    print("=== Test Avatar Returns ===\n")
+    
+    let handle = nil
+    let count = 0
+    
+    while count < 50 {
+        if count == 10 {
+            print("[Main] Spawning avatar...")
+            handle = avatar worker("TEST")
+        }
+        
+        if handle != nil {
+            print("[Main] Awaiting result...")
+            let result = await handle
+            print("[Main] Got: " + result)
+            return
+        }
+        
+        processAvatarCompletions(5)
+        sleep(10)
+        count = count + 1
+    }
+    
+    print("[Main] Timeout")
+}
+
+main()

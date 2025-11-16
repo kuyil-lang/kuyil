@@ -23,7 +23,8 @@ const char* kyl_interface_signature_text =
     "str toString(value: number|bool|string|nil) -> string\n"
     "str slice(input: string, start: int32, end: int32) -> string\n"
     "str regexMatch(input: string, pattern: string) -> bool\n"
-    "str regexExtract(input: string, pattern: string) -> string\n";
+    "str regexExtract(input: string, pattern: string) -> string\n"
+    "str bytesToString(bytes: array) -> string\n";
 
 // String length function
 Value kyl_str_length(int arg_count, Value* args) {
@@ -473,5 +474,40 @@ Value kyl_str_regexExtract(int arg_count, Value* args) {
     }
     
     regfree(&regex);
+    return result;
+}
+
+// Convert byte array to string
+Value kyl_str_bytesToString(int arg_count, Value* args) {
+    Value result = {VALUE_NIL};
+    
+    if (arg_count != 1 || args[0].type != VALUE_ARRAY) {
+        return result;
+    }
+    
+    ValueArray arr = args[0].as.array;
+    
+    // Allocate string buffer
+    char* str = malloc(arr.count + 1);
+    if (!str) {
+        return result;
+    }
+    
+    // Convert each byte (number) to char
+    for (int i = 0; i < arr.count; i++) {
+        if (arr.values[i].type != VALUE_NUMBER) {
+            free(str);
+            return result;
+        }
+        int byte_val = (int)arr.values[i].as.number;
+        // Clamp to valid byte range
+        if (byte_val < 0) byte_val = 0;
+        if (byte_val > 255) byte_val = 255;
+        str[i] = (char)byte_val;
+    }
+    str[arr.count] = '\0';
+    
+    result.type = VALUE_STRING;
+    result.as.string = str;
     return result;
 }

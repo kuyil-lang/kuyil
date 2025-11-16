@@ -501,9 +501,20 @@ CallFrame* vm_setup_call_frame_ex(CallFrame* frames, int* frame_count,
     // Set slots to point to arg0 (at stack_top - arg_count - 1)
     frame->slots = *stack_top_ptr - arg_count - 1;
     
-    // Adjust stack_top to point after the arguments (overwriting where callee was)
-    // This is where local variables will be pushed
+    // CRITICAL: Proper SET_LOCAL/GET_LOCAL implementation requires:
+    // - frame->slots[0..arg_count-1] = parameters (already on stack)
+    // - frame->slots[arg_count..local_count-1] = local variables (need stack space!)
+    // Adjust stack_top to point after ALL locals (not just arguments)
     *stack_top_ptr = frame->slots + arg_count;
+    
+    // Allocate stack space for local variables (beyond parameters)
+    // Initialize them to NIL so GET_LOCAL before SET_LOCAL returns something valid
+    int local_count = function->local_count;
+    for (int i = arg_count; i < local_count; i++) {
+        Value nil_val = {VALUE_NIL};
+        **stack_top_ptr = nil_val;
+        (*stack_top_ptr)++;
+    }
     
     // Avatar runtime needs extra space to prevent expression evaluation from
     // overwriting local variables during recursive calls
@@ -553,6 +564,33 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
     
     if (callee.type == VALUE_STRING) {
         kuyil_log_debug("call_value: callee string='%s' argc=%d", callee.as.string ? callee.as.string : "<null>", arg_count);
+        
+        // Check if receiver (first arg) is an interface namespace marker string
+        // This handles cases like: file.readText() where file is a namespace, not a variable
+        // IMPORTANT: Only apply this if the unqualified function doesn't exist!
+        // This prevents false positives for functions like bind_interface_method("file", ...)
+        if (arg_count >= 1 && !is_dynamic_function(callee.as.string)) {
+            Value* args = vm->stack_top - arg_count - 1; // args[0] is first argument (receiver for methods)
+            
+            // Check if receiver is a STRING and is a registered interface name
+            if (args[0].type == VALUE_STRING && is_interface_name(args[0].as.string)) {
+                // Build dotted name: "interfaceName.methodName"
+                char dotted[256];
+                snprintf(dotted, sizeof(dotted), "%s.%s", args[0].as.string, callee.as.string);
+                
+                // Try to call the qualified function (drop the receiver)
+                if (is_dynamic_function(dotted)) {
+                    Value result = call_dynamic_function(dotted, arg_count - 1, args + 1);
+                    vm->stack_top -= arg_count + 1; // pop receiver, user args, and callee string
+                    vm_push(vm, result);
+                    return true;
+                } else {
+                    runtime_error(vm, "Undefined function '%s'.", dotted);
+                    return false;
+                }
+            }
+        }
+        
         // Special-case namespace method calls: receiver is a namespace object; resolve to dotted alias and drop receiver arg
         if (arg_count >= 1) {
             Value* args = vm->stack_top - arg_count - 1; // args[0] is first argument (receiver for methods)
@@ -727,7 +765,9 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             }
         }
 
-        // Check dynamic functions loaded by modular library system FIRST
+        // Check dynamic functions - but ONLY through explicit registrations (no fallback lookup)
+        // Functions must be registered as aliases or under their exact name
+        // For exported interfaces, only qualified names (interface.method) are registered
         if (is_dynamic_function(callee.as.string)) {
             kuyil_log_debug("call_value: dispatching dynamic function '%s'", callee.as.string);
             Value* args = vm->stack_top - arg_count -1;
@@ -2041,6 +2081,16 @@ InterpretResult vm_run(VM* vm) {
                 const char* name = READ_STRING();
                 Value value;
                 if (!get_global(vm, name, &value)) {
+                    // Check if this is an interface namespace
+                    if (is_interface_name(name)) {
+                        // Return a special marker value - use the string itself
+                        // This allows file.readText to work: file evaluates to "file" (marker)
+                        Value namespace_marker;
+                        namespace_marker.type = VALUE_STRING;
+                        namespace_marker.as.string = name;
+                        vm_push(vm, namespace_marker);
+                        break;
+                    }
                     runtime_error(vm, "Undefined variable '%s'.", name);
                     return INTERPRET_RUNTIME_ERROR;
                 }
@@ -2554,6 +2604,22 @@ InterpretResult vm_run(VM* vm) {
                     Value nilv = {VALUE_NIL}; vm_push(vm, nilv); break;
                 }
                 if (object.type == VALUE_STRING) {
+                    // Check if this is an interface namespace
+                    if (is_interface_name(object.as.string)) {
+                        // Build dotted name: "interface.property"
+                        size_t dotted_len = strlen(object.as.string) + 1 + strlen(key.as.string) + 1;
+                        char* dotted_name = malloc(dotted_len);
+                        snprintf(dotted_name, dotted_len, "%s.%s", object.as.string, key.as.string);
+                        
+                        // Return the dotted name as a string (function name marker)
+                        Value result;
+                        result.type = VALUE_STRING;
+                        result.as.string = dotted_name;
+                        vm_push(vm, result);
+                        break;
+                    }
+                    
+                    // Regular string properties
                     if (strcmp(key.as.string, "length") == 0) {
                         Value v; v.type = VALUE_NUMBER; v.as.number = (double)strlen(object.as.string); vm_push(vm, v); break;
                     }

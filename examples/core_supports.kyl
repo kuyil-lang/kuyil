@@ -29,8 +29,8 @@ while (i != 1) {
 // ******** while loop </end> *****
 
 // ******** for loop <start> *****
-for (let j = 0; j != 2; j = j + 1) {
-    print("For loop j:", j);
+for (let k = 0; k != 2; k = k + 1) {
+    print("For loop k:", k);
 }
 // ******** for loop <end> *****
 // ******** Function <start> *****

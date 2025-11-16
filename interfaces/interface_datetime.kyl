@@ -1,15 +1,15 @@
 // Interface for Date/Time library
 // Datetime-specific helpers
 interface datetime from "libs/libkyldatetime.so" {
-  @alias("now")
+  @alias("kyl_datetime_now")
   string datetime_now()
   
-  @alias("current")
+  @alias("kyl_datetime_current")
   string datetime_current()
 }
 
 // Date helpers
-interface date {
+interface date from "libs/libkyldatetime.so" {
   @alias("now")
   string date_now()
   
@@ -18,4 +18,6 @@ interface date {
   
   @alias("iso")
   string date_iso(date: string)
+  
+  string date_current()
 }

@@ -110,6 +110,33 @@ static char** g_exported_functions = NULL;
 static int g_exported_function_count = 0;
 static int g_exported_function_capacity = 0;
 
+// Track interface namespaces during compilation
+static char** g_interface_namespaces = NULL;
+static int g_interface_namespace_count = 0;
+static int g_interface_namespace_capacity = 0;
+
+static void add_interface_namespace(const char* name) {
+    // Check if already registered
+    for (int i = 0; i < g_interface_namespace_count; i++) {
+        if (strcmp(g_interface_namespaces[i], name) == 0) return;
+    }
+    
+    if (g_interface_namespace_count >= g_interface_namespace_capacity) {
+        int old_capacity = g_interface_namespace_capacity;
+        g_interface_namespace_capacity = old_capacity < 8 ? 8 : old_capacity * 2;
+        g_interface_namespaces = realloc(g_interface_namespaces, 
+                                        sizeof(char*) * g_interface_namespace_capacity);
+    }
+    g_interface_namespaces[g_interface_namespace_count++] = strdup(name);
+}
+
+static bool is_interface_namespace(const char* name) {
+    for (int i = 0; i < g_interface_namespace_count; i++) {
+        if (strcmp(g_interface_namespaces[i], name) == 0) return true;
+    }
+    return false;
+}
+
 static void add_exported_function(const char* name) {
     if (g_exported_function_count >= g_exported_function_capacity) {
         int old_capacity = g_exported_function_capacity;
@@ -210,9 +237,14 @@ static void begin_scope() {
 static void end_scope() {
     current->scope_depth--;
     
+    // With proper SET_LOCAL/GET_LOCAL implementation:
+    // - Locals are stored in frame->slots[], NOT on the expression stack
+    // - When a local goes out of scope, we just mark its slot as reusable
+    // - We do NOT emit OP_POP because locals aren't on the expression stack
+    // - OP_POP is only for cleaning up temporary expression values
     while (current->local_count > 0 &&
            current->locals[current->local_count - 1].depth > current->scope_depth) {
-        emit_byte(OP_POP);
+        // Do NOT emit OP_POP - locals are in slots, not on expression stack
         current->local_count--;
     }
 }
@@ -225,7 +257,14 @@ static int add_local(const char* name) {
     
     current->locals[current->local_count].name = strdup(name);
     current->locals[current->local_count].depth = current->scope_depth;
-    return current->local_count++;
+    int index = current->local_count++;
+    
+    // Track peak local count
+    if (current->local_count > current->max_local_count) {
+        current->max_local_count = current->local_count;
+    }
+    
+    return index;
 }
 
 static int resolve_local(const char* name) {
@@ -375,8 +414,59 @@ static void compile_unary_op(ASTNode* node) {
 }
 
 static void compile_call(ASTNode* node) {
-    // Method call support: obj.method(a, b) compiles to call of "method" with receiver as first arg
+    // Method call support: obj.method(a, b)
     if (node->as.call.function->type == AST_MEMBER_ACCESS) {
+        // When object is a simple identifier, this could be either:
+        // 1. An interface namespace call: file.readText() where file is NOT a variable
+        // 2. A regular method call: strVar.replace() where strVar IS a variable
+        // Check if it's a local variable first
+        if (node->as.call.function->as.member.object->type == AST_IDENTIFIER) {
+            const char* obj_name = node->as.call.function->as.member.object->as.identifier;
+            const char* method_name = node->as.call.function->as.member.property;
+            
+            // Determine if this is a namespace call or method call
+            // Check if obj_name is a registered interface namespace
+            bool is_namespace = is_interface_namespace(obj_name);
+            
+            if (is_namespace) {
+                // Compile as qualified namespace call
+                // Build dotted name: "obj.method"
+                size_t dotted_len = strlen(obj_name) + 1 + strlen(method_name) + 1;
+                char* dotted_name = malloc(dotted_len);
+                snprintf(dotted_name, dotted_len, "%s.%s", obj_name, method_name);
+                
+                // Compile arguments
+                for (int i = 0; i < node->as.call.arg_count; i++) {
+                    compile_expression(node->as.call.args[i]);
+                }
+                
+                // Push the dotted function name as a constant
+                Value func_value;
+                func_value.type = VALUE_STRING;
+                func_value.as.string = dotted_name;
+                emit_constant(func_value);
+                emit_bytes(OP_CALL, node->as.call.arg_count);
+                // Don't free dotted_name - it's stored in the constant pool
+                return;
+            }
+            
+            // Not a namespace - compile as method call
+            // Regular method call: receiver first
+            compile_expression(node->as.call.function->as.member.object);
+            // Then other arguments
+            for (int i = 0; i < node->as.call.arg_count; i++) {
+                compile_expression(node->as.call.args[i]);
+            }
+            // Callee as string name
+            Value method_name_val;
+            method_name_val.type = VALUE_STRING;
+            method_name_val.as.string = method_name;
+            emit_constant(method_name_val);
+            emit_bytes(OP_CALL, node->as.call.arg_count + 1);
+            return;
+        }
+        
+        // Regular method call with complex object expression: (expr).method(a, b)
         // Receiver first
         compile_expression(node->as.call.function->as.member.object);
         // Then other arguments
@@ -391,9 +481,21 @@ static void compile_call(ASTNode* node) {
         emit_bytes(OP_CALL, node->as.call.arg_count + 1);
         return;
     }
-    // Check if this is a logging function call
+    // Check if this is a logging function call or compiler directive
     if (node->as.call.function->type == AST_IDENTIFIER) {
         const char* func_name = node->as.call.function->as.identifier;
+        
+        // Compiler directive: __register_namespace("name")
+        if (strcmp(func_name, "__register_namespace") == 0) {
+            if (node->as.call.arg_count == 1 && 
+                node->as.call.args[0]->type == AST_LITERAL &&
+                node->as.call.args[0]->as.literal.type == VALUE_STRING) {
+                const char* namespace_name = node->as.call.args[0]->as.literal.as.string;
+                add_interface_namespace(namespace_name);
+                // Don't emit any bytecode - this is compile-time only
+                return;
+            }
+        }
         
         if (strcmp(func_name, "log_fatal") == 0) {
             compile_expression(node->as.call.args[0]);
@@ -473,10 +575,39 @@ static void compile_assignment(ASTNode* node) {
 
     // Normal assignment (supports identifiers, array[index], and object.member)
     if (node->as.assignment.target->type == AST_IDENTIFIER) {
-        // <name> = <value>
-        compile_expression(node->as.assignment.value);
         const char* name = node->as.assignment.target->as.identifier;
         int local = resolve_local(name);
+        
+        // Handle compound assignments (+=, -=)
+        if (node->as.assignment.operator == TOKEN_PLUS_ASSIGN || 
+            node->as.assignment.operator == TOKEN_MINUS_ASSIGN) {
+            // First get the current value
+            if (local != -1) {
+                emit_bytes(OP_GET_LOCAL, (uint8_t)local);
+            } else {
+                int name_constant = identifier_constant(name);
+                if (name_constant <= UINT8_MAX) {
+                    emit_bytes(OP_GET_GLOBAL, (uint8_t)name_constant);
+                } else {
+                    emit_byte(OP_GET_GLOBAL_LONG);
+                    emit_byte((name_constant >> 8) & 0xff);
+                    emit_byte(name_constant & 0xff);
+                }
+            }
+            // Then compile the RHS value
+            compile_expression(node->as.assignment.value);
+            // Emit the operation
+            if (node->as.assignment.operator == TOKEN_PLUS_ASSIGN) {
+                emit_byte(OP_ADD);
+            } else {
+                emit_byte(OP_SUBTRACT);
+            }
+        } else {
+            // Regular assignment: <name> = <value>
+            compile_expression(node->as.assignment.value);
+        }
+        
+        // Now store the value
         if (local != -1) {
             emit_bytes(OP_SET_LOCAL, (uint8_t)local);
         } else {
@@ -523,6 +654,34 @@ static void compile_array_literal(ASTNode* node) {
     emit_bytes(OP_ARRAY, (uint8_t)node->as.array_literal.count);
 }
 
+static void compile_object_literal(ASTNode* node) {
+    // Create empty object
+    emit_byte(OP_OBJECT_NEW);
+    
+    // For each property, set it on the object
+    for (int i = 0; i < node->as.object_literal.count; i++) {
+        // Duplicate the object reference on stack for each property set
+        if (i < node->as.object_literal.count - 1) {
+            emit_byte(OP_DUP);
+        }
+        
+        // Push property name as constant
+        Value name_val;
+        name_val.type = VALUE_STRING;
+        name_val.as.string = node->as.object_literal.properties[i].key;
+        int name_constant = make_constant(name_val);
+        emit_bytes(OP_CONSTANT, (uint8_t)name_constant);
+        
+        // Compile property value
+        compile_expression(node->as.object_literal.properties[i].value);
+        
+        // Set the property (consumes object, name, value from stack)
+        emit_byte(OP_OBJECT_SET);
+    }
+    
+    // At the end, the object reference is still on the stack
+}
+
 static void compile_array_access(ASTNode* node) {
     // Compile array expression
     compile_expression(node->as.array_access.array);
@@ -535,6 +694,11 @@ static void compile_array_access(ASTNode* node) {
 }
 
 static void compile_member_access(ASTNode* node) {
+    // DEBUG: Log member access compilation
+    fprintf(stderr, "[COMPILE] Member access: %s.%s\n", 
+            node->as.member.object->type == AST_IDENTIFIER ? "identifier" : "other",
+            node->as.member.property);
+    
     // Compile object expression
     compile_expression(node->as.member.object);
     
@@ -603,6 +767,7 @@ static void compile_expression(ASTNode* node) {
             compile_unary_op(node);
             break;
         case AST_CALL:
+            // Debug: fprintf(stderr, "[COMPILE_EXPR] AST_CALL node detected!\n"); fflush(stderr);
             compile_call(node);
             break;
         case AST_ASSIGNMENT:
@@ -616,6 +781,9 @@ static void compile_expression(ASTNode* node) {
             break;
         case AST_ARRAY_LITERAL:
             compile_array_literal(node);
+            break;
+        case AST_OBJECT_LITERAL:
+            compile_object_literal(node);
             break;
         case AST_STRUCT_LITERAL:
             compile_struct_literal(node);
@@ -667,6 +835,9 @@ static void compile_anonymous_function(ASTNode* node) {
     // Get the compiled function
     Function* function = function_compiler.function;
     
+    // Store local count for runtime stack management
+    function->local_count = function_compiler.max_local_count;
+    
     // Restore compiler state
     current = enclosing;
     
@@ -682,14 +853,27 @@ static void compile_anonymous_function(ASTNode* node) {
 
 static void compile_var_decl(ASTNode* node) {
     if (current->scope_depth > 0) {
-        // Local variable
+        // Local variable - Standard VM semantics:
+        // 1. Locals are stored in frame->slots[], not on the expression stack
+        // 2. Must emit SET_LOCAL to store value in the slot
+        // 3. SET_LOCAL peeks (doesn't pop), so emit POP to clean up expression stack
+        
+        // First, add the local to get its slot number
+        int slot = current->local_count;  // Slot number before add_local increments it
         add_local(node->as.var_decl.name);
+        
+        // Compile the initializer expression (pushes value onto expression stack)
         if (node->as.var_decl.value) {
             compile_expression(node->as.var_decl.value);
         } else {
             emit_byte(OP_NIL);
         }
-        // Local variables are implicitly on the stack
+        
+        // Store the value from expression stack into the local slot
+        emit_bytes(OP_SET_LOCAL, (uint8_t)slot);
+        
+        // Pop the value from expression stack (SET_LOCAL only peeks, doesn't pop)
+        emit_byte(OP_POP);
     } else {
         // Global variable
         int global = identifier_constant(node->as.var_decl.name);
@@ -756,6 +940,9 @@ static void compile_function_decl(ASTNode* node) {
     
     // Get the compiled function
     Function* function = function_compiler.function;
+    
+    // Store local count for runtime stack management
+    function->local_count = function_compiler.max_local_count;
     
     // Restore compiler state
     current = enclosing;
@@ -1482,12 +1669,14 @@ static void compile_block(ASTNode* node) {
 void compiler_init(Compiler* compiler, const char* name) {
     compiler->had_error = false;
     compiler->local_count = 0;
+    compiler->max_local_count = 0;  // Track peak local count
     compiler->scope_depth = 0;
     compiler->enclosing = (struct Compiler*)current;
     
     compiler->function = malloc(sizeof(Function));
     compiler->function->name = strdup(name);
     compiler->function->arity = 0;
+    compiler->function->local_count = 0;  // Will be set when function compilation completes
     chunk_init(&compiler->function->chunk);
     compiler->function->is_native = false;
     // Propagate source file path into every function object at creation time
@@ -1515,6 +1704,9 @@ Function* compiler_compile(ASTNode* ast) {
     }
     
     emit_byte(OP_HALT);
+    
+    // Store local count for runtime stack management
+    compiler.function->local_count = compiler.max_local_count;
     
     current = (Compiler*)compiler.enclosing;
     

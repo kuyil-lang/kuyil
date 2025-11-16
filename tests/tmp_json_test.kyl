@@ -1,0 +1,2 @@
+import "interfaces/interface_transcoder.kyl"
+print(jsonGetField("{\"response\":\"Paris\"}", "response"))

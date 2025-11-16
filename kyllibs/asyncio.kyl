@@ -1,7 +1,7 @@
 // Asyncio Library - Standard library for async I/O operations
 print("[kyllibs/asyncio] About to loadlib...")
 // Load the native asyncio shared library
-loadlib("libs/libkylasyncio.so")
+import "interfaces/interface_asyncio.kyl"
 print("[kyllibs/asyncio] loadlib completed")
 
 // Available functions after loading:

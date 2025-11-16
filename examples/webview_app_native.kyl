@@ -1,0 +1,85 @@
+// WebView App Demo - Native Binary Version
+// Uses interface imports for library functions
+
+import "interfaces/interface_str.kyl"
+import "interfaces/interface_system.kyl"
+
+// Avatar workers - these do the actual async work
+fn greetWorker(argsJson) {
+    print("[Worker] greet processing: " + argsJson)
+    sleep(300)  // Simulate work
+    return "Hello " + argsJson + " from Kuyil!"
+}
+
+fn calculateWorker(argsJson) {
+    print("[Worker] calculate processing: " + argsJson)
+    sleep(200)
+    return "30 (from avatar worker)"
+}
+
+fn processOrderWorker(argsJson) {
+    print("[Worker] processOrder processing: " + argsJson)
+    sleep(500)
+    return "Order processed successfully! ✅"
+}
+
+fn loadFileAsString(path) {
+    let info = heapfs_info(path)
+    if info == nil {
+        print("ERROR: Could not load embedded file: " + path)
+        return ""
+    }
+    return str_bytesToString(info.data)
+}
+
+fn main() {
+    print("=== WebView App with Embedded Resources (Native Binary) ===\n")
+    
+    // Check if resources are embedded
+    if !heapfs_exists("index.html") {
+        print("ERROR: No embedded resources found!")
+        return
+    }
+    
+    // Show what's embedded
+    print("Embedded files:")
+    let files = heapfs_list()
+    for let i = 0; i < files.length; i = i + 1 {
+        let info = heapfs_info(files[i])
+        print("  - " + files[i] + " (" + str_toString(info.size) + " bytes)")
+    }
+    print("")
+    
+    // Load HTML from embedded resources
+    print("Loading HTML from embedded resources...")
+    let htmlContent = loadFileAsString("index.html")
+    
+    if htmlContent.length > 0 {
+        print("Successfully loaded HTML (" + str_toString(htmlContent.length) + " bytes)")
+        
+        // Load CSS and inject into HTML
+        print("Loading CSS from embedded resources...")
+        let cssContent = loadFileAsString("style.css")
+        if cssContent.length > 0 {
+            print("Successfully loaded CSS (" + str_toString(cssContent.length) + " bytes)")
+            htmlContent = str_replace(htmlContent, "<link rel=\"stylesheet\" href=\"style.css\">", "<style>" + cssContent + "</style>")
+        }
+        
+        // Load JavaScript and inject into HTML
+        print("Loading JS from embedded resources...")
+        let jsContent = loadFileAsString("app.js")
+        if jsContent.length > 0 {
+            print("Successfully loaded JS (" + str_toString(jsContent.length) + " bytes)")
+            htmlContent = str_replace(htmlContent, "<script src=\"app.js\"></script>", "<script>" + jsContent + "</script>")
+        }
+        
+        print("\n✅ All resources loaded from embedded binary!")
+        print("HTML+CSS+JS ready (" + str_toString(htmlContent.length) + " bytes total)\n")
+        print("Note: WebView display requires @loadlib('webview') and interface methods")
+        print("This demo shows embedded resources work - WebView integration pending")
+    } else {
+        print("ERROR: Failed to load HTML file")
+    }
+}
+
+main()

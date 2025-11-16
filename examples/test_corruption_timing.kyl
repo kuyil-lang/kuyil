@@ -1,0 +1,79 @@
+// Test when corruption happens
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+let test_number = 999
+
+fn testWorker() {
+    return 123
+}
+
+fn simpleBinding(arg) {
+    print("[Binding] Called")
+    print("[Binding] test_number = " + test_number)
+    return "OK"
+}
+
+fn main() {
+    print("=== Test When Corruption Happens ===\n")
+    
+    init()
+    let settings = createDefaultSettings()
+    let window = create("Test", settings)
+    
+    let html = "<!DOCTYPE html>
+<html><body>
+    <script>
+        setTimeout(() => {
+            simpleBinding('test').then(r => console.log('Done'));
+        }, 200);
+    </script>
+</body></html>"
+    
+    loadHtml(window, html)
+    
+    let j = 0
+    while j < 30 {
+        step(window)
+        sleep(10)
+        j = j + 1
+    }
+    
+    bind(window, "simpleBinding", simpleBinding)
+    show(window)
+    
+    print("Before binding call: test_number = " + test_number)
+    
+    let local_test = 777
+    print("Before loop: local_test = " + local_test)
+    
+    let avatar_ran = false
+    
+    let loopcount = 0
+    while loopcount < 100 {
+        step(window)
+        processAvatarCompletions(10)
+        
+        // After binding is called, spawn avatar once
+        if loopcount == 10 && !avatar_ran {
+            print("[Main] Spawning avatar...")
+            let handle = avatar testWorker()
+            print("[Main] Spawned, handle type: " + typeof(handle))
+            print("[Main] Handle value: " + handle)
+            print("[Main] After spawn: local_test = " + local_test)
+            avatar_ran = true
+        }
+        
+        print("Loop " + loopcount + ": local_test = " + local_test + ", test_number = " + test_number)
+        
+        loopcount = loopcount + 1
+        sleep(10)
+        
+        if loopcount > 30 {
+            return
+        }
+    }
+}
+
+main()

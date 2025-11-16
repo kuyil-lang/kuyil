@@ -90,9 +90,40 @@ static void* avatar_task_func(void* user_data) {
     avatar_vm.frames[0].slots = avatar_vm.stack;  // Points to arg[0]
     avatar_vm.frame_count = 1;
     
-    // Reset stack_top to point after arguments - this is where local variables will be pushed
-    // This matches vm_setup_call_frame_ex: *stack_top_ptr = frame->slots + arg_count;
+    // CRITICAL: With proper SET_LOCAL/GET_LOCAL implementation:
+    // - frame->slots[0..arg_count-1] = parameters (already on stack)
+    // - frame->slots[arg_count..local_count-1] = local variables (need stack space!)
+    // - Must allocate stack space for ALL locals, not just arguments
+    // - Initialize local variable slots to NIL
+    int local_count = handle->function->local_count;
     avatar_vm.stack_top = avatar_vm.stack + handle->arg_count;
+    
+    printf("[AVATAR SETUP] Function has local_count=%d, arg_count=%d, allocating %d local slots\n",
+           local_count, handle->arg_count, local_count - handle->arg_count);
+    
+    // Allocate and initialize local variable slots (beyond parameters)
+    for (int i = handle->arg_count; i < local_count; i++) {
+        if (avatar_vm.stack_top >= avatar_vm.stack + STACK_MAX) {
+            snprintf(handle->error_message, sizeof(handle->error_message),
+                    "Avatar stack overflow (locals)");
+            handle->has_error = true;
+            handle->result.type = VALUE_NIL;
+            return NULL;
+        }
+        Value nil_val = {VALUE_NIL};
+        *avatar_vm.stack_top++ = nil_val;
+    }
+    
+    printf("[AVATAR SETUP] Stack_top after locals = %ld (base=0, top=%ld)\n",
+           (long)(avatar_vm.stack_top - avatar_vm.stack), (long)(avatar_vm.stack_top - avatar_vm.stack));
+    
+    // Now stack_top points after all locals - this is where expression evaluation starts
+    // This matches vm_setup_call_frame_ex: *stack_top_ptr = frame->slots + arg_count;
+    
+    // With proper SET_LOCAL/GET_LOCAL implementation:
+    // - Locals are stored in frame->slots[], indexed by slot number
+    // - Expression stack is separate, starting at frame->slots + arg_count
+    // - No need to track local initialization or protect from POP operations
     
     // Add temp stack reserve ONLY for nested calls, not the initial frame
     // Local variables need contiguous space starting from frame->slots + arg_count
@@ -167,11 +198,20 @@ static void* avatar_task_func(void* user_data) {
         
         switch (instruction) {
             case OP_RETURN: {
+                printf("[AVATAR] Executing OP_RETURN\n");
                 // Pop return value from stack
                 Value result = exec_pop(&exec_ctx);
                 if (*exec_ctx.has_error) {
                     handle->result.type = VALUE_NIL;
                     return NULL;
+                }
+                
+                // DEBUG: Log what we're returning
+                printf("[AVATAR OP_RETURN] Type: %d\n", result.type);
+                if (result.type == VALUE_STRING && result.as.string) {
+                    size_t len = strlen(result.as.string);
+                    printf("[AVATAR OP_RETURN] String ptr: %p, length: %zu\n", (void*)result.as.string, len);
+                    printf("[AVATAR OP_RETURN] String (first 50 chars): %.50s\n", result.as.string);
                 }
                 
                 // Decrement frame count
@@ -183,6 +223,12 @@ static void* avatar_task_func(void* user_data) {
                 if (avatar_vm.frame_count == 0) {
                     // Top-level return - set result and exit
                     handle->result = result;
+                    if (result.type == VALUE_STRING && result.as.string) {
+                        size_t len = strlen(result.as.string);
+                        printf("[AVATAR OP_RETURN] Saved to handle->result, string length: %zu\n", len);
+                    } else {
+                        printf("[AVATAR OP_RETURN] Saved to handle->result, type: %d\n", result.type);
+                    }
                     running = false;
                 } else {
                     // Returning from nested call - restore stack to where callee was
@@ -353,7 +399,24 @@ static void* avatar_task_func(void* user_data) {
                 break;
             
             case OP_POP:
-                exec_pop_discard(&exec_ctx);
+                // CRITICAL: With frame->slots pointing to the stack:
+                // - Locals occupy stack[0..local_count-1]
+                // - Expression stack starts at stack[local_count]
+                // - Expression stack can shrink to local_count, but NOT BELOW
+                // - If we allow stack to shrink below local_count, next push overwrites locals!
+                {
+                    int current_stack_pos = avatar_vm.stack_top - avatar_vm.stack;
+                    int min_stack_pos = handle->function->local_count;
+                    
+                    if (current_stack_pos <= min_stack_pos) {
+                        printf("[AVATAR OP_POP] BLOCKED: stack_pos=%d, cannot go below local_count=%d\n",
+                               current_stack_pos, min_stack_pos);
+                        // Don't pop - stack is already at minimum safe level
+                        break;
+                    }
+                    
+                    exec_pop_discard(&exec_ctx);
+                }
                 break;
             
             case OP_PRINT: {
@@ -394,6 +457,10 @@ static void* avatar_task_func(void* user_data) {
             case OP_GET_LOCAL: {
                 uint8_t slot = *frame->ip++;
                 exec_ctx.current_frame_slots = frame->slots;
+                // DEBUG: Log what we're loading
+                Value local_val = frame->slots[slot];
+                int stack_size = avatar_vm.stack_top - avatar_vm.stack;
+                printf("[AVATAR GET_LOCAL] Slot %d, type: %d, stack_size: %d\n", slot, local_val.type, stack_size);
                 exec_get_local(&exec_ctx, slot);
                 if (*exec_ctx.has_error) {
                     handle->result.type = VALUE_NIL;
@@ -405,6 +472,12 @@ static void* avatar_task_func(void* user_data) {
             case OP_SET_LOCAL: {
                 uint8_t slot = *frame->ip++;
                 exec_ctx.current_frame_slots = frame->slots;
+                // DEBUG: Log what we're setting
+                Value top_val = avatar_vm.stack_top[-1];
+                int stack_pos = avatar_vm.stack_top - avatar_vm.stack;
+                printf("[AVATAR SET_LOCAL] Slot %d = type %d, stack_pos=%d, slot_addr=%p, stack_addr=%p\n", 
+                       slot, top_val.type, stack_pos, 
+                       (void*)&frame->slots[slot], (void*)(avatar_vm.stack_top - 1));
                 exec_set_local(&exec_ctx, slot);
                 if (*exec_ctx.has_error) {
                     handle->result.type = VALUE_NIL;
@@ -722,10 +795,19 @@ static void* avatar_task_func(void* user_data) {
                 // Get property from map/object or namespace access
                 if (!exec_object_get(&exec_ctx)) {
                     handle->has_error = true;
+                    printf("[AVATAR] OBJECT_GET FAILED: %s\n", exec_ctx.error_message);
                     snprintf(handle->error_message, sizeof(handle->error_message),
-                            "Error in OBJECT_GET");
+                            "Error in OBJECT_GET: %s", exec_ctx.error_message);
                     handle->result.type = VALUE_NIL;
                     return NULL;
+                }
+                // DEBUG: Check what's on stack after OBJECT_GET
+                if (avatar_vm.stack_top > avatar_vm.stack) {
+                    Value top = avatar_vm.stack_top[-1];
+                    printf("[AVATAR POST-OBJECT_GET] Stack top type: %d\n", top.type);
+                    if (top.type == VALUE_STRING && top.as.string) {
+                        printf("[AVATAR POST-OBJECT_GET] String length: %zu\n", strlen(top.as.string));
+                    }
                 }
                 break;
             
@@ -985,6 +1067,15 @@ Value avatar_runtime_get_result(AvatarHandle* handle) {
     }
     
     Value result = handle->result;
+    
+    // DEBUG: Log result details
+    printf("[AVATAR GET_RESULT] Type: %d\n", result.type);
+    if (result.type == VALUE_STRING && result.as.string) {
+        size_t len = strlen(result.as.string);
+        printf("[AVATAR GET_RESULT] String ptr: %p, length: %zu\n", (void*)result.as.string, len);
+        printf("[AVATAR GET_RESULT] String (first 50 chars): %.50s\n", result.as.string);
+    }
+    
     pthread_mutex_unlock(&handle->mutex);
     
     return result;

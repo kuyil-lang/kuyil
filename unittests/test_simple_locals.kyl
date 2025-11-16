@@ -1,0 +1,29 @@
+// Test: Return values directly to verify local variables work
+
+fn test1() {
+    let x = 42
+    return x
+}
+
+fn test2() {
+    let x = 10
+    let y = 20
+    return x + y
+}
+
+fn test3(a) {
+    let x = a + 5
+    return x
+}
+
+fn main() {
+    let r1 = await avatar test1()
+    let r2 = await avatar test2()
+    let r3 = await avatar test3(100)
+    
+    // Since print doesn't work, just return success indicator
+    if r1 == 42 and r2 == 30 and r3 == 105 {
+        return 1  // All passed
+    }
+    return 0  // Failed
+}

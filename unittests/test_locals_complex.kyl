@@ -1,0 +1,40 @@
+// Test 6: Complex case - multiple scopes and function calls
+import "../interfaces/interface_str.kyl"
+
+fn getData() {
+    return {"data": "test123"}
+}
+
+fn testComplex(arg1, arg2, arg3) {
+    print("[TEST6] Complex scoping")
+    
+    let paramLen = 10
+    
+    if paramLen > 5 {
+        let firstChar = "a"
+        let lastChar = "z"
+        print("firstChar = " + firstChar + ", lastChar = " + lastChar)
+    }
+    
+    let url = "http://example.com"
+    let response = getData()
+    
+    print("url = " + url)
+    print("response.data = " + response.data)
+    
+    if response.data != nil {
+        return response.data
+    }
+    
+    return "failed"
+}
+
+fn main() {
+    let result = await avatar testComplex(1, 2, 3)
+    print("Result: " + result)
+    if result == "test123" {
+        print("✓ TEST6 PASSED")
+    } else {
+        print("✗ TEST6 FAILED: got " + result)
+    }
+}

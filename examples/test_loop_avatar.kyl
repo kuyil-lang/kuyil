@@ -1,0 +1,45 @@
+// Test: Avatar spawning in a simple loop
+
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+let trigger = false
+let result = ""
+
+fn worker() {
+    print("[Worker] Running!")
+    result = "DONE"
+    print("[Worker] Set result")
+}
+
+fn main() {
+    print("=== Loop Avatar Test ===\n")
+    
+    print("Loop starting...")
+    let count = 0
+    while count < 100 {
+        if count == 10 {
+            print("[Main] Triggering avatar spawn...")
+            trigger = true
+        }
+        
+        if trigger {
+            print("[Main] Spawning avatar...")
+            trigger = false
+            avatar worker()
+        }
+        
+        processAvatarCompletions(5)
+        sleep(10)
+        count = count + 1
+        
+        if result != "" {
+            print("[Main] Got result: " + result)
+            return
+        }
+    }
+    
+    print("[Main] Timeout, result: " + result)
+}
+
+main()

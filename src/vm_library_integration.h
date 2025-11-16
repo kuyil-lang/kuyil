@@ -34,6 +34,9 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args);
 bool is_dynamic_function(const char* name);
 Value create_dynamic_function_value(const char* name);
 
+// Interface namespace support
+bool is_interface_name(const char* name);
+
 // Shared function lookup logic for both main VM and avatars
 // Returns VALUE_NIL if not found, otherwise returns the function as VALUE_STRING or VALUE_FUNCTION
 Value vm_lookup_function_shared(const char* name, VM* main_vm);

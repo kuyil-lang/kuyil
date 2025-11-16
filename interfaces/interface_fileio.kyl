@@ -1,26 +1,29 @@
 // Interface for File I/O library
 interface file from "libs/libkylfileio.so" {
   @alias("readText")
-  string file_readText(path: string)
+  string readText(path: string)
   
   @alias("readCsv")
-  array file_readCsv(path: string)
+  array readCsv(path: string)
   
   @alias("readJson")
-  object file_readJson(path: string)
+  object readJson(path: string)
   
   @alias("readYaml")
-  object file_readYaml(path: string)
+  object readYaml(path: string)
   
   @alias("exists")
-  bool file_exists(path: string)
+  bool exists(path: string)
   
   @alias("size")
-  int32 file_size(path: string)
+  int32 size(path: string)
   
   @alias("validate")
-  bool file_validate(path: string)
+  bool validate(path: string)
   
   @alias("writeText")
-  bool file_writeText(path: string, content: string)
+  bool writeText(path: string, content: string)
+  
+  @alias("info")
+  object info(path: string)
 }

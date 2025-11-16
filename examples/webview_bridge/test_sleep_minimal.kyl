@@ -1,0 +1,4 @@
+import("../../interfaces/interface_system.kyl")
+print("About to call sleep(100)...")
+let result = sleep(100)
+print("sleep() returned:", result)

@@ -1,0 +1,46 @@
+// Enhanced HTTP Client Interface
+// Enhanced HTTP client with structured responses
+
+struct HttpResponse {
+    int32 status;
+    string body;
+    map headers;
+    string error;
+    int64 responseTime;
+}
+
+// Request configuration struct
+struct HttpRequest {
+    string url;
+    string method;
+    string body;
+    map headers;
+    int32 timeout;
+    bool followRedirects;
+    bool verifySSL;
+}
+
+interface http_client_ex from "libs/libkylhttp.so"  {
+    // Enhanced HTTP client functions with full response details
+    @alias("clientRequestEx")
+    HttpResponse http_clientRequestEx(request: HttpRequest)
+    
+    @alias("clientGetEx")
+    HttpResponse http_clientGetEx(url: string, headers: map)
+    
+    @alias("clientPostEx")
+    HttpResponse http_clientPostEx(url: string, body: string, headers: map)
+    
+    @alias("clientPutEx")
+    HttpResponse http_clientPutEx(url: string, body: string, headers: map)
+    
+    @alias("clientDeleteEx")
+    HttpResponse http_clientDeleteEx(url: string, headers: map)
+    
+    // Helper functions
+    @alias("responseGetHeader")
+    string http_responseGetHeader(response: HttpResponse, headerName: string)
+    
+    @alias("responseHasHeader")
+    bool http_responseHasHeader(response: HttpResponse, headerName: string)
+}

@@ -21,7 +21,8 @@ const char* kyl_interface_signature_text =
     "file exists(path: string) -> bool\n"
     "file size(path: string) -> int32\n"
     "file validate(path: string) -> bool\n"
-    "file writeText(path: string, content: string) -> bool\n";
+    "file writeText(path: string) -> bool\n"
+    "file info(path: string) -> object\n";
 
 // Optional YAML support - uncomment if libyaml is available
 // #include <yaml.h>
@@ -752,10 +753,16 @@ Value kuyil_file_exists(int arg_count, Value* args) {
     Value result = {VALUE_BOOL, .as = {.boolean = 0}};
     
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
+        fprintf(stderr, "[kuyil_file_exists] ERROR: invalid args\n"); fflush(stderr);
         return result;
     }
     
-    result.as.boolean = file_exists(args[0].as.string);
+    const char* path = args[0].as.string;
+    fprintf(stderr, "[kuyil_file_exists] checking path='%s'\n", path ? path : "(null)"); fflush(stderr);
+    int exists = file_exists(path);
+    fprintf(stderr, "[kuyil_file_exists] file_exists() returned %d\n", exists); fflush(stderr);
+    result.as.boolean = exists;
+    fprintf(stderr, "[kuyil_file_exists] returning bool=%d\n", result.as.boolean); fflush(stderr);
     return result;
 }
 
@@ -829,15 +836,181 @@ Value kuyil_file_write_text(int arg_count, Value* args) {
     return result;
 }
 
+// Get MIME type from file extension
+static const char* get_mime_type(const char* filepath) {
+    const char* ext = file_get_extension(filepath);
+    if (!ext) return "application/octet-stream";
+    
+    // Common text formats
+    if (strcmp(ext, "html") == 0 || strcmp(ext, "htm") == 0) return "text/html";
+    if (strcmp(ext, "css") == 0) return "text/css";
+    if (strcmp(ext, "js") == 0) return "application/javascript";
+    if (strcmp(ext, "json") == 0) return "application/json";
+    if (strcmp(ext, "xml") == 0) return "application/xml";
+    if (strcmp(ext, "txt") == 0) return "text/plain";
+    if (strcmp(ext, "csv") == 0) return "text/csv";
+    if (strcmp(ext, "md") == 0) return "text/markdown";
+    
+    // Image formats
+    if (strcmp(ext, "png") == 0) return "image/png";
+    if (strcmp(ext, "jpg") == 0 || strcmp(ext, "jpeg") == 0) return "image/jpeg";
+    if (strcmp(ext, "gif") == 0) return "image/gif";
+    if (strcmp(ext, "svg") == 0) return "image/svg+xml";
+    if (strcmp(ext, "webp") == 0) return "image/webp";
+    
+    // Font formats
+    if (strcmp(ext, "woff") == 0) return "font/woff";
+    if (strcmp(ext, "woff2") == 0) return "font/woff2";
+    if (strcmp(ext, "ttf") == 0) return "font/ttf";
+    if (strcmp(ext, "otf") == 0) return "font/otf";
+    
+    // Archive formats
+    if (strcmp(ext, "zip") == 0) return "application/zip";
+    if (strcmp(ext, "tar") == 0) return "application/x-tar";
+    if (strcmp(ext, "gz") == 0) return "application/gzip";
+    
+    // Binary formats
+    if (strcmp(ext, "pdf") == 0) return "application/pdf";
+    if (strcmp(ext, "wasm") == 0) return "application/wasm";
+    
+    free((char*)ext);
+    return "application/octet-stream";
+}
+
+// Comprehensive file info function
+// Returns: { path, size, contentType, modifiedTime, readable, writable, data }
+Value kuyil_file_info(int arg_count, Value* args) {
+    Value result = {.type = VALUE_NIL};
+    
+    if (arg_count != 1 || args[0].type != VALUE_STRING) {
+        return result;
+    }
+    
+    const char* path = args[0].as.string;
+    
+    // Validate path
+    if (file_validate_path(path) != FILE_SUCCESS) {
+        return result;
+    }
+    
+    // Get file path (resolve if needed)
+    char filepath[1024];
+    if (path[0] == '/') {
+        snprintf(filepath, sizeof(filepath), "%s", path);
+    } else {
+        snprintf(filepath, sizeof(filepath), "%s", path);
+    }
+    
+    // Check if file exists
+    if (!file_exists(filepath)) {
+        return result;
+    }
+    
+    // Get file stats
+    struct stat st;
+    if (stat(filepath, &st) != 0) {
+        return result;
+    }
+    
+    // Read file content as bytes
+    FILE* file = fopen(filepath, "rb");
+    if (!file) {
+        return result;
+    }
+    
+    size_t file_size = st.st_size;
+    unsigned char* bytes = malloc(file_size);
+    if (!bytes) {
+        fclose(file);
+        return result;
+    }
+    
+    size_t bytes_read = fread(bytes, 1, file_size, file);
+    fclose(file);
+    
+    if (bytes_read != file_size) {
+        free(bytes);
+        return result;
+    }
+    
+    // Create byte array
+    Value* byte_values = malloc(file_size * sizeof(Value));
+    for (size_t i = 0; i < file_size; i++) {
+        byte_values[i].type = VALUE_NUMBER;
+        byte_values[i].as.number = (double)bytes[i];
+    }
+    free(bytes);
+    
+    // Create result object with 7 fields
+    result.type = VALUE_OBJECT;
+    result.as.object.count = 7;
+    result.as.object.keys = malloc(7 * sizeof(char*));
+    result.as.object.values = malloc(7 * sizeof(Value));
+    
+    // path field
+    result.as.object.keys[0] = strdup("path");
+    result.as.object.values[0].type = VALUE_STRING;
+    result.as.object.values[0].as.string = strdup(filepath);
+    
+    // size field
+    result.as.object.keys[1] = strdup("size");
+    result.as.object.values[1].type = VALUE_NUMBER;
+    result.as.object.values[1].as.number = (double)file_size;
+    
+    // contentType field
+    result.as.object.keys[2] = strdup("contentType");
+    result.as.object.values[2].type = VALUE_STRING;
+    result.as.object.values[2].as.string = strdup(get_mime_type(filepath));
+    
+    // modifiedTime field (Unix timestamp)
+    result.as.object.keys[3] = strdup("modifiedTime");
+    result.as.object.values[3].type = VALUE_NUMBER;
+    result.as.object.values[3].as.number = (double)st.st_mtime;
+    
+    // readable field
+    result.as.object.keys[4] = strdup("readable");
+    result.as.object.values[4].type = VALUE_BOOL;
+    result.as.object.values[4].as.boolean = file_is_readable(filepath);
+    
+    // writable field
+    result.as.object.keys[5] = strdup("writable");
+    result.as.object.values[5].type = VALUE_BOOL;
+    result.as.object.values[5].as.boolean = (access(filepath, W_OK) == 0);
+    
+    // data field (byte array)
+    result.as.object.keys[6] = strdup("data");
+    result.as.object.values[6].type = VALUE_ARRAY;
+    result.as.object.values[6].as.array.count = file_size;
+    result.as.object.values[6].as.array.values = byte_values;
+    
+    return result;
+}
+
 // LowerCamel aliases for cleaner interface
-Value readText(int arg_count, Value* args) { return kuyil_file_read_text(arg_count, args); }
+Value readText(int arg_count, Value* args) { 
+    fprintf(stderr, "[WRAPPER readText] called with %d args\n", arg_count); fflush(stderr);
+    Value result = kuyil_file_read_text(arg_count, args);
+    fprintf(stderr, "[WRAPPER readText] returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
 Value readCsv(int arg_count, Value* args) { return kuyil_file_read_csv(arg_count, args); }
 Value readJson(int arg_count, Value* args) { return kuyil_file_read_json(arg_count, args); }
 Value readYaml(int arg_count, Value* args) { return kuyil_file_read_yaml(arg_count, args); }
-Value exists(int arg_count, Value* args) { return kuyil_file_exists(arg_count, args); }
-Value size(int arg_count, Value* args) { return kuyil_file_size(arg_count, args); }
+Value exists(int arg_count, Value* args) { 
+    fprintf(stderr, "[WRAPPER exists] called with %d args\n", arg_count); fflush(stderr);
+    Value result = kuyil_file_exists(arg_count, args);
+    fprintf(stderr, "[WRAPPER exists] returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
+Value size(int arg_count, Value* args) { 
+    fprintf(stderr, "[WRAPPER size] called with %d args\n", arg_count); fflush(stderr);
+    Value result = kuyil_file_size(arg_count, args);
+    fprintf(stderr, "[WRAPPER size] returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
 Value validate(int arg_count, Value* args) { return kuyil_file_validate(arg_count, args); }
 Value writeText(int arg_count, Value* args) { return kuyil_file_write_text(arg_count, args); }
+Value info(int arg_count, Value* args) { return kuyil_file_info(arg_count, args); }
 
 // CamelCase aliases for interface compatibility
 Value file_readText(int arg_count, Value* args) { 
@@ -852,18 +1025,57 @@ Value file_readText(int arg_count, Value* args) {
     }
     Value result = kuyil_file_read_text(arg_count, args); 
     fprintf(stderr, "[fileio_wrapper] kuyil_file_read_text returned type=%d\n", result.type);
-    if (result.type == VALUE_ARRAY) {
-        fprintf(stderr, "[fileio_wrapper]   ARRAY count=%d\n", result.as.array.count);
+    if (result.type == VALUE_STRING) {
+        fprintf(stderr, "[fileio_wrapper]   STRING value='%s'\n", result.as.string ? result.as.string : "(null)");
     }
     return result;
 }
-Value file_readCsv(int arg_count, Value* args) { return kuyil_file_read_csv(arg_count, args); }
-Value file_readJson(int arg_count, Value* args) { return kuyil_file_read_json(arg_count, args); }
-Value file_readYaml(int arg_count, Value* args) { return kuyil_file_read_yaml(arg_count, args); }
-// NOTE: Removed Value file_exists() alias to avoid symbol conflict with int file_exists().
-Value file_size(int arg_count, Value* args) { return kuyil_file_size(arg_count, args); }
-Value file_validate(int arg_count, Value* args) { return kuyil_file_validate(arg_count, args); }
-Value file_writeText(int arg_count, Value* args) { return kuyil_file_write_text(arg_count, args); }
+Value file_readCsv(int arg_count, Value* args) { 
+    fprintf(stderr, "[fileio_wrapper] file_readCsv called\n"); fflush(stderr);
+    Value result = kuyil_file_read_csv(arg_count, args);
+    fprintf(stderr, "[fileio_wrapper] file_readCsv returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
+Value file_readJson(int arg_count, Value* args) { 
+    fprintf(stderr, "[fileio_wrapper] file_readJson called\n"); fflush(stderr);
+    Value result = kuyil_file_read_json(arg_count, args);
+    fprintf(stderr, "[fileio_wrapper] file_readJson returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
+Value file_readYaml(int arg_count, Value* args) { 
+    fprintf(stderr, "[fileio_wrapper] file_readYaml called\n"); fflush(stderr);
+    Value result = kuyil_file_read_yaml(arg_count, args);
+    fprintf(stderr, "[fileio_wrapper] file_readYaml returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
+// kuyil_file_exists is the wrapper - no conflict with int file_exists() utility function
+Value file_size(int arg_count, Value* args) { 
+    fprintf(stderr, "[fileio_wrapper] file_size called\n"); fflush(stderr);
+    Value result = kuyil_file_size(arg_count, args);
+    fprintf(stderr, "[fileio_wrapper] file_size returned type=%d\n", result.type); fflush(stderr);
+    if (result.type == VALUE_NUMBER) {
+        fprintf(stderr, "[fileio_wrapper]   NUMBER value=%f\n", result.as.number); fflush(stderr);
+    }
+    return result;
+}
+Value file_validate(int arg_count, Value* args) { 
+    fprintf(stderr, "[fileio_wrapper] file_validate called\n"); fflush(stderr);
+    Value result = kuyil_file_validate(arg_count, args);
+    fprintf(stderr, "[fileio_wrapper] file_validate returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
+Value file_writeText(int arg_count, Value* args) { 
+    fprintf(stderr, "[fileio_wrapper] file_writeText called\n"); fflush(stderr);
+    Value result = kuyil_file_write_text(arg_count, args);
+    fprintf(stderr, "[fileio_wrapper] file_writeText returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
+Value file_info(int arg_count, Value* args) { 
+    fprintf(stderr, "[fileio_wrapper] file_info called\n"); fflush(stderr);
+    Value result = kuyil_file_info(arg_count, args);
+    fprintf(stderr, "[fileio_wrapper] file_info returned type=%d\n", result.type); fflush(stderr);
+    return result;
+}
 
 // Snake-case no-underscore variants to satisfy interface binder fallback (e.g. file_readtext)
 Value file_readtext(int arg_count, Value* args) { return kuyil_file_read_text(arg_count, args); }

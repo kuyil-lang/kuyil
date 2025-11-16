@@ -1,0 +1,88 @@
+// Example: Enhanced HTTP Client Usage
+import "./interfaces/interface_http_client_ex.kyl"
+
+print("=== Enhanced HTTP Client Examples ===\n")
+
+// Example 1: Simple GET request
+print("1. Simple GET request:")
+let response1 = clientGetEx("https://httpbin.org/get", {})
+print("   Status:", response1.status)
+print("   Body length:", response1.body.length)
+print("   Response time:", response1.responseTime, "ms")
+if response1.error != "" {
+    print("   Error:", response1.error)
+}
+print()
+
+// Example 2: POST request with JSON
+print("2. POST request with JSON:")
+let postBody = "{\"name\":\"Kuyil\",\"version\":\"2.0\"}"
+let postHeaders = {
+    "Content-Type": "application/json",
+    "User-Agent": "Kuyil-Test/1.0"
+}
+let response2 = clientPostEx("https://httpbin.org/post", postBody, postHeaders)
+print("   Status:", response2.status)
+print("   Content-Type:", responseGetHeader(response2, "Content-Type"))
+print("   Response time:", response2.responseTime, "ms")
+print()
+
+// Example 3: GET with custom headers
+print("3. GET with custom headers:")
+let customHeaders = {
+    "Accept": "application/json",
+    "Authorization": "Bearer token123"
+}
+let response3 = clientGetEx("https://httpbin.org/headers", customHeaders)
+print("   Status:", response3.status)
+print("   Has Content-Type:", responseHasHeader(response3, "Content-Type"))
+print()
+
+// Example 4: Full request configuration
+print("4. Custom request configuration:")
+let request = HttpRequest {
+    url: "https://httpbin.org/delay/2",
+    method: "GET",
+    body: "",
+    headers: {},
+    timeout: 5000,
+    followRedirects: true,
+    verifySSL: true
+}
+let response4 = clientRequestEx(request)
+print("   Status:", response4.status)
+print("   Response time:", response4.responseTime, "ms")
+if response4.error != "" {
+    print("   Error:", response4.error)
+}
+print()
+
+// Example 5: Ollama API call with enhanced client
+print("5. Ollama API call (if running):")
+let ollamaBody = "{\"model\":\"qwen2.5-coder:32b\",\"prompt\":\"Hello\",\"stream\":false}"
+let ollamaHeaders = {
+    "Content-Type": "application/json"
+}
+let response5 = clientPostEx("http://127.0.0.1:11434/api/generate", ollamaBody, ollamaHeaders)
+print("   Status:", response5.status)
+if response5.status == 200 {
+    print("   Success! Body length:", response5.body.length)
+    print("   Response time:", response5.responseTime, "ms")
+} else if response5.status == 0 {
+    print("   Connection failed:", response5.error)
+} else {
+    print("   Error status:", response5.status)
+}
+print()
+
+// Example 6: Checking specific headers
+print("6. Header inspection:")
+if responseHasHeader(response5, "content-type") {
+    print("   Content-Type:", responseGetHeader(response5, "content-type"))
+}
+if responseHasHeader(response5, "content-length") {
+    print("   Content-Length:", responseGetHeader(response5, "content-length"))
+}
+print()
+
+print("=== All examples completed ===")

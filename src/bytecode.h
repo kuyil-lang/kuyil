@@ -98,6 +98,7 @@ typedef struct {
 typedef struct {
     char* name;
     int arity;
+    int local_count;  // Number of local variables (including parameters)
     Chunk chunk;
     bool is_native;
     const char* source_path;  // Source file path for error reporting
@@ -113,6 +114,7 @@ typedef struct {
         int depth;
     } locals[256];
     int local_count;
+    int max_local_count;  // Track peak local count for runtime stack protection
     int scope_depth;
     
     // Function compilation

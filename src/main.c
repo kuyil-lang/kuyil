@@ -5,6 +5,7 @@
 #include "logging.h"
 #include "tokens.h"
 #include "ast.h"
+#include "heapfs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -564,13 +565,20 @@ static void compile_to_native_binary(const char* input_path, const char* output_
         // Write main function that runs source with embedded VM
         fprintf(output, "// Embedded Kuyil VM headers\n");
         fprintf(output, "#include \"vm.h\"\n");
-        fprintf(output, "#include \"logging.h\"\n\n");
+        fprintf(output, "#include \"logging.h\"\n");
+        fprintf(output, "#include \"heapfs.h\"\n\n");
         
         fprintf(output, "int main(int argc, char* argv[]) {\n");
         fprintf(output, "    (void)argc; (void)argv; // Suppress unused parameter warnings\n\n");
         fprintf(output, "    // Initialize systems\n");
         fprintf(output, "    log_init(LOG_INFO);\n");
         fprintf(output, "    // HTTP functionality loaded via shared libraries\n\n");
+        fprintf(output, "    // Initialize embedded resources (if available)\n");
+        fprintf(output, "    extern void heapfs_init_embedded_resources(HeapFS* fs) __attribute__((weak));\n");
+        fprintf(output, "    extern HeapFS g_heapfs;\n");
+        fprintf(output, "    if (heapfs_init_embedded_resources) {\n");
+        fprintf(output, "        heapfs_init_embedded_resources(&g_heapfs);\n");
+        fprintf(output, "    }\n\n");
         fprintf(output, "    // Initialize VM\n");
         fprintf(output, "    VM vm;\n");
         fprintf(output, "    vm_init(&vm);\n\n");
@@ -676,13 +684,27 @@ static void compile_to_native_binary(const char* input_path, const char* output_
     }
     
     // Both bytecode and source versions now link with the entire Kuyil VM for true self-containment
+    // Use dynamic linking but embed the library paths
     snprintf(compile_command, sizeof(compile_command), 
              "%s -O2 -s %s %s %s/src/vm.c %s/src/logging.c %s/src/config.c "
              "%s/src/ffi.c %s/src/file_reader.c %s/src/green_threads.c "
              "%s/src/library_loader.c %s/src/vm_library_integration.c "
-             "-I%s/src -o %s%s %s -DEMBEDDED_BINARY",
-             compiler, extra_flags, temp_c_file, kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir,
-             kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir,
+             "%s/src/vm_task_queue.c %s/src/async_http.c %s/src/thread_pool.c "
+             "%s/src/avatar_runtime.c %s/src/async_request_queue.c %s/src/opcode_executor.c "
+             "%s/src/heapfs.c %s/src/embedded_resources.c "
+             "-I%s/src "
+             "-L%s/libs -Wl,-rpath,%s/libs "
+             "-lkylstr -lkylmath -lkylfileio -lkyldatetime -lkylasyncio -lkyleventloop -lkylwebview -lkylhttp "
+             "-o %s%s %s -levent "
+             "-DEMBEDDED_BINARY -DENABLE_EMBEDDED_RESOURCES",
+             compiler, extra_flags, temp_c_file, 
+             kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir,
+             kuyil_dir, kuyil_dir, kuyil_dir, kuyil_dir, 
+             kuyil_dir, kuyil_dir, kuyil_dir,
+             kuyil_dir, kuyil_dir, kuyil_dir, 
+             kuyil_dir, kuyil_dir,
+             kuyil_dir,
+             kuyil_dir, kuyil_dir,
              output_path, exe_ext, libs);
     
     printf("Compiling native binary for %s: %s\n", target_platform, compile_command);
@@ -1126,9 +1148,240 @@ static void check_syntax_only(const char* path) {
     free(source);
 }
 
+// Helper: Get MIME type from file extension
+static const char* get_mime_type(const char* filename) {
+    const char* ext = strrchr(filename, '.');
+    if (!ext) return "application/octet-stream";
+    ext++; // Skip the dot
+    
+    if (strcmp(ext, "html") == 0 || strcmp(ext, "htm") == 0) return "text/html";
+    if (strcmp(ext, "css") == 0) return "text/css";
+    if (strcmp(ext, "js") == 0) return "application/javascript";
+    if (strcmp(ext, "json") == 0) return "application/json";
+    if (strcmp(ext, "png") == 0) return "image/png";
+    if (strcmp(ext, "jpg") == 0 || strcmp(ext, "jpeg") == 0) return "image/jpeg";
+    if (strcmp(ext, "gif") == 0) return "image/gif";
+    if (strcmp(ext, "svg") == 0) return "image/svg+xml";
+    if (strcmp(ext, "ico") == 0) return "image/x-icon";
+    if (strcmp(ext, "woff") == 0) return "font/woff";
+    if (strcmp(ext, "woff2") == 0) return "font/woff2";
+    if (strcmp(ext, "ttf") == 0) return "font/ttf";
+    if (strcmp(ext, "kyl") == 0) return "text/plain";
+    if (strcmp(ext, "txt") == 0) return "text/plain";
+    return "application/octet-stream";
+}
+
+// Helper: Sanitize filename for C variable name
+static void sanitize_var_name(const char* path, char* out, size_t out_size) {
+    size_t i, j = 0;
+    for (i = 0; i < strlen(path) && j < out_size - 1; i++) {
+        char c = path[i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+            out[j++] = c;
+        } else {
+            out[j++] = '_';
+        }
+    }
+    out[j] = '\0';
+}
+
+// Helper: Recursively scan directory and collect files
+typedef struct {
+    char** paths;
+    int count;
+    int capacity;
+} FileList;
+
+static void file_list_init(FileList* list) {
+    list->capacity = 64;
+    list->count = 0;
+    list->paths = malloc(sizeof(char*) * list->capacity);
+}
+
+static void file_list_add(FileList* list, const char* path) {
+    if (list->count >= list->capacity) {
+        list->capacity *= 2;
+        list->paths = realloc(list->paths, sizeof(char*) * list->capacity);
+    }
+    list->paths[list->count++] = strdup(path);
+}
+
+static void file_list_free(FileList* list) {
+    for (int i = 0; i < list->count; i++) {
+        free(list->paths[i]);
+    }
+    free(list->paths);
+}
+
+#include <dirent.h>
+static void scan_directory_recursive(const char* dir_path, const char* base_path, FileList* list) {
+    DIR* dir = opendir(dir_path);
+    if (!dir) {
+        fprintf(stderr, "Warning: Cannot open directory: %s\n", dir_path);
+        return;
+    }
+    
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        char full_path[PATH_MAX];
+        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
+        
+        struct stat st;
+        if (stat(full_path, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                // Recurse into subdirectory
+                scan_directory_recursive(full_path, base_path, list);
+            } else if (S_ISREG(st.st_mode)) {
+                // Regular file - compute relative path
+                const char* rel_path = full_path + strlen(base_path);
+                while (*rel_path == '/') rel_path++;  // Skip leading slashes
+                file_list_add(list, rel_path);
+            }
+        }
+    }
+    
+    closedir(dir);
+}
+
+// Generate embedded_resources.c from directories
+static int embed_resources_from_dirs(const char** dirs, int dir_count, const char* output_file) {
+    FILE* out = fopen(output_file, "w");
+    if (!out) {
+        fprintf(stderr, "Error: Cannot create %s\n", output_file);
+        return 1;
+    }
+    
+    // Write header
+    fprintf(out, "// Auto-generated embedded resources\n");
+    fprintf(out, "// DO NOT EDIT - Generated by kuyil --embed-dir\n\n");
+    fprintf(out, "#include <stddef.h>\n");
+    fprintf(out, "#include <string.h>\n");
+    fprintf(out, "#include \"heapfs.h\"\n\n");
+    
+    // Collect all files from all directories
+    FileList all_files;
+    file_list_init(&all_files);
+    
+    size_t total_bytes = 0;
+    
+    for (int d = 0; d < dir_count; d++) {
+        const char* dir = dirs[d];
+        printf("Scanning directory: %s\n", dir);
+        
+        FileList dir_files;
+        file_list_init(&dir_files);
+        scan_directory_recursive(dir, dir, &dir_files);
+        
+        // Process each file
+        for (int i = 0; i < dir_files.count; i++) {
+            const char* rel_path = dir_files.paths[i];
+            char full_path[PATH_MAX];
+            snprintf(full_path, sizeof(full_path), "%s/%s", dir, rel_path);
+            
+            FILE* f = fopen(full_path, "rb");
+            if (!f) {
+                fprintf(stderr, "Warning: Cannot read %s\n", full_path);
+                continue;
+            }
+            
+            fseek(f, 0, SEEK_END);
+            long file_size = ftell(f);
+            rewind(f);
+            
+            if (file_size < 0) {
+                fclose(f);
+                continue;
+            }
+            
+            printf("  - %s (%ld bytes, %s)\n", rel_path, file_size, get_mime_type(rel_path));
+            total_bytes += file_size;
+            
+            // Generate variable name
+            char var_name[256];
+            sanitize_var_name(rel_path, var_name, sizeof(var_name));
+            
+            // Write array declaration
+            fprintf(out, "static const unsigned char embedded_%s_data[] = {\n", var_name);
+            
+            // Write bytes
+            unsigned char buffer[16];
+            size_t bytes_read;
+            int col = 0;
+            while ((bytes_read = fread(buffer, 1, sizeof(buffer), f)) > 0) {
+                for (size_t j = 0; j < bytes_read; j++) {
+                    if (col == 0) fprintf(out, "    ");
+                    fprintf(out, "0x%02x, ", buffer[j]);
+                    col++;
+                    if (col >= 16) {
+                        fprintf(out, "\n");
+                        col = 0;
+                    }
+                }
+            }
+            if (col > 0) fprintf(out, "\n");
+            fprintf(out, "};\n\n");
+            
+            fclose(f);
+            file_list_add(&all_files, rel_path);
+        }
+        
+        file_list_free(&dir_files);
+    }
+    
+    printf("\nTotal: %d files, %zu bytes\n", all_files.count, total_bytes);
+    
+    // Write initialization function
+    fprintf(out, "// Initialize embedded resources into heapfs\n");
+    fprintf(out, "void heapfs_init_embedded_resources(HeapFS* fs) {\n");
+    
+    for (int i = 0; i < all_files.count; i++) {
+        const char* path = all_files.paths[i];
+        char var_name[256];
+        sanitize_var_name(path, var_name, sizeof(var_name));
+        
+        // Find file size (we need to re-read it)
+        for (int d = 0; d < dir_count; d++) {
+            char full_path[PATH_MAX];
+            snprintf(full_path, sizeof(full_path), "%s/%s", dirs[d], path);
+            
+            struct stat st;
+            if (stat(full_path, &st) == 0 && S_ISREG(st.st_mode)) {
+                fprintf(out, "    heapfs_add_file(fs, \"%s\", \n", path);
+                fprintf(out, "                    (const char*)embedded_%s_data, %ld, \n", 
+                        var_name, (long)st.st_size);
+                fprintf(out, "                    \"%s\");\n", get_mime_type(path));
+                break;
+            }
+        }
+    }
+    
+    fprintf(out, "}\n");
+    
+    fclose(out);
+    file_list_free(&all_files);
+    
+    printf("Generated: %s\n", output_file);
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     // Initialize logging system first
     log_init(LOG_WARNING);
+    
+    // Initialize heapfs
+    extern HeapFS g_heapfs;
+    heapfs_init(&g_heapfs, 32);  // Start with capacity for 32 files
+    
+    // Initialize embedded resources if available (runtime check)
+    extern void heapfs_init_embedded_resources(HeapFS* fs) __attribute__((weak));
+    if (heapfs_init_embedded_resources) {
+        heapfs_init_embedded_resources(&g_heapfs);
+        LOG_INFO("Initialized embedded heap filesystem with %d files", g_heapfs.count);
+    }
     
     // HTTP subsystem now handled by shared libraries
     
@@ -1161,19 +1414,34 @@ int main(int argc, char* argv[]) {
         }
     } else {
         // Parse command line arguments
-    bool compile_mode = false;
+        bool compile_mode = false;
         bool native_mode = false;
         bool embed_bytecode = false;
         char* input_file = NULL;
         char* output_file = NULL;
         char* target_platform = NULL; // For cross-compilation
-    bool test_mode = false;
-    bool coverage_enabled = false;
-    const char* coverage_format = "text";
+        bool test_mode = false;
+        bool coverage_enabled = false;
+        const char* coverage_format = "text";
+        
+        // Embed directories (up to 16)
+        char* embed_dirs[16];
+        int embed_dir_count = 0;
         
         for (int i = 1; i < argc; i++) {
             if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--debug") == 0) {
                 log_set_level(LOG_DEBUG);
+            } else if (strcmp(argv[i], "--embed-dir") == 0) {
+                if (i + 1 < argc) {
+                    if (embed_dir_count >= 16) {
+                        fprintf(stderr, "Error: Maximum 16 --embed-dir directories allowed\n");
+                        exit(1);
+                    }
+                    embed_dirs[embed_dir_count++] = argv[++i];
+                } else {
+                    fprintf(stderr, "Error: --embed-dir requires a directory path\n");
+                    exit(1);
+                }
             } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--compile") == 0) {
                 compile_mode = true;
             } else if (strcmp(argv[i], "--native") == 0) {
@@ -1253,6 +1521,56 @@ int main(int argc, char* argv[]) {
             } else if (argv[i][0] != '-') {
                 input_file = argv[i];
             }
+        }
+        
+        // Process embed directories if specified
+        if (embed_dir_count > 0) {
+            printf("Embedding resources from %d director%s...\n", 
+                   embed_dir_count, embed_dir_count == 1 ? "y" : "ies");
+            
+            // Add interfaces directory automatically
+            embed_dirs[embed_dir_count++] = "interfaces";
+            
+            // Generate embedded_resources.c
+            if (embed_resources_from_dirs((const char**)embed_dirs, embed_dir_count, 
+                                         "src/embedded_resources.c") != 0) {
+                fprintf(stderr, "Error: Failed to generate embedded resources\n");
+                exit(1);
+            }
+            printf("\n");
+            
+            // Now rebuild kuyil with embedded resources
+            printf("Rebuilding with embedded resources...\n");
+            int ret = system("make -j4 2>&1 | grep -v 'Entering\\|Leaving' || true");
+            if (ret != 0) {
+                fprintf(stderr, "Error: Failed to rebuild (exit code %d)\n", ret);
+                exit(1);
+            }
+            printf("✅ Rebuild complete\n\n");
+            
+            // Re-exec the newly built kuyil without --embed-dir flags
+            printf("Re-executing with embedded resources...\n\n");
+            
+            // Build new argv without --embed-dir flags
+            char** new_argv = malloc(sizeof(char*) * (argc + 1));
+            int new_argc = 0;
+            new_argv[new_argc++] = argv[0]; // Keep program name
+            
+            for (int i = 1; i < argc; i++) {
+                if (strcmp(argv[i], "--embed-dir") == 0) {
+                    i++; // Skip next argument (the directory path)
+                    continue;
+                }
+                new_argv[new_argc++] = argv[i];
+            }
+            new_argv[new_argc] = NULL;
+            
+            // Re-exec
+            execv(argv[0], new_argv);
+            
+            // If execv fails
+            perror("Error re-executing kuyil");
+            exit(1);
         }
         
         if (compile_mode) {

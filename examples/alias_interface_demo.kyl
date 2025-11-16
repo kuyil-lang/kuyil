@@ -1,17 +1,10 @@
-// Demo for @alias within interface and string .length/.data
-@loadlib("./libs/libkylstr.so")
-@loadlib("./libs/libkyltranscoder.so")
+// Demo for string .length property and str functions
 
-// Define an ad-hoc interface with alias for gzip as "gz"
-interface compress {
-  @alias("gz")
-  object gzip(input: string)
-}
-
-print("Has gz alias?", gz != nil)
+import "interfaces/interface_str.kyl"
 
 let s = "ABC"
 print("s.length:", s.length)
-let bytes = s.data
-print("bytes len:", bytes.length)
-print("first byte:", bytes[0])
+print("str.length:", str.length(s))
+print("str.upper:", str.upper(s))
+print("str.lower:", str.lower("XYZ"))
+print("str.substring:", str.substring("Hello World", 0, 5))

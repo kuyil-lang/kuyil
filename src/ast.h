@@ -210,6 +210,7 @@ typedef struct {
     char* name;
     char** method_names;     // Method signatures (just names for now)
     int method_count;
+    bool is_exported;        // Whether interface is exported (requires namespace access)
 } InterfaceDecl;
 
 typedef struct {

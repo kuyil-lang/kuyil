@@ -44,4 +44,7 @@ interface str from "libs/libkylstr.so" {
   
   @alias("regexExtract")
   string str_regexExtract(input: string, pattern: string)
+  
+  @alias("bytesToString")
+  string str_bytesToString(bytes: array)
 }

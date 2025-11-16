@@ -11,9 +11,9 @@ print("Loaded asyncio library\n")
 
 print("1. Simple HTTP GET:")
 print("   URL: https://httpbin.org/get")
-let req1 = asyncio_httpGet("https://httpbin.org/get")
+let req1 = httpGet("https://httpbin.org/get", nil)
 print("   Request ID:", req1)
-let result1 = asyncio_waitResult(req1, 10000)  // 10 second timeout
+let result1 = waitResult(req1, 10000)  // 10 second timeout
 if (result1 != nil) {
     print("   Result received")
 } else {
@@ -29,7 +29,7 @@ let headers = [
 ]
 print("   URL: https://httpbin.org/headers")
 print("   Headers: Custom UA and headers")
-let req2 = asyncio_httpGetEx(
+let req2 = httpGetEx(
     "https://httpbin.org/headers",
     headers,
     0,      // dns_timeout (0 = use default)
@@ -37,7 +37,7 @@ let req2 = asyncio_httpGetEx(
     3000,   // read_timeout (3 seconds)
     500     // write_timeout (500ms)
 )
-let result2 = asyncio_waitResult(req2, 10000)
+let result2 = waitResult(req2, 10000)
 if (result2 != nil) {
     print("   Result received")
 } else {
@@ -59,7 +59,7 @@ let req3 = asyncio_httpPostEx(
     post_headers,
     0, 1000, 3000, 500
 )
-let result3 = asyncio_waitResult(req3, 10000)
+let result3 = waitResult(req3, 10000)
 if (result3 != nil) {
     print("   Result received")
 } else {
@@ -69,14 +69,14 @@ print("   ✓ POST successful\n")
 
 print("4. Multiple concurrent requests:")
 print("   Starting 3 requests simultaneously...")
-let req_a = asyncio_httpGet("https://httpbin.org/delay/1")
-let req_b = asyncio_httpGet("https://httpbin.org/delay/1")
-let req_c = asyncio_httpGet("https://httpbin.org/delay/1")
+let req_a = httpGet("https://httpbin.org/delay/1", nil)
+let req_b = httpGet("https://httpbin.org/delay/1", nil)
+let req_c = httpGet("https://httpbin.org/delay/1", nil)
 
 print("   Waiting for all to complete...")
-let res_a = asyncio_waitResult(req_a, 10000)
-let res_b = asyncio_waitResult(req_b, 10000)
-let res_c = asyncio_waitResult(req_c, 10000)
+let res_a = waitResult(req_a, 10000)
+let res_b = waitResult(req_b, 10000)
+let res_c = waitResult(req_c, 10000)
 print("   All requests completed!")
 if (res_a != nil) { print("   Result A: received") }
 if (res_b != nil) { print("   Result B: received") }

@@ -1,0 +1,38 @@
+// WebView App Demo - Loading from Dist Folder
+// Demonstrates using runWebViewAppFromDist() to load HTML, CSS, JS from filesystem
+
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview_app.kyl"
+
+// Avatar workers - these do the actual async work
+fn greetWorker(argsJson) {
+    print("[Worker] greet processing: " + argsJson)
+    sleep(300)  // Simulate work
+    return "Hello " + argsJson + " from Kuyil!"
+}
+
+fn calculateWorker(argsJson) {
+    print("[Worker] calculate processing: " + argsJson)
+    sleep(200)
+    return "30 (from avatar worker)"
+}
+
+fn processOrderWorker(argsJson) {
+    print("[Worker] processOrder processing: " + argsJson)
+    sleep(500)
+    return "Order processed successfully! ✅"
+}
+
+fn main() {
+    print("=== WebView App from Dist Folder ===\n")
+    
+    // Register worker avatars
+    registerHandler("greet", greetWorker)
+    registerHandler("calculate", calculateWorker)
+    registerHandler("processOrder", processOrderWorker)
+    
+    // Load from dist folder - HTML, CSS, JS all separate files
+    runWebViewAppFromDist("Framework Demo", "examples/webview_dist")
+}
+
+main()

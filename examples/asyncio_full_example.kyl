@@ -1,7 +1,7 @@
 // Complete asyncio example with inline wrappers
 // This demonstrates the current working approach
 
-loadlib("libs/libkylasyncio.so")
+import "interfaces/interface_asyncio.kyl"
 
 // ═══════════════════════════════════════
 //  Wrapper Functions (copy these to your script)
@@ -69,6 +69,9 @@ fn isDone(id) {
 //  ═══════════════════════════════════════
 //  Example Usage
 // ═══════════════════════════════════════
+
+// Complete asyncio example with all features
+import "interfaces/interface_asyncio.kyl"
 
 print("\n═══════════════════════════════════════")
 print("  Asyncio with Options - Full Example")

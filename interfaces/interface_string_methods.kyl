@@ -1,0 +1,21 @@
+// String methods - these are called when you do stringVar.method()
+// Not exported - these are method calls on string values, not namespace calls
+interface str from "libs/libkylstr.so" {
+    @alias("replace")
+    string replace(haystack: string, needle: string, replacement: string)
+    
+    @alias("substring") 
+    string substring(text: string, start: int32, end: int32)
+    
+    @alias("split")
+    array split(text: string, delimiter: string)
+    
+    @alias("trim")
+    string trim(text: string)
+    
+    @alias("upper")
+    string upper(text: string)
+    
+    @alias("lower")
+    string lower(text: string)
+}

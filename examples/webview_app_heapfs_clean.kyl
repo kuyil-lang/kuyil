@@ -1,0 +1,44 @@
+// Example: WebView app using embedded resources via URI schemes
+// Demonstrates app-heapfs:// scheme for clean resource loading
+
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview_app.kyl"
+
+// This example assumes resources are embedded via:
+// 1. mkdir -p /tmp/kuyil_embed/interfaces
+// 2. cp examples/webview_dist/* /tmp/kuyil_embed/
+// 3. cp interfaces/*.kyl /tmp/kuyil_embed/interfaces/
+// 4. make EMBED_DIR=/tmp/kuyil_embed
+
+print("\n=== WebView App - Embedded Resources Demo ===")
+print("This demo uses app-heapfs:// URI scheme for embedded resources")
+print("Resources loaded from heapfs (in-memory virtual filesystem)\n")
+
+// List embedded files
+print("Embedded files:")
+let files = heapfs_list()
+let i = 0
+while (i < files.length) {
+    let file = files[i]
+    print("  - " + file)
+    i = i + 1
+}
+print("")
+
+// Check if webview resources are embedded
+if (!heapfs_exists("index.html")) {
+    print("ERROR: index.html not embedded!")
+    print("Please rebuild with: make EMBED_DIR=/tmp/kuyil_embed")
+} else if (!heapfs_exists("style.css")) {
+    print("ERROR: style.css not embedded!")
+} else if (!heapfs_exists("app.js")) {
+    print("ERROR: app.js not embedded!")
+} else {
+    print("All resources found! Starting webview...\n")
+    
+    // Run webview app using embedded resources
+    // This will automatically use app-heapfs:// URIs for CSS and JS
+    runWebViewAppFromHeapFS("Kuyil Embedded App Demo")
+}
+
+

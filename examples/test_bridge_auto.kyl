@@ -1,0 +1,96 @@
+// Bridge with auto-trigger (no button click needed)
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview.kyl"
+import "interfaces/interface_eventloop.kyl"
+import "interfaces/interface_http.kyl"
+
+// State for webview bridge
+let pending_request_id = ""
+let pending_request_url = ""
+let pending_avatar_handle = nil
+let pending_avatar_id = ""
+let response_id = ""
+let response_data = ""
+
+// Avatar worker
+fn fetchWorker(url) {
+    print("[Worker] Called with URL: " + url)
+    print("[Worker] Returning 99")
+    return 99
+}
+
+fn main() {
+    print("=== Bridge Auto-Trigger Test ===\n")
+    
+    // Create webview
+    print("[Init] Creating webview...")
+    init()
+    let settings = createDefaultSettings()
+    let window = create("Auto Test", settings)
+    
+    let html = "<!DOCTYPE html><html><body><h1>Auto Test</h1></body></html>"
+    loadHtml(window, html)
+
+
+    
+    // Wait for load
+    let j = 0
+    while j < 30 {
+        step(window)
+        sleep(10)
+        j = j + 1
+    }
+    
+    // Simulate webview calling binding with request
+    print("[Simulate] Setting request flags...")
+    pending_request_id = "auto_req_1"
+    pending_request_url = "https://httpbin.org/json"
+    
+    print("[Main] Starting event loop\n")
+    let loopcount = 0
+    while loopcount < 10 {
+        step(window)  // Add step()
+        processAvatarCompletions(10)
+        
+        // Check for pending fetch requests
+        if pending_request_id != "" {
+            print("[Main] Spawning avatar for: " + pending_request_id)
+            print("[Main] URL: " + pending_request_url)
+            
+            pending_avatar_handle = avatar fetchWorker(pending_request_url)
+            pending_avatar_id = pending_request_id
+            
+            // Clear after spawning
+            pending_request_id = ""
+            pending_request_url = ""
+            print("[Main] Avatar spawned\n")
+        }
+        
+        // Check if avatar completed
+        if pending_avatar_handle != nil {
+            print("[Main] About to await...")
+            let avatarResult = await pending_avatar_handle
+            print("[Main] Await returned: " + avatarResult)
+            print("[Main] Type: " + typeof(avatarResult))
+            
+            // Store response
+            response_id = pending_avatar_id
+            response_data = avatarResult
+            print("[Main] Stored - ID: " + response_id + ", Data: " + response_data)
+            
+            // Clear avatar state
+            pending_avatar_handle = nil
+            pending_avatar_id = ""
+            
+            print("\n✅ Test complete!")
+            return
+        }
+        
+        loopcount = loopcount + 1
+        sleep(10)
+    }
+    
+    print("\n❌ Timeout - avatar didn't complete")
+}
+
+main()

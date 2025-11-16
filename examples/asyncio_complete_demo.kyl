@@ -1,5 +1,5 @@
 // Complete example with inline wrapper functions
-loadlib("libs/libkylasyncio.so")
+import "interfaces/interface_asyncio.kyl"
 
 print("\n═══════════════════════════════════════")
 print("  Asyncio HTTP with Headers & Timeouts")

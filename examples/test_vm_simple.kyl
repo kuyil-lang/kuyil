@@ -1,0 +1,80 @@
+// Test VM corruption without webview - using direct function calls
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+let global_value = 999
+let corruption_detected = false
+
+fn testWorker(n) {
+    print("[Worker] Running with: " + n)
+    return n * 10
+}
+
+// Simulate what a binding does - set a global
+fn simulateBinding(arg) {
+    print("[Binding] Called with: " + arg)
+    global_value = 123
+    return "OK"
+}
+
+fn main() {
+    print("=== Test VM Corruption Without WebView ===\n")
+    
+    let local_value = 777
+    print("Before: local_value = " + local_value + ", global_value = " + global_value)
+    
+    // Simulate binding call
+    let result = simulateBinding("test")
+    print("Binding returned: " + result)
+    
+    print("After binding: local_value = " + local_value + ", global_value = " + global_value)
+    
+    // Now spawn avatar
+    print("\nSpawning avatar...")
+    let handle = avatar testWorker(5)
+    print("Handle type: " + typeof(handle))
+    print("Handle value: " + handle)
+    
+    // Check if local was corrupted by avatar spawn
+    if typeof(local_value) != "number" || local_value != 777 {
+        print("❌ CORRUPTION: local_value = " + local_value + " (type: " + typeof(local_value) + ")")
+        corruption_detected = true
+    } else {
+        print("✅ local_value still correct: " + local_value)
+    }
+    
+    // Process avatar
+    let loopcount = 0
+    while loopcount < 10 {
+        processAvatarCompletions(10)
+        loopcount = loopcount + 1
+        sleep(10)
+    }
+    
+    // Await result
+    print("\nAwaiting avatar...")
+    let avatar_result = await handle
+    print("Avatar returned: " + avatar_result + " (type: " + typeof(avatar_result) + ")")
+    
+    // Check local again
+    if typeof(local_value) != "number" || local_value != 777 {
+        print("❌ CORRUPTION AFTER AWAIT: local_value = " + local_value + " (type: " + typeof(local_value) + ")")
+        corruption_detected = true
+    } else {
+        print("✅ local_value still correct after await: " + local_value)
+    }
+    
+    if avatar_result == 50 {
+        print("✅ Avatar result correct (50)")
+    } else {
+        print("❌ Avatar result wrong: " + avatar_result + " (expected 50)")
+    }
+    
+    if corruption_detected == false {
+        print("\n✅✅✅ ALL TESTS PASSED - NO CORRUPTION!")
+    } else {
+        print("\n❌❌❌ CORRUPTION DETECTED!")
+    }
+}
+
+main()

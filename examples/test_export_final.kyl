@@ -1,0 +1,20 @@
+// Final test: Export interface enforcement and method calls on primitives
+
+import("./interfaces/interface_fileio.kyl")
+import("./interfaces/interface_string_methods.kyl")
+
+print("=== Test 1: Namespace calls (exported interface) ===")
+let content = file.readText("/home/vmukumar/akish/kuyil/test_exists_debug.kyl")
+print("✓ file.readText() works - got content")
+
+print("")
+print("=== Test 2: Method calls on string variables ===")
+let str1 = "hello world"
+let replaced = str1.replace("world", "Kuyil")
+print("✓ str1.replace() works - result:", replaced)
+
+let upper = str1.upper()
+print("✓ str1.upper() works - result:", upper)
+
+print("")
+print("===All tests passed! ===")

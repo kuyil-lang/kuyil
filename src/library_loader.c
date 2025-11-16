@@ -310,8 +310,8 @@ bool load_library(const char* library_name) {
                     param_array.as.array.values = NULL;
                 }
                 
-                // Prepare args: [interface, method, params_array, return_type]
-                Value args[4];
+                // Prepare args: [interface, method, params_array, return_type, aliases(null), is_exported(true)]
+                Value args[6];
                 args[0].type = VALUE_STRING;
                 args[0].as.string = strdup(iface_name);
                 args[1].type = VALUE_STRING;
@@ -319,9 +319,15 @@ bool load_library(const char* library_name) {
                 args[2] = param_array;
                 args[3].type = VALUE_STRING;
                 args[3].as.string = return_type_str[0] ? strdup(return_type_str) : strdup("");
+                args[4].type = VALUE_NIL;  // No extra aliases
+                args[5].type = VALUE_BOOL;
+                args[5].as.boolean = true;  // Treat signature-based bindings as exported (namespace required)
                 
-                // Call the binding function
-                Value result = vm_bind_interface_method(4, args);
+                fprintf(stderr, "[LOADER] Auto-binding %s.%s with is_exported=TRUE\n", iface_name, method_name);
+                fflush(stderr);
+                
+                // Call the binding function with is_exported=true
+                Value result = vm_bind_interface_method(6, args);
                 
                 // Free the allocated strings
                 free(args[0].as.string);
@@ -339,7 +345,12 @@ bool load_library(const char* library_name) {
                 if (result.type == VALUE_BOOL && result.as.boolean) {
                     LOG_DEBUG("Successfully bound %s.%s", iface_name, method_name);
                 } else {
-                    LOG_WARNING("Failed to bind %s.%s", iface_name, method_name);
+                    LOG_ERROR("Failed to bind %s.%s - C function not found in library", iface_name, method_name);
+                    fprintf(stderr, "\nERROR: Interface binding failed for %s.%s\n", iface_name, method_name);
+                    fprintf(stderr, "  Library: %s\n", library_name);
+                    fprintf(stderr, "  The C function for this method was not found.\n");
+                    fprintf(stderr, "  Check that the library exports the correct function name.\n\n");
+                    return false;  // Fail the library load
                 }
             }
         }

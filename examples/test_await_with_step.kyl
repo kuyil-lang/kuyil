@@ -1,0 +1,37 @@
+// Test await with step() calls
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview.kyl"
+
+fn worker(n) {
+    print("[Worker] Running with: " + n)
+    return n * 2
+}
+
+fn main() {
+    print("=== Test Await With WebView Step ===\n")
+    
+    // Create a dummy window
+    init()
+    let settings = createDefaultSettings()
+    let window = create("Test", settings)
+    
+    let i = 0
+    while i < 3 {
+        step(window)  // This is the suspect
+        
+        print("[Main] Loop " + i + ": spawning...")
+        let handle = avatar worker(i)
+        
+        print("[Main] Awaiting...")
+        let result = await handle
+        print("[Main] Got: " + result)
+        
+        i = i + 1
+        
+        if i >= 3 {
+            return  // Exit before window shows
+        }
+    }
+}
+
+main()

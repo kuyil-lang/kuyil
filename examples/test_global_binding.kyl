@@ -1,0 +1,64 @@
+// Test: Avatar with global variable set by binding
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+let global_value = ""
+
+fn testWorker(val) {
+    print("[Worker] Received: " + val)
+    print("[Worker] Returning: SUCCESS")
+    return "SUCCESS"
+}
+
+// Binding that sets global
+fn setGlobal(arg) {
+    print("[Binding] Setting global to: " + arg)
+    global_value = arg
+    return "OK"
+}
+
+fn main() {
+    print("=== Test Avatar With Global Set By Binding ===\n")
+    
+    // Create webview
+    init()
+    let settings = createDefaultSettings()
+    let window = create("Test", settings)
+    loadHtml(window, "<!DOCTYPE html><html><body><h1>Test</h1></body></html>")
+    
+    // Wait for load
+    let j = 0
+    while j < 30 {
+        step(window)
+        sleep(10)
+        j = j + 1
+    }
+    
+    bind(window, "setGlobal", setGlobal)
+    show(window)
+    
+    print("Calling binding to set global...")
+    setGlobal("https://test.com")  // Call binding directly
+    
+    print("[Main] Global set to: " + global_value)
+    print("[Main] Spawning avatar with global...")
+    let avatar_handle = avatar testWorker(global_value)
+    print("[Main] Avatar spawned")
+    
+    print("[Main] Starting event loop to process avatar...")
+    let loopcount = 0
+    while loopcount < 10 {
+        step(window)
+        processAvatarCompletions(10)
+        loopcount = loopcount + 1
+        sleep(10)
+    }
+    
+    print("[Main] Awaiting avatar...")
+    let result = await avatar_handle
+    print("[Main] Result: " + result)
+    print("[Main] Type: " + typeof(result))
+}
+
+main()

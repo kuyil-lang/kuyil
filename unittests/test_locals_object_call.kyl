@@ -1,0 +1,24 @@
+// Test 5: Local variable from function call returning object
+import "../interfaces/interface_str.kyl"
+
+fn makeObject() {
+    return {"status": 200, "value": 42}
+}
+
+fn testObjectFromCall(arg1) {
+    print("[TEST5] Object from function call")
+    let obj = makeObject()
+    print("obj.status = " + str_toString(obj.status))
+    print("obj.value = " + str_toString(obj.value))
+    return obj.value
+}
+
+fn main() {
+    let result = await avatar testObjectFromCall(5)
+    print("Result: " + str_toString(result))
+    if result == 42 {
+        print("✓ TEST5 PASSED")
+    } else {
+        print("✗ TEST5 FAILED: got " + str_toString(result))
+    }
+}

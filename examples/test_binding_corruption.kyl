@@ -1,0 +1,83 @@
+// Test: Does avatar work before vs after binding call?
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+let test_result = 0
+
+fn testWorker(n) {
+    print("[Worker] Running with: " + n)
+    return n * 10
+}
+
+// Binding that does nothing special
+fn dummyBinding(arg) {
+    print("[Binding] Called with: " + arg)
+    return "OK"
+}
+
+fn main() {
+    print("=== Test Avatar Before vs After Binding ===\n")
+    
+    // Test 1: Avatar BEFORE webview
+    print("TEST 1: Avatar before webview")
+    let handle1 = avatar testWorker(1)
+    let result1 = await handle1
+    print("Result 1: " + result1 + " (expected 10)\n")
+    
+    // Create webview
+    print("Creating webview...")
+    init()
+    let settings = createDefaultSettings()
+    let window = create("Test", settings)
+    loadHtml(window, "<!DOCTYPE html><html><body><h1>Test</h1></body></html>")
+    
+    // Wait for load
+    let j = 0
+    while j < 30 {
+        step(window)
+        sleep(10)
+        j = j + 1
+    }
+    
+    // Test 2: Avatar BEFORE binding
+    print("\nTEST 2: Avatar after webview, before binding")
+    let handle2 = avatar testWorker(2)
+    let result2 = await handle2
+    print("Result 2: " + result2 + " (expected 20)\n")
+    
+    // Bind function
+    print("Binding function...")
+    bind(window, "dummy", dummyBinding)
+    
+    // Test 3: Avatar AFTER binding registered but not called
+    print("\nTEST 3: Avatar after binding registered")
+    let handle3 = avatar testWorker(3)
+    let result3 = await handle3
+    print("Result 3: " + result3 + " (expected 30)\n")
+    
+    // Show window and let binding be called
+    show(window)
+    
+    // Run event loop briefly to let JS call binding
+    print("Running event loop (binding will be called from JS)...")
+    let loopcount = 0
+    while loopcount < 10 && is_open(window) {
+        step(window)
+        processAvatarCompletions(10)
+        loopcount = loopcount + 1
+        sleep(10)
+    }
+    
+    // Test 4: Avatar AFTER binding was called
+    print("\nTEST 4: Avatar after binding was called")
+    let handle4 = avatar testWorker(4)
+    let result4 = await handle4
+    print("Result 4: " + result4 + " (expected 40)\n")
+    
+    print("✅ All tests complete!")
+    
+    destroy(window)
+}
+
+main()

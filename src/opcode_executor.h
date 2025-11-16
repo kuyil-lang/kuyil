@@ -33,7 +33,12 @@ static inline Value exec_pop(ExecContext* ctx) {
         Value nil = {VALUE_NIL};
         return nil;
     }
-    return *(--(*ctx->stack_top));
+    Value result = *(--(*ctx->stack_top));
+    int new_size = *ctx->stack_top - ctx->stack;
+    if (new_size < 4) {
+        printf("[EXEC_POP WARNING] Stack shrunk to %d (corrupting locals!)\n", new_size);
+    }
+    return result;
 }
 
 static inline void exec_push(ExecContext* ctx, Value value) {

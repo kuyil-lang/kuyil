@@ -1,6 +1,6 @@
 // HTTP Library - Simple wrappers for HTTP operations
 // Load the native HTTP library
-loadlib("libs/libkylhttp.so")
+import "interfaces/interface_http.kyl"
 
 print("[kyllibs/http] HTTP library loaded")
 

@@ -1,0 +1,27 @@
+// Test await inside a loop
+import "interfaces/interface_system.kyl"
+
+fn worker(n) {
+    print("[Worker] Running with: " + n)
+    return n * 2
+}
+
+fn main() {
+    print("=== Test Await In Loop ===\n")
+    
+    let i = 0
+    while i < 3 {
+        print("[Main] Loop " + i + ": spawning...")
+        let handle = avatar worker(i)
+        
+        print("[Main] Awaiting...")
+        let result = await handle
+        print("[Main] Got: " + result)
+        
+        i = i + 1
+    }
+    
+    print("Done!")
+}
+
+main()

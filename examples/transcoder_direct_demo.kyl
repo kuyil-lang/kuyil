@@ -1,5 +1,5 @@
-@loadlib("./libs/libkyltranscoder.so")
-import("../interfaces/interface_str.kyl")
+import "interfaces/interface_transcoder.kyl"
+import "interfaces/interface_str.kyl"
 
 print("=== Transcoder Direct Demo ===")
 let input = "abcabcabcabcabcabc"

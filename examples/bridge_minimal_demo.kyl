@@ -1,0 +1,294 @@
+// Minimal Bridge Demo - Manual Pattern
+// Shows the bridge pattern without framework complexity
+
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview.kyl"
+import "interfaces/interface_http.kyl"
+import "interfaces/interface_str.kyl"
+
+// Global state for async requests
+let window_global = nil
+let pending_responses = []  // Queue for responses from avatars
+
+// Handler functions
+fn handleFetchAsync(requestData) {
+    print("[Bridge] Fetch async, data: " + requestData)
+    
+    // Parse requestData "req_0|https://url" format
+    let parts = str_split(requestData, "|")
+    let requestId = parts[0]
+    let url = parts[1]
+    
+    print("[Bridge] Fetch async, ID: " + requestId + ", URL: " + url)
+    
+    // Launch avatar
+    avatar fetchWorker(requestId, url)
+    
+    return requestId  // Return immediately
+}
+
+fn fetchWorker(requestId, url) {
+    print("[Worker] Fetching: " + url)
+    
+    let result = clientGet(url)
+    
+    print("[Worker] Complete, got result")
+    print("[Worker] Request ID type: ")
+    print(requestId)
+    
+    // CRITICAL: Avatar context breaks string operations
+    // We cannot build eval strings here - strings become objects
+    // For now, just print success
+    print("[Worker] Would send response for: " + requestId)
+    print("[Worker] Result length: " + result)
+}
+
+fn handleEchoSync(requestData) {
+    // Ultra simple test - just eval a response
+    eval(window_global, "console.log('ECHO WAS CALLED!');")
+    return "test"
+}
+
+fn sendResponse(requestId, result, error) {
+    print("[Bridge] sendResponse called for: " + requestId)
+    
+    // Build JSON - this only works in main thread, NOT in avatar context
+    let json = "{\"id\":\"" + requestId + "\",\"result\":\"" + result + "\",\"error\":\"" + error + "\"}"
+    let jsCode = "window.__kuyilBridgeResponse('" + json + "');"
+    
+    print("[Bridge] About to eval...")
+    eval(window_global, jsCode)
+    
+    print("[Bridge] Eval done")
+}
+
+fn notifyReady() {
+    print("[Bridge] About to eval notify ready...")
+    let jsCode = "if(window.kuyilBridge) { window.kuyilBridge.setReady(); }"
+    eval(window_global, jsCode)
+    print("[Bridge] Notified ready")
+}
+
+// Main
+fn main() {
+    print("=== Minimal Bridge Demo ===\n")
+    
+    let html = "<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal Bridge</title>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; }
+        button { padding: 10px 20px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        div.output { padding: 15px; background: #f0f0f0; margin: 10px 0; border-radius: 4px; }
+        div.err { background: #ffebee; color: #c62828; }
+    </style>
+</head>
+<body>
+    <h1>Bridge Demo</h1>
+    <p>Testing Promise-based bridge with avatars</p>
+    
+    <div>
+        <h3>Test Async Fetch</h3>
+        <button onclick='testFetch()'>Fetch httpbin.org/json</button>
+        <div id='fetch-result'></div>
+    </div>
+    
+    <div>
+        <h3>Test Sync Echo</h3>
+        <button onclick='testEcho()'>Echo Message</button>
+        <div id='echo-result'></div>
+    </div>
+    
+    <div>
+        <h3>Direct Binding Test</h3>
+        <button onclick='testDirect()'>Test Direct Call</button>
+        <div id='direct-result'></div>
+    </div>
+    
+    <script>
+        // Inline bridge implementation
+        (function() {
+            var requestHandlers = {};
+            var requestId = 0;
+            
+            window.__kuyilBridgeResponse = function(responseJson) {
+                console.log('[Bridge] Response:', responseJson);
+                try {
+                    var response = JSON.parse(responseJson);
+                    var handler = requestHandlers[response.id];
+                    if (handler) {
+                        clearTimeout(handler.timeoutId);
+                        if (response.error) {
+                            handler.reject(new Error(response.error));
+                        } else {
+                            handler.resolve(response.result);
+                        }
+                        delete requestHandlers[response.id];
+                    }
+                } catch (e) {
+                    console.error('[Bridge] Error:', e);
+                }
+            };
+            
+            function call(funcName, params, timeout) {
+                timeout = timeout || 30000;
+                return new Promise(function(resolve, reject) {
+                    var id = 'req_' + (requestId++);
+                    requestHandlers[id] = { resolve: resolve, reject: reject };
+                    requestHandlers[id].timeoutId = setTimeout(function() {
+                        if (requestHandlers[id]) {
+                            delete requestHandlers[id];
+                            reject(new Error('Timeout'));
+                        }
+                    }, timeout);
+                    
+                    var paramsJson = params == null ? 'null' : JSON.stringify(params);
+                    console.log('[Bridge] Calling:', funcName, id, paramsJson);
+                    
+                    // Combine id and params into single parameter (webview binding limitation)
+                    // For simple string params, pass as-is; for objects, use JSON
+                    var paramValue = (typeof params === 'string') ? params : (params == null ? '' : JSON.stringify(params));
+                    var combinedParam = id + '|' + paramValue;
+                    
+                    if (window[funcName]) {
+                        window[funcName](combinedParam);
+                    } else {
+                        clearTimeout(requestHandlers[id].timeoutId);
+                        delete requestHandlers[id];
+                        reject(new Error('Function not found: ' + funcName));
+                    }
+                });
+            }
+            
+            var ready = false;
+            var readyCallbacks = [];
+            
+            window.kuyilBridge = {
+                call: call,
+                setReady: function() {
+                    ready = true;
+                    console.log('[Bridge] Ready');
+                    readyCallbacks.forEach(function(cb) { cb(); });
+                    readyCallbacks = [];
+                },
+                onReady: function(callback) {
+                    if (ready) callback();
+                    else readyCallbacks.push(callback);
+                }
+            };
+            
+            console.log('[Bridge] Initialized inline');
+        })();
+    </script>
+    <script>
+        console.log('Script loaded');
+        console.log('window.kuyilBridge:', window.kuyilBridge);
+        console.log('window.echoSync:', window.echoSync);
+        
+        // Test direct binding first
+        function testDirect() {
+            var el = document.getElementById('direct-result');
+            try {
+                el.innerHTML = '<div class=output>Calling echoSync directly...</div>';
+                var result = window.echoSync('direct_req', 'Hello Direct!');
+                el.innerHTML = '<div class=output>Direct call returned: ' + result + '</div>';
+            } catch (e) {
+                el.innerHTML = '<div class=err>Direct call error: ' + e + '</div>';
+            }
+        }
+        
+        var bridge = window.kuyilBridge;
+        
+        bridge.onReady(function() {
+            console.log('Bridge ready!');
+            document.body.style.borderTop = '5px solid #4CAF50';
+        });
+        
+        async function testFetch() {
+            var el = document.getElementById('fetch-result');
+            el.innerHTML = '<div class=output>Fetching...</div>';
+            
+            try {
+                if (!bridge) {
+                    el.innerHTML = '<div class=err>Bridge not loaded!</div>';
+                    return;
+                }
+                var data = await bridge.call('fetchAsync', 'https://httpbin.org/json');
+                el.innerHTML = '<div class=output>Got ' + data.length + ' bytes</div>';
+            } catch (error) {
+                el.innerHTML = '<div class=err>' + error + '</div>';
+            }
+        }
+        
+        async function testEcho() {
+            var el = document.getElementById('echo-result');
+            el.innerHTML = '<div class=output>Echoing...</div>';
+            
+            try {
+                if (!bridge) {
+                    el.innerHTML = '<div class=err>Bridge not loaded!</div>';
+                    return;
+                }
+                var data = await bridge.call('echoSync', 'Hello from JavaScript!');
+                el.innerHTML = '<div class=output>' + data + '</div>';
+            } catch (error) {
+                el.innerHTML = '<div class=err>' + error + '</div>';
+            }
+        }
+    </script>
+</body>
+</html>"
+    
+    // Create window
+    print("🔧 Initializing WebView...")
+    init()
+    print("⚙️ Creating settings...")
+    let settings = createDefaultSettings()
+    print("🪟 Creating window...")
+    let window = create("Minimal Bridge", settings)
+    print("📊 Window created")
+    window_global = window
+    
+    // Load HTML
+    print("🌐 Loading HTML...")
+    loadHtml(window, html)
+    print("📄 HTML loaded")
+
+    let i = 0
+    while i < 50 {
+        step(window)
+        sleep(10)
+        i = i + 1
+    }
+
+    // Bind functions FIRST
+    print("📝 Binding functions...")
+    bind(window, "fetchAsync", handleFetchAsync)
+    bind(window, "echoSync", handleEchoSync)
+    print("✅ Functions bound")
+    
+    
+    // Show window
+    print("👁️ Showing window...")
+    show(window)
+    print("✅ Window shown (check taskbar/minimize icon)")
+    print("   If you only see taskbar icon, click it to show window")
+    
+    // Notify ready immediately
+    print("📢 Notifying bridge ready...")
+    notifyReady()
+    
+    print("🚀 Entering event loop...\n")
+    
+    // Main event loop
+    while is_open(window) {
+        step(window)
+        sleep(10)
+    }
+    
+    print("\n👋 Window closed")
+}
+
+main()

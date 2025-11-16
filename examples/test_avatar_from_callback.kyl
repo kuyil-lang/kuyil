@@ -1,0 +1,33 @@
+// Test: Can avatars be spawned from C callback context?
+
+import "interfaces/interface_system.kyl"
+
+let flag = ""
+
+fn testCallback() {
+    print("[Callback] Called")
+    avatar worker()
+    print("[Callback] Avatar spawned")
+    return "OK"
+}
+
+fn worker() {
+    print("[Worker] RUNNING!")
+    flag = "WORKER_RAN"
+}
+
+fn main() {
+    print("=== Avatar from Callback Test ===\n")
+    
+    // Simulate what webview binding does: call function that spawns avatar
+    print("Calling testCallback...")
+    testCallback()
+    
+    print("Sleeping to let avatar run...")
+    sleep(1000)
+    
+    print("Flag value: " + flag)
+    print("\nDone")
+}
+
+main()

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebView App from Dist</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            margin-top: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        button {
+            padding: 12px 24px;
+            margin: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #764ba2;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            background: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        .output {
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            margin: 15px 0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            border-left: 4px solid rgba(255, 255, 255, 0.5);
+        }
+        .success {
+            background: rgba(76, 175, 80, 0.3);
+            border-left-color: #4CAF50;
+        }
+        .info {
+            background: rgba(33, 150, 243, 0.3);
+            border-left-color: #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 WebView App from Dist Folder</h1>
+        <p>This HTML is loaded from <code>dist/index.html</code></p>
+        
+        <div>
+            <button onclick="testGreet()">Say Hello</button>
+            <button onclick="testCalculate()">Calculate Sum</button>
+            <button onclick="testProcess()">Process Data</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+    
+    <script>
+        console.log('[App] Loaded from dist folder');
+        
+        // Test if Kuyil bridge is available
+        if (window.kuyil) {
+            console.log('[App] ✅ Kuyil bridge available');
+        } else {
+            console.log('[App] ❌ Kuyil bridge not available');
+        }
+        
+        function testGreet() {
+            var el = document.getElementById('result');
+            el.innerHTML = '<div class="output info">Calling greet handler...</div>';
+            
+            window.kuyil.call('greet', 'World')
+                .then(function(result) {
+                    el.innerHTML += '<div class="output success">✅ ' + result + '</div>';
+                })
+                .catch(function(err) {
+                    el.innerHTML += '<div class="output">❌ Error: ' + err + '</div>';
+                });
+        }
+        
+        function testCalculate() {
+            var el = document.getElementById('result');
+            el.innerHTML = '<div class="output info">Calculating 10 + 20...</div>';
+            
+            window.kuyil.call('calculate', {a: 10, b: 20})
+                .then(function(result) {
+                    el.innerHTML += '<div class="output success">✅ Result: ' + result + '</div>';
+                })
+                .catch(function(err) {
+                    el.innerHTML += '<div class="output">❌ Error: ' + err + '</div>';
+                });
+        }
+        
+        function testProcess() {
+            var el = document.getElementById('result');
+            el.innerHTML = '<div class="output info">Processing order...</div>';
+            
+            window.kuyil.call('processOrder', {
+                orderId: 12345,
+                items: 3,
+                total: 99.99
+            })
+                .then(function(result) {
+                    el.innerHTML += '<div class="output success">✅ ' + result + '</div>';
+                })
+                .catch(function(err) {
+                    el.innerHTML += '<div class="output">❌ Error: ' + err + '</div>';
+                });
+        }
+        
+        // Auto-test after 1 second
+        setTimeout(function() {
+            console.log('[App] Auto-testing...');
+            testGreet();
+        }, 1000);
+    </script>
+</body>
+</html>

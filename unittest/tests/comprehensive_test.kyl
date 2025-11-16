@@ -1,18 +1,18 @@
-import("../../interfaces/interface_str.kyl")
-import("../../interfaces/interface_math.kyl")
-import("../../interfaces/interface_datetime.kyl")
+import "interfaces/interface_str.kyl"
+import "interfaces/interface_math.kyl"
+import "interfaces/interface_datetime.kyl"
 
 function test_datetime_functions() {
     print("Testing datetime functions...")
     
-    let current_date = now()
+    let current_date = date_now()
     if (current_date) {
         print("PASS: Get current date")
     } else {
         print("FAIL: Get current date")
     }
     
-    let unix_time = unix()
+    let unix_time = date_unix()
     if (unix_time) {
         print("PASS: Get unix timestamp")
     } else {

@@ -1,0 +1,43 @@
+// Test await with delayed handle + processAvatarCompletions
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+fn worker(n) {
+    print("[Worker] Running with: " + n)
+    return n * 2
+}
+
+fn main() {
+    print("=== Test Delayed Await With processAvatarCompletions ===\n")
+    
+    let pending_handle = nil
+    let pending_id = ""
+    
+    let i = 0
+    while i < 5 {
+        processAvatarCompletions(10)  // Just like bridge
+        
+        // On even iterations, spawn avatar
+        if pending_id == "" && i % 2 == 0 {
+            print("[Main] Loop " + i + ": spawning...")
+            pending_handle = avatar worker(i)
+            pending_id = "req_" + i
+        }
+        
+        // Check if avatar completed (EXACT pattern from bridge)
+        if pending_handle != nil {
+            print("[Main] Loop " + i + ": awaiting...")
+            let result = await pending_handle
+            print("[Main] Got: " + result)
+            
+            // Clear (like bridge)
+            pending_handle = nil
+            pending_id = ""
+        }
+        
+        i = i + 1
+        sleep(10)  // Simulate event loop delay
+    }
+}
+
+main()

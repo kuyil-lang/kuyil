@@ -1,0 +1,32 @@
+// Super minimal test - just open a window
+
+import "interfaces/interface_webview.kyl"
+import "interfaces/interface_system.kyl"
+
+fn main() {
+    print("Creating window...")
+    
+    init()
+    let settings = createDefaultSettings()
+    let window = create("Test Window", settings)
+    
+    print("Loading simple HTML...")
+    let html = "<!DOCTYPE html>
+<html>
+<head><title>Test</title></head>
+<body>
+    <h1>Hello World!</h1>
+    <p>If you see this, the window is working.</p>
+</body>
+</html>"
+    
+    loadHtml(window, html)
+    show(window)
+    
+    print("Window should be visible. Running...")
+    run(window)
+    
+    print("Window closed")
+}
+
+main()

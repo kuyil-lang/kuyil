@@ -99,10 +99,36 @@ bool exec_add(ExecContext* ctx) {
         result.as.string = new_str;
         exec_push(ctx, result);
         return true;
+    } else if (a.type == VALUE_ARRAY && b.type == VALUE_ARRAY) {
+        // Array concatenation
+        int new_count = a.as.array.count + b.as.array.count;
+        Value* new_values = malloc(sizeof(Value) * new_count);
+        if (!new_values) {
+            *ctx->has_error = true;
+            snprintf(ctx->error_message, ctx->error_msg_size, 
+                    "Memory allocation failed in array ADD");
+            return false;
+        }
+        
+        // Copy elements from first array
+        for (int i = 0; i < a.as.array.count; i++) {
+            new_values[i] = a.as.array.values[i];
+        }
+        
+        // Copy elements from second array
+        for (int i = 0; i < b.as.array.count; i++) {
+            new_values[a.as.array.count + i] = b.as.array.values[i];
+        }
+        
+        Value result = {VALUE_ARRAY};
+        result.as.array.count = new_count;
+        result.as.array.values = new_values;
+        exec_push(ctx, result);
+        return true;
     } else {
         *ctx->has_error = true;
         snprintf(ctx->error_message, ctx->error_msg_size, 
-                "Operands must be two numbers or two strings");
+                "Operands must be two numbers, two strings, or two arrays");
         return false;
     }
 }
@@ -599,23 +625,39 @@ bool exec_object_get(ExecContext* ctx) {
     }
     
     if (object.type != VALUE_OBJECT) {
+        printf("[OBJECT_GET ERROR] Expected object but got type %d\n", object.type);
+        if (object.type == VALUE_STRING) {
+            printf("[OBJECT_GET ERROR] String value: %.50s\n", object.as.string);
+        }
         *ctx->has_error = true;
         snprintf(ctx->error_message, ctx->error_msg_size, 
                 "Can only access properties on maps/objects");
         return false;
     }
     
+    // DEBUG: Log object access in avatars
+    printf("[OBJECT_GET] Accessing key '%s' on object with %d properties\n", 
+           key.as.string, object.as.object.count);
+    
     // Search for the key in the map
     bool found = false;
     for (int i = 0; i < object.as.object.count; i++) {
+        printf("[OBJECT_GET] Checking key[%d] = '%s'\n", i, object.as.object.keys[i]);
         if (strcmp(object.as.object.keys[i], key.as.string) == 0) {
-            exec_push(ctx, object.as.object.values[i]);
+            Value val = object.as.object.values[i];
+            printf("[OBJECT_GET] FOUND! Type: %d\n", val.type);
+            if (val.type == VALUE_STRING) {
+                size_t len = val.as.string ? strlen(val.as.string) : 0;
+                printf("[OBJECT_GET] String ptr: %p, length: %zu\n", (void*)val.as.string, len);
+            }
+            exec_push(ctx, val);
             found = true;
             break;
         }
     }
     
     if (!found) {
+        printf("[OBJECT_GET] Key '%s' NOT FOUND, returning nil\n", key.as.string);
         // Return nil for missing keys (like Go maps)
         Value nilv = {VALUE_NIL};
         exec_push(ctx, nilv);

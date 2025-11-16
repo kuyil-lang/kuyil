@@ -1,0 +1,207 @@
+// Working Bridge Demo - Polling + Main Loop Avatar Spawning
+// Webview callbacks set flags, main loop spawns avatars
+
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview.kyl"
+import "interfaces/interface_http.kyl"
+import "interfaces/interface_str.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+let window_global = nil
+let pending_request_id = ""
+let pending_request_url = ""
+let pending_avatar_handle = nil
+let pending_avatar_id = ""
+let response_id = ""
+let response_data = ""
+
+// Called from JavaScript via binding
+fn requestFetch(combined) {
+    print("[Bridge] requestFetch: " + combined)
+    
+    // Parse "req_0|https://url"
+    let parts = str_split(combined, "|")
+    let requestId = parts[0]
+    let url = parts[1]
+    
+    print("[Bridge] ID: " + requestId + ", URL: " + url)
+    
+    // Set flags for main loop to spawn avatar
+    pending_request_id = requestId
+    pending_request_url = url
+    
+    return "QUEUED"
+}
+
+// Called from JavaScript to poll for responses
+// JavaScript may pass an empty object {}, so accept optional argument
+fn pollResponse(dummy) {
+    print("[Bridge] pollResponse called, response_id='" + response_id + "', response_data='" + response_data + "'")
+    if response_id != "" {
+        let combined = response_id + "|" + response_data
+        print("[Bridge] Returning response: " + combined)
+        let result = combined
+        // Clear after saving to local variable
+        response_id = ""
+        response_data = ""
+        return result
+    }
+    return ""
+}
+
+// Avatar worker - fetches URL  
+fn fetchWorker(url) {
+    print("[Worker] Test with simple return")
+    print("[Worker] About to return 'SUCCESS'")
+    return "SUCCESS"  // Try string
+}
+
+fn main() {
+    print("=== Working Bridge Demo ===\n")
+    
+    let html = "<!DOCTYPE html>
+<html>
+<head>
+    <title>Working Bridge</title>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; }
+        button { padding: 10px 20px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        .output { padding: 15px; background: #f0f0f0; margin: 10px 0; border-radius: 4px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Working Bridge Demo</h1>
+    <p>Webview → Flag → Main Loop → Avatar → Response</p>
+    
+    <button onclick='testFetch()'>Fetch httpbin.org/json</button>
+    <div id='result'></div>
+    
+    <script>
+        console.log('Page loaded');
+        
+        var requestId = 0;
+        var pendingRequests = {};
+        
+        // Handler for responses pushed from Kuyil
+        window.handleKuyilResponse = function(respId, respData) {
+            console.log('Received pushed response:', respId, respData);
+            var el = document.getElementById('result');
+            el.innerHTML += '<div class=output>✅ Response for ' + respId + ': ' + respData + '</div>';
+            
+            // Cleanup pending request
+            if (pendingRequests[respId]) {
+                clearTimeout(pendingRequests[respId]);
+                delete pendingRequests[respId];
+            }
+            
+            // Auto-trigger next request for continuous testing
+            setTimeout(function() { testFetch(); }, 1000);
+        };
+        
+        // Auto-trigger after 1 second for testing
+        setTimeout(function() {
+            console.log('Auto-triggering test...');
+            testFetch();
+        }, 1000);
+        
+        function testFetch() {
+            var el = document.getElementById('result');
+            var id = 'req_' + (requestId++);
+            var url = 'https://httpbin.org/json';
+            var combined = id + '|' + url;
+            
+            el.innerHTML += '<div class=output>Requesting: ' + id + '</div>';
+            
+            if (window.requestFetch) {
+                var status = window.requestFetch(combined);
+                el.innerHTML += '<div class=output>Status: ' + status + '. Waiting for response...</div>';
+                
+                // Set a timeout fallback in case push doesn't work
+                var timeoutHandle = setTimeout(function() {
+                    el.innerHTML += '<div class=output>❌ Timeout waiting for ' + id + '</div>';
+                    delete pendingRequests[id];
+                }, 10000);
+                
+                pendingRequests[id] = timeoutHandle;
+            } else {
+                el.innerHTML = '<div class=output>❌ requestFetch not bound!</div>';
+            }
+        }
+    </script>
+</body>
+</html>"
+    
+    print("🔧 Init...")
+    init()
+    let settings = createDefaultSettings()
+    let window = create("Working Bridge", settings)
+    window_global = window
+    
+    print("📄 Load HTML...")
+    loadHtml(window, html)
+    
+    print("⏳ Wait for load...")
+    let j = 0
+    while j < 30 {
+        step(window)
+        sleep(10)
+        j = j + 1
+    }
+    
+    print("📝 Bind...")
+    let bind1 = bind(window, "requestFetch", requestFetch)
+    print("[DEBUG] bind requestFetch returned type: " + typeof(bind1) + ", value: " + bind1)
+    let bind2 = bind(window, "pollResponse", pollResponse)
+    print("[DEBUG] bind pollResponse returned type: " + typeof(bind2) + ", value: " + bind2)
+    
+    print("👁️ Show...")
+    show(window)
+    
+    print("🚀 Event loop\n")
+    while is_open(window) {
+        step(window)
+        processAvatarCompletions(10)
+        
+        // Check for pending fetch requests from webview
+        if pending_request_id != "" {
+            print("[Main] Spawning avatar for: " + pending_request_id)
+            
+            // Spawn avatar
+            pending_avatar_handle = avatar fetchWorker(pending_request_url)
+            pending_avatar_id = pending_request_id
+            
+            print("[Main] Avatar spawned with handle: " + pending_avatar_handle)
+            
+            // Clear request state
+            pending_request_id = ""
+            pending_request_url = ""
+        }
+        
+        // Check if avatar completed (non-blocking check)
+        if pending_avatar_handle != nil {
+            let result = await pending_avatar_handle
+            print("[Main] Avatar completed with result: " + result)
+            
+            // Store response for JavaScript to poll
+            response_id = pending_avatar_id
+            response_data = result
+            print("[Main] Stored response: id=" + response_id + ", data=" + response_data)
+            
+            // PUSH response to JavaScript immediately instead of waiting for poll
+            let js_code = "window.handleKuyilResponse('" + response_id + "', '" + response_data + "');"
+            print("[Main] Pushing to JS: " + js_code)
+            eval(window_global, js_code)
+            
+            // Clear avatar state
+            pending_avatar_handle = nil
+            pending_avatar_id = ""
+        }
+        
+        sleep(10)
+    }
+    
+    print("\n👋 Done")
+}
+
+main()

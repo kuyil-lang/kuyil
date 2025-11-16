@@ -1,0 +1,23 @@
+// Test 4: Local variable from function call
+import "../interfaces/interface_str.kyl"
+
+fn helper() {
+    return 999
+}
+
+fn testFunctionCall(arg1) {
+    print("[TEST4] Local from function call")
+    let result = helper()
+    print("result = " + str_toString(result))
+    return result
+}
+
+fn main() {
+    let result = await avatar testFunctionCall(5)
+    print("Result: " + str_toString(result))
+    if result == 999 {
+        print("✓ TEST4 PASSED")
+    } else {
+        print("✗ TEST4 FAILED: got " + str_toString(result))
+    }
+}

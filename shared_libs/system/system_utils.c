@@ -11,28 +11,29 @@
 
 // Sleep for specified milliseconds
 // Usage: sleep(1000) - sleep for 1 second
-Value kyl_system_sleep(int arg_count, Value* args) {
-    Value result;
-    result.type = VALUE_BOOL;
-    result.as.boolean = false;
-    
-    if (arg_count < 1 || args[0].type != VALUE_NUMBER) {
-        fprintf(stderr, "Error: sleep() requires milliseconds (number) argument\n");
-        return result;
+Value kyl_system_sleep(int argc, Value* argv) {
+    // Handle both calling conventions:
+    // - Direct call: argc=1, argv[0] = milliseconds
+    // - Namespace call: argc=2, argv[0] = namespace object, argv[1] = milliseconds
+    Value ms_val;
+    if (argc == 2) {
+        // Namespace call convention
+        ms_val = argv[1];
+    } else if (argc == 1) {
+        // Direct call convention
+        ms_val = argv[0];
+    } else {
+        // Unexpected argument count
+        return (Value){.type = VALUE_NIL};
     }
-    
-    int milliseconds = (int)args[0].as.number;
-    
-    if (milliseconds < 0) {
-        fprintf(stderr, "Error: sleep() milliseconds must be non-negative\n");
-        return result;
+
+    if (ms_val.type != VALUE_NUMBER) {
+        return (Value){.type = VALUE_NIL};
     }
-    
-    // usleep takes microseconds
-    usleep(milliseconds * 1000);
-    
-    result.as.boolean = true;
-    return result;
+
+    int ms = (int)ms_val.as.number;
+    usleep(ms * 1000);
+    return (Value){.type = VALUE_NIL};
 }
 
 // Get current timestamp in milliseconds since epoch
@@ -113,8 +114,8 @@ Value kyl_system_unescape(int arg_count, Value* args) {
 const char* library_interface() {
     return 
         "library system\n"
-        "  function sleep(milliseconds: int32) -> bool\n"
-        "  function timestamp() -> int64\n"
+        "  function sleep(milliseconds: any) -> any\n"
+        "  function timestamp() -> any\n"
         "  function unescape(str: string) -> string\n";
 }
 
@@ -125,7 +126,7 @@ typedef struct {
 } FunctionEntry;
 
 static FunctionEntry functions[] = {
-    {"sleep", kyl_system_sleep},
+    {"pause", kyl_system_sleep},
     {"timestamp", kyl_system_timestamp},
     {"unescape", kyl_system_unescape},
     {NULL, NULL}

@@ -1,0 +1,4 @@
+// HeapFS Interface - Embedded Resource Access
+// Provides access to files embedded in the binary at compile time
+// These are system functions built into the VM (no shared library required)
+// DO NOT import this file - call heapfs_* functions directly

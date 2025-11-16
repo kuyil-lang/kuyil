@@ -3,9 +3,10 @@
 #include "http_client_ex.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 // For Phase 1: We'll implement simple versions without full map support
-// TODO: Add proper map/object handling in Phase 2
+// TODO: Add proper map handling in Phase 2
 
 // http_clientGetEx(url: string, headers: map) -> HttpResponse
 // Simplified: ignores headers for now
@@ -70,7 +71,18 @@ Value kyl_http_clientPostEx(int arg_count, Value* args) {
     HttpClientResponse* response = http_client_post_ex(url, body, NULL, NULL, 0);
     
     if (!response) {
+        fprintf(stderr, "[C DEBUG] http_client_post_ex returned NULL\n");
         return result;
+    }
+    
+    fprintf(stderr, "[C DEBUG] Response received - status: %d, body_length: %zu\n", 
+            response->status_code, response->body_length);
+    fprintf(stderr, "[C DEBUG] Body pointer: %p\n", (void*)response->body);
+    if (response->body) {
+        fprintf(stderr, "[C DEBUG] Body content (first 100 chars): %.100s\n", response->body);
+    }
+    if (response->error_message) {
+        fprintf(stderr, "[C DEBUG] Error message: %s\n", response->error_message);
     }
     
     // Create object result

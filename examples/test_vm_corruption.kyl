@@ -1,0 +1,92 @@
+// Minimal reproduction of the VM corruption bug
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_webview.kyl"
+import "interfaces/interface_eventloop.kyl"
+
+let global_value = 0
+
+fn testWorker() {
+    print("[Worker] Running")
+    return 99
+}
+
+// Binding that will be called from JavaScript
+fn setBridge(arg) {
+    print("[Binding] Called with: " + arg)
+    global_value = 123  // Set a simple number
+    return "OK"
+}
+
+fn main() {
+    print("=== Minimal Reproduction ===\n")
+    
+    // Create webview with auto-calling JS
+    init()
+    let settings = createDefaultSettings()
+    let window = create("Test", settings)
+    
+    let html = "<!DOCTYPE html>
+<html><body>
+    <h1>Test</h1>
+    <script>
+        setTimeout(() => {
+            console.log('Calling setBridge');
+            setBridge('test_value').then(r => console.log('Returned:', r));
+        }, 200);
+    </script>
+</body></html>"
+    
+    loadHtml(window, html)
+    
+    // Wait for load
+    let j = 0
+    while j < 30 {
+        step(window)
+        sleep(10)
+        j = j + 1
+    }
+    
+    bind(window, "setBridge", setBridge)
+    show(window)
+    
+    print("Event loop running...\n")
+    let loopcount = 0
+    while loopcount < 50 {
+        step(window)
+        processAvatarCompletions(10)
+        
+        // Once binding sets global, test avatar
+        if global_value != 0 {
+            print("[Main] Global was set to: " + global_value)
+            print("[Main] Spawning avatar...")
+            
+            let handle = avatar testWorker()
+            print("[Main] Handle type: " + typeof(handle))
+            print("[Main] Handle value: " + handle)
+            
+            // Test: Copy to local
+            let local_copy = handle
+            print("[Main] Local copy type: " + typeof(local_copy))
+            print("[Main] Local copy value: " + local_copy)
+            
+            // Test: Await local copy
+            print("[Main] Awaiting local copy...")
+            let result1 = await local_copy
+            print("[Main] Result from local: " + result1 + " (type: " + typeof(result1) + ")")
+            
+            // Test: Await original
+            print("[Main] Awaiting original...")
+            let result2 = await handle
+            print("[Main] Result from original: " + result2 + " (type: " + typeof(result2) + ")")
+            
+            return
+        }
+        
+        loopcount = loopcount + 1
+        sleep(10)
+    }
+    
+    print("❌ Timeout - binding not called")
+}
+
+main()

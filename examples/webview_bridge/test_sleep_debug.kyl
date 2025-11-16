@@ -1,0 +1,3 @@
+print("STEP 1: Before import")
+import("../../interfaces/interface_system.kyl")
+print("STEP 2: After import")

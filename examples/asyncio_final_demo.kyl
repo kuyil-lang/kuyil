@@ -1,8 +1,5 @@
 // Complete asyncio example with automatic interface resolution
-// import "asyncio" resolves to interfaces/interface_asyncio.kyl
-
-// Use direct loadlib for now until import is fixed
-loadlib("libs/libkylasyncio.so")
+import "interfaces/interface_asyncio.kyl"
 
 print("\n═══════════════════════════════════════")
 print("  Asyncio HTTP with Headers & Timeouts")

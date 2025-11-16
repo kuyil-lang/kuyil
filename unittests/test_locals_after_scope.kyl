@@ -1,0 +1,27 @@
+// Test 3: Local variable declared after if-block (nested scope)
+import "../interfaces/interface_str.kyl"
+
+fn testAfterNestedScope(arg1) {
+    print("[TEST3] Local after nested scope")
+    let before = 100
+    
+    if true {
+        let inside = 50
+        print("inside = " + str_toString(inside))
+    }
+    
+    let after = 200
+    print("before = " + str_toString(before))
+    print("after = " + str_toString(after))
+    return before + after
+}
+
+fn main() {
+    let result = await avatar testAfterNestedScope(5)
+    print("Result: " + str_toString(result))
+    if result == 300 {
+        print("✓ TEST3 PASSED")
+    } else {
+        print("✗ TEST3 FAILED: got " + str_toString(result))
+    }
+}

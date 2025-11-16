@@ -1,0 +1,78 @@
+#!/bin/bash
+# Kuyil compiled binary (wrapper mode)
+# Original source: examples/test_framework_logic.kyl
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cat << 'EOF' | "$SCRIPT_DIR/kuyil" -
+// Test the framework logic without GUI
+import "../interfaces/interface_system.kyl"
+import "../interfaces/interface_str.kyl"
+
+// Simulate framework state
+let g_handler_names = []
+let g_handlers = []
+let g_pending_ids = []
+let g_pending_handles = []
+
+fn registerHandler(name, handlerFunc) {
+    g_handler_names = g_handler_names + [name]
+    g_handlers = g_handlers + [handlerFunc]
+    print("[Framework] Registered: " + name)
+}
+
+fn findHandler(handlerName) {
+    let idx = -1
+    let i = 0
+    while i < g_handler_names.length {
+        if (g_handler_names[i] == handlerName) {
+            idx = i
+        }
+        i = i + 1
+    }
+    return idx
+}
+
+// Test handlers
+fn fetchData(args) {
+    return "Data for: " + args
+}
+
+fn calculate(args) {
+    return "Result: 42"
+}
+
+fn process(args) {
+    return "Processed: " + args
+}
+
+// Register handlers
+registerHandler("fetchData", fetchData)
+registerHandler("calculate", calculate)
+registerHandler("process", process)
+
+// Test finding handlers
+print("\n=== Testing Handler Lookup ===")
+print("fetchData index:", findHandler("fetchData"))
+print("calculate index:", findHandler("calculate"))
+print("process index:", findHandler("process"))
+print("unknown index:", findHandler("unknown"))
+
+// Test calling handlers
+print("\n=== Testing Handler Calls ===")
+let idx = findHandler("fetchData")
+if (idx != -1) {
+    let handler = g_handlers[idx]
+    let result = handler("test_args")
+    print("fetchData result:", result)
+}
+
+idx = findHandler("calculate")
+if (idx != -1) {
+    let handler = g_handlers[idx]
+    let result = handler("")
+    print("calculate result:", result)
+}
+
+print("\n=== Framework Logic Test Complete ===")
+
+EOF

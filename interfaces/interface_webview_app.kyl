@@ -1,0 +1,253 @@
+// WebView App Framework - Simplified for Kuyil
+// Clean API for webview apps with avatar-based handlers
+
+import "interface_system.kyl"
+import "interface_fileio.kyl"
+import "interface_webview.kyl"
+import "interface_eventloop.kyl"
+import "interface_str.kyl"
+
+
+// Global state
+let g_app_window = nil
+let g_handler_names = []
+let g_workers = []  // Avatar worker functions for async execution
+
+// Simple flag-based state for main loop avatar spawning (like working bridge)
+let g_pending_request_id = ""
+let g_pending_handler_name = ""
+let g_pending_args_json = ""
+
+// No need to track avatar handles - avatars push results directly!
+let g_pending_avatar_id = ""
+
+// Create app and register handlers, then run
+fn runWebViewApp(title, htmlContent) {
+    _runWebViewAppInternal(title, htmlContent, nil, false)
+}
+
+// Create app from dist folder with index.html
+fn runWebViewAppFromDist(title, distFolder) {
+    _runWebViewAppInternal(title, nil, distFolder, false)
+}
+
+// Create app from embedded resources (heapfs)
+fn runWebViewAppFromHeapFS(title) {
+    _runWebViewAppInternal(title, nil, nil, true)
+}
+
+// Internal: Main app runner
+fn _runWebViewAppInternal(title, htmlContent, distFolder, useHeapFS) {
+    print("[Framework] Starting: " + title)
+    
+    // Initialize webview
+    print("[Framework] Debug: init()")
+    let initResult = init()
+    print("[Framework] Debug: init() = " + initResult)
+    print("[Framework] Debug: createDefaultSettings()")
+    let settings = createDefaultSettings()
+    print("[Framework] Debug: settings = " + settings)
+    print("[Framework] Debug: create()")
+    g_app_window = create(title, settings)
+    print("[Framework] Debug: window created = " + g_app_window)
+    
+    // Load content - determine the strategy
+    let finalHtml = htmlContent
+    
+    if useHeapFS {
+        // Use app-heapfs:// URI scheme for embedded resources
+        print("[Framework] Using embedded resources via app-heapfs:// scheme")
+        finalHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>` + title + `</title>
+    <link rel="stylesheet" href="app-heapfs://style.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script src="app-heapfs://app.js"></script>
+</body>
+</html>`
+    } else if distFolder != nil {
+        // Load from local filesystem - check disk first before heapfs
+        let indexPath = distFolder + "/index.html"
+        let fileSize = file.size(indexPath)
+        
+        if fileSize > 0 {
+            // File exists on disk - use app-localfs:// scheme
+            print("[Framework] Loading from dist: " + distFolder)
+            print("[Framework] Found index.html (" + fileSize + " bytes)")
+            let content = file.readText(indexPath)
+            if content != nil {
+                finalHtml = content
+                print(finalHtml)
+                // Replace relative paths with app-localfs:// URIs
+                finalHtml = str_replace(finalHtml, "href=\"style.css\"", "href=\"app-localfs://" + distFolder + "/style.css\"")
+                finalHtml = str_replace(finalHtml, "src=\"app.js\"", "src=\"app-localfs://" + distFolder + "/app.js\"")
+                print("[Framework] Loaded content with app-localfs:// URIs")
+            } else {
+                print("[Framework] Warning: Could not read file content")
+                if htmlContent == nil {
+                    finalHtml = "<html><body><h1>Error: Could not read HTML</h1></body></html>"
+                }
+            }
+        } else if heapfs_exists("index.html") {
+            // Fall back to embedded resources if disk file not found
+            print("[Framework] Loading index.html from embedded resources")
+            let info = heapfs_info("index.html")
+            finalHtml = str_bytesToString(info.data)
+            // Replace relative paths with app-heapfs:// URIs
+            finalHtml = str_replace(finalHtml, "href=\"style.css\"", "href=\"app-heapfs://style.css\"")
+            finalHtml = str_replace(finalHtml, "src=\"app.js\"", "src=\"app-heapfs://app.js\"")
+        } else {
+            print("[Framework] Warning: index.html not found in " + distFolder + " or heapfs")
+            if htmlContent == nil {
+                finalHtml = "<html><body><h1>Error: index.html not found</h1></body></html>"
+            }
+        }
+    }
+    
+    // Inject framework JavaScript
+    print("[Framework] Debug: injecting JS")
+    let enhanced = _injectFrameworkJS(finalHtml)
+    print("[Framework] Debug: enhanced HTML length = " + str_length(enhanced))
+    print("[Framework] Debug: loadHtml()")
+    loadHtml(g_app_window, enhanced)
+    
+    // Wait for page load
+    print("[Framework] Debug: waiting for load...")
+    let i = 0
+    while i < 30 {
+        step(g_app_window)
+        system.sleep(10)
+        i++
+    }
+    
+    // Bind universal bridge
+    print("[Framework] Debug: binding bridge")
+    bind(g_app_window, "__kuyilBridge", _universalBridge)
+    
+    // Bind console log forwarder
+    bind(g_app_window, "__kuyilConsole", _consoleForwarder)
+    
+    print("[Framework] Debug: enabling DevTools")
+    enableDevTools(g_app_window, true)
+    
+    print("[Framework] Debug: show()")
+    show(g_app_window)
+    print("[Framework] Running\n")
+    
+    // Event loop - like working bridge
+    while is_open(g_app_window) {
+        step(g_app_window)
+        processAvatarCompletions(10)
+        
+        // Check if there's a pending request to spawn avatar for
+        if (g_pending_request_id != "") {
+            print("[Framework] Spawning avatar for: " + g_pending_request_id)
+            
+            // Find worker
+            let idx = -1
+            let i = 0
+            while i < g_handler_names.length {
+                if g_handler_names[i] == g_pending_handler_name {
+                    idx = i
+                }
+                i++
+            }
+            
+            if idx != -1 {
+                let worker = g_workers[idx]
+                let reqId = g_pending_request_id  // Capture for avatar closure
+                
+                // Spawn avatar - it will push result directly to JS when done
+                avatar workerWithCallback(reqId, worker, g_pending_args_json)
+                print("[Framework] Avatar spawned with ID: " + reqId)
+            } else {
+                print("[Framework] ERROR: Handler not found: " + g_pending_handler_name)
+            }
+            
+            // Clear request flags
+            g_pending_request_id = ""
+            g_pending_handler_name = ""
+            g_pending_args_json = ""
+        }
+        
+        sleep(10)
+    }
+    
+    print("[Framework] Closed")
+}
+
+// Wrapper that calls worker and pushes result to JS
+fn workerWithCallback(reqId, worker, args) {
+    print("[Avatar] Starting work for: " + reqId)
+    let result = worker(args)
+    print("[Avatar] Work completed for: " + reqId)
+    print("[Avatar] Result type: " + typeof(result))
+    
+    // Push result directly to JavaScript from avatar
+    // The result is a JSON string, so we pass it as a string literal with proper escaping
+    // Escape for JavaScript string literal - must escape backslash FIRST, then other special chars
+    let escaped = str_replace(result, "\\", "\\\\")
+    escaped = str_replace(escaped, "'", "\\'")
+    escaped = str_replace(escaped, "\"", "\\\"")
+    escaped = str_replace(escaped, "\n", "\\n")
+    escaped = str_replace(escaped, "\r", "\\r")
+    escaped = str_replace(escaped, "\t", "\\t")
+    
+    // Pass as string, JavaScript will JSON.parse it
+    let js = "try { window.handleKuyilResponse('" + reqId + "', '" + escaped + "'); } catch(e) { console.error('[Kuyil] Response error:', e.message, e); }"
+    print("[Avatar] Pushing to JS")
+    eval(g_app_window, js)
+    
+    return "ok"
+}
+
+// Register a handler - call before runWebViewApp
+fn registerHandler(name, workerFunc) {
+    g_handler_names = g_handler_names + [name]
+    g_workers = g_workers + [workerFunc]
+    print("[Framework] Registered: " + name)
+}
+
+// Internal: Universal bridge - sets flags for main loop to spawn avatar
+fn _universalBridge(combined) {
+    print("[Framework] _universalBridge called with: " + combined)
+    print("[Framework] typeof combined: " + typeof(combined))
+    
+    let parts = str_split(combined, "|")
+    print("[Framework] str_split returned, typeof parts: " + typeof(parts))
+    
+    if typeof(parts) != "array" {
+        print("[Framework] ERROR: str_split did not return array!")
+        return "error"
+    }
+    
+    let reqId = parts[0]
+    let handlerName = parts[1]
+    let argsJson = parts[2]
+    
+    print("[Framework] Bridge: " + handlerName + " (ID: " + reqId + ")")
+    
+    // Set flags for main loop to spawn avatar (like working bridge pattern)
+    g_pending_request_id = reqId
+    g_pending_handler_name = handlerName
+    g_pending_args_json = argsJson
+    
+    print("[Framework] Queued: " + reqId)
+    return reqId
+}
+
+// Internal: Console log forwarder - prints JS console to terminal
+fn _consoleForwarder(message) {
+    print("[JS Console] " + message)
+    return ""
+}
+
+// Inject framework JavaScript with pendingRequests tracking
+fn _injectFrameworkJS(html) {
+    let js = "<script>(function(){var oc=console.log;console.log=function(){var args=Array.prototype.slice.call(arguments);oc.apply(console,args);if(window.__kuyilConsole){window.__kuyilConsole(args.map(function(a){return typeof a==='object'?JSON.stringify(a):String(a);}).join(' '));}};})();var requestCounter=0;var pendingRequests={};window.kuyil={call:function(name,args){return new Promise(function(resolve,reject){var id=name+'_'+Date.now()+'_'+(requestCounter++);console.log('[Kuyil] Calling:',name,'with ID:',id);if(window.__kuyilBridge){var combined=id+'|'+name+'|'+JSON.stringify(args);window.__kuyilBridge(combined);console.log('[Kuyil] Sent to bridge:',combined);var t=setTimeout(function(){console.error('[Kuyil] Timeout for',id);reject(new Error('Timeout'));delete pendingRequests[id];},30000);pendingRequests[id]={timeout:t,resolve:resolve,reject:reject};console.log('[Kuyil] Stored',id,'in pendingRequests');}else{reject(new Error('No bridge'));}});}};window.handleKuyilResponse=function(id,result){console.log('[Kuyil] Response:',id,result);if(pendingRequests[id]){console.log('[Kuyil] Resolving!');pendingRequests[id].resolve(result);clearTimeout(pendingRequests[id].timeout);delete pendingRequests[id];}else{console.error('[Kuyil] No entry for',id,'pending:',Object.keys(pendingRequests));}};console.log('[Kuyil] Framework Ready');</script>"
+    return str_replace(html, "</head>", js + "</head>")
+}

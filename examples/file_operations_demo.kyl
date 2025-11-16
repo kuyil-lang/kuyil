@@ -1,10 +1,24 @@
 // File Operations Demo with FileIO Library
 // Demonstrates working file reading operations with the separate FileIO shared library
+// 
+// ⚠️  KNOWN ISSUE: Interface return values have type corruption
+//     - file_readText() returns corrupted type (cannot use with str_* functions or print)
+//     - file_exists() returns empty value instead of bool
+//     - file_size() returns 0 instead of actual size
+//     - Functions ARE being called successfully in C (debug logs confirm)
+//     - Return values lose their type when crossing from C→Kuyil runtime
+//     - This affects ALL interface library functions that return values
+//
+// 🔧 ROOT CAUSE: Interface binding system doesn't properly convert C return values
+//     - VALUE_STRING from C becomes corrupted type in Kuyil VM
+//     - Avatar workers also can't fix this (type already corrupted)
+//     - Only workaround: Use functions that don't need return values, or use file:// URLs
 
 import("../interfaces/interface_fileio.kyl")
 import("../interfaces/interface_str.kyl")
 
 print("=== File Operations Demo ===")
+print("⚠️  Note: Return value type issue affects all file functions")
 print("")
 
 // 1. Basic File Existence Check
@@ -43,9 +57,10 @@ print("3. Text File Reading:")
 let hello_content = readText("examples/hello.kyl")
 if (hello_content != nil) {
     print("Successfully read examples/hello.kyl")
-    // Use str_length to show actual content length
-    let content_length = length(hello_content) 
-    print("Content length:", content_length, "characters")
+    // Can't use str_length due to type issue, but we can print the content
+    print("Content preview (first line):")
+    print(hello_content)
+    print("(File content cannot be measured with str_length due to type compatibility issue)")
 } else {
     print("Failed to read examples/hello.kyl")
 }
@@ -54,8 +69,7 @@ if (hello_content != nil) {
 let readme_content = readText("README.md")
 if (readme_content != nil) {
     print("Successfully read README.md")
-    let readme_length = length(readme_content)
-    print("README length:", readme_length, "characters")
+    print("Content successfully loaded (cannot show length due to type issue)")
 } else {
     print("Failed to read README.md")
 }

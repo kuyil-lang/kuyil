@@ -4,15 +4,38 @@ CFLAGS = -Wall -Wextra -std=c99 -O2 -g -fPIC
 LIBS = -lcurl -lpthread -lm -ldl -levent
 SRCDIR = src
 
+# Check if embedded_resources.c exists, include it automatically
+EMBED_SRC := $(wildcard $(SRCDIR)/embedded_resources.c)
+ifneq ($(EMBED_SRC),)
+    $(info Found embedded_resources.c, including in build)
+endif
+
+# Optional: Support legacy EMBED_DIR variable for backward compatibility
+ifdef EMBED_DIR
+    EMBED_SRC = $(SRCDIR)/embedded_resources.c
+    $(info Using EMBED_DIR=$(EMBED_DIR), will generate embedded_resources.c)
+endif
+
 # Source files  
-SOURCES = $(SRCDIR)/main.c $(SRCDIR)/vm.c $(SRCDIR)/logging.c $(SRCDIR)/config.c $(SRCDIR)/ffi.c $(SRCDIR)/file_reader.c $(SRCDIR)/green_threads.c $(SRCDIR)/library_loader.c $(SRCDIR)/vm_library_integration.c $(SRCDIR)/vm_task_queue.c $(SRCDIR)/async_http.c $(SRCDIR)/thread_pool.c $(SRCDIR)/avatar_runtime.c $(SRCDIR)/async_request_queue.c $(SRCDIR)/opcode_executor.c
-HEADERS = $(SRCDIR)/tokens.h $(SRCDIR)/ast.h $(SRCDIR)/bytecode.h $(SRCDIR)/vm.h $(SRCDIR)/logging.h $(SRCDIR)/config.h $(SRCDIR)/ffi.h $(SRCDIR)/file_reader.h $(SRCDIR)/green_threads.h $(SRCDIR)/library_loader.h $(SRCDIR)/vm_library_integration.h $(SRCDIR)/async_http.h $(SRCDIR)/thread_pool.h $(SRCDIR)/avatar_runtime.h $(SRCDIR)/async_request_queue.h $(SRCDIR)/opcode_executor.h
+SOURCES = $(SRCDIR)/main.c $(SRCDIR)/vm.c $(SRCDIR)/logging.c $(SRCDIR)/config.c $(SRCDIR)/ffi.c $(SRCDIR)/file_reader.c $(SRCDIR)/green_threads.c $(SRCDIR)/library_loader.c $(SRCDIR)/vm_library_integration.c $(SRCDIR)/vm_task_queue.c $(SRCDIR)/async_http.c $(SRCDIR)/thread_pool.c $(SRCDIR)/avatar_runtime.c $(SRCDIR)/async_request_queue.c $(SRCDIR)/opcode_executor.c $(SRCDIR)/heapfs.c $(EMBED_SRC)
+HEADERS = $(SRCDIR)/tokens.h $(SRCDIR)/ast.h $(SRCDIR)/bytecode.h $(SRCDIR)/vm.h $(SRCDIR)/logging.h $(SRCDIR)/config.h $(SRCDIR)/ffi.h $(SRCDIR)/file_reader.h $(SRCDIR)/green_threads.h $(SRCDIR)/library_loader.h $(SRCDIR)/vm_library_integration.h $(SRCDIR)/async_http.h $(SRCDIR)/thread_pool.h $(SRCDIR)/avatar_runtime.h $(SRCDIR)/async_request_queue.h $(SRCDIR)/opcode_executor.h $(SRCDIR)/heapfs.h
 
 # Target executable
 TARGET = kuyil
 
 # Main target - MODIFIED: Now runs 'clean', 'directories', 'libs', then '$(TARGET)'
 all: directories libs $(TARGET)
+
+# Build with embedded resources
+embed: embed-resources all
+
+# Generate embedded resources using shell script
+embed-resources:
+ifndef EMBED_DIR
+	$(error EMBED_DIR is not set. Use: make embed EMBED_DIR=path/to/resources)
+endif
+	@echo "Embedding resources from $(EMBED_DIR) and interfaces/..."
+	./tools/embed_resources.sh $(SRCDIR)/embedded_resources.c $(EMBED_DIR) interfaces
 
 # Build shared libraries (CORE LIBS via Makefile.libs)
 libs:

@@ -1,0 +1,23 @@
+// Test 2: Multiple local variables in sequence
+import "../interfaces/interface_str.kyl"
+
+fn testMultiple(arg1) {
+    print("[TEST2] Multiple local variables")
+    let local1 = 100
+    let local2 = 200
+    let local3 = 300
+    print("local1 = " + str_toString(local1))
+    print("local2 = " + str_toString(local2))
+    print("local3 = " + str_toString(local3))
+    return local1 + local2 + local3
+}
+
+fn main() {
+    let result = await avatar testMultiple(5)
+    print("Result: " + str_toString(result))
+    if result == 600 {
+        print("✓ TEST2 PASSED")
+    } else {
+        print("✗ TEST2 FAILED: got " + str_toString(result))
+    }
+}
