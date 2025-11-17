@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 // Forward declarations
 struct AvatarHandle;
@@ -92,6 +93,20 @@ static void avatar_report_error(void* context, const char* message) {
     AvatarCallContext* ctx = (AvatarCallContext*)context;
     ctx->handle->has_error = true;
     snprintf(ctx->handle->error_message, sizeof(ctx->handle->error_message), "%s", message);
+    fprintf(stderr, "[AVATAR RUNTIME ERROR] %s\n", message);
+    fflush(stderr);
+}
+
+// Helper to set error with immediate reporting
+static void avatar_set_error(AvatarHandle* handle, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    vsnprintf(handle->error_message, sizeof(handle->error_message), format, args);
+    va_end(args);
+    
+    handle->has_error = true;
+    fprintf(stderr, "[AVATAR RUNTIME ERROR] %s\n", handle->error_message);
+    fflush(stderr);
 }
 
 static bool avatar_setup_frame(void* context, Function* function, int arg_count) {
@@ -135,9 +150,7 @@ static void* avatar_task_func(void* user_data) {
     // IMPORTANT: This must match how call_value() sets up frames in vm.c!
     // The main difference from top-level execution is that we have arguments.
     if (avatar_vm.frame_count >= FRAMES_MAX) {
-        snprintf(handle->error_message, sizeof(handle->error_message), 
-                "Avatar stack overflow");
-        handle->has_error = true;
+        avatar_set_error(handle, "Avatar stack overflow");
         handle->result.type = VALUE_NIL;
         return NULL;
     }
@@ -145,9 +158,7 @@ static void* avatar_task_func(void* user_data) {
     // Push arguments onto stack first
     for (int i = 0; i < handle->arg_count; i++) {
         if (avatar_vm.stack_top >= avatar_vm.stack + STACK_MAX) {
-            snprintf(handle->error_message, sizeof(handle->error_message),
-                    "Avatar stack overflow (args)");
-            handle->has_error = true;
+            avatar_set_error(handle, "Avatar stack overflow (args)");
             handle->result.type = VALUE_NIL;
             return NULL;
         }
@@ -260,9 +271,7 @@ static void* avatar_task_func(void* user_data) {
         */
         
         if (instruction_count > MAX_INSTRUCTIONS) {
-            snprintf(handle->error_message, sizeof(handle->error_message),
-                    "Avatar exceeded instruction limit (%d instructions)", MAX_INSTRUCTIONS);
-            handle->has_error = true;
+            avatar_set_error(handle, "Avatar exceeded instruction limit (%d instructions)", MAX_INSTRUCTIONS);
             handle->result.type = VALUE_NIL;
             return NULL;
         }
@@ -598,9 +607,7 @@ static void* avatar_task_func(void* user_data) {
                 Value value = vm_lookup_function_shared(name, main_vm);
                 
                 if (value.type == VALUE_NIL) {
-                    snprintf(handle->error_message, sizeof(handle->error_message),
-                            "Undefined global variable: %s", name);
-                    handle->has_error = true;
+                    avatar_set_error(handle, "Undefined global variable: %s", name);
                     handle->result.type = VALUE_NIL;
                     return NULL;
                 }
@@ -745,6 +752,7 @@ static void* avatar_task_func(void* user_data) {
                     CallResult result = vm_call_string_shared(&ctx, callee.as.string, arg_count);
                     
                     if (result == CALL_RESULT_ERROR) {
+                        // Error already set by shared handler (already prints via avatar_report_error)
                         handle->result.type = VALUE_NIL;
                         return NULL;
                     } else if (result == CALL_RESULT_OK) {
@@ -753,9 +761,7 @@ static void* avatar_task_func(void* user_data) {
                     }
                     // CALL_RESULT_NOT_HANDLED: fall through to error
                     
-                    handle->has_error = true;
-                    snprintf(handle->error_message, sizeof(handle->error_message),
-                            "Unknown function in avatar: %s", callee.as.string);
+                    avatar_set_error(handle, "Unknown function in avatar: %s", callee.as.string);
                     handle->result.type = VALUE_NIL;
                     return NULL;
                 }
@@ -1115,6 +1121,26 @@ bool avatar_runtime_is_complete(AvatarHandle* handle) {
     pthread_mutex_unlock(&handle->mutex);
     
     return completed;
+}
+
+bool avatar_runtime_has_error(AvatarHandle* handle) {
+    if (!handle) return false;
+    
+    pthread_mutex_lock(&handle->mutex);
+    bool has_error = handle->has_error;
+    pthread_mutex_unlock(&handle->mutex);
+    
+    return has_error;
+}
+
+const char* avatar_runtime_get_error(AvatarHandle* handle) {
+    if (!handle) return NULL;
+    
+    pthread_mutex_lock(&handle->mutex);
+    const char* error = handle->has_error ? handle->error_message : NULL;
+    pthread_mutex_unlock(&handle->mutex);
+    
+    return error;
 }
 
 Value avatar_runtime_get_result(AvatarHandle* handle) {

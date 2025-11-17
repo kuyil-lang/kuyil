@@ -1,0 +1,603 @@
+// Kuyil AI IDE - Using WebView App Framework
+
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_fileio.kyl"
+import "interfaces/interface_http.kyl"
+import "interfaces/interface_http_client_ex.kyl"
+import "interfaces/interface_webview_app.kyl"
+import "interfaces/interface_str.kyl"
+import "interfaces/interface_transcoder.kyl"
+import "interfaces/interface_crypto.kyl"
+
+// ============================================
+// Configuration
+// ============================================
+
+let g_workspace_path = "kuyil-ai-ide/workspace/"
+let g_cached_file_list = ""  // Cache file list to avoid avatar threading issues
+
+// ============================================
+// Bridge Worker Functions
+// ============================================
+
+fn processParam(params) {
+    let cleanParams = params
+    
+    // Only remove surrounding quotes if present (from extra stringification)
+    let paramLen = str_length(cleanParams)
+    if paramLen > 2 {
+        let firstChar = str_substring(cleanParams, 0, 1)
+        let lastChar = str_substring(cleanParams, paramLen - 1, paramLen)
+        
+        if firstChar == "\"" and lastChar == "\"" {
+            cleanParams = str_substring(cleanParams, 1, paramLen - 1)
+        }
+    }
+    
+    // Unescape AFTER removing quotes - JavaScript JSON.stringify escapes quotes
+    cleanParams = kyl_system_unescape(cleanParams)
+
+    print(cleanParams)
+
+    return cleanParams
+}
+
+fn fetchBridgeWorker(params) {
+    print("[fetchBridge Worker] Processing request")
+
+    print(1)
+    let cleanParams = processParam(params)
+    print(2)
+    
+    print("[fetchBridge Worker] Sending to Ollama...")
+    print("[fetchBridge Worker] Payload preview: " + str_substring(cleanParams, 0, 150))
+    
+    let url = "http://127.0.0.1:11434/api/generate"
+    
+    print("[fetchBridge Worker] Calling http_clientPostEx...")
+    let response = http_clientPostEx(url, cleanParams, {})
+    
+    print("[fetchBridge Worker] Response received")
+    print("[fetchBridge Worker] Status: " + str_toString(response.status))
+    
+    if response.status != 200 {
+        print("[fetchBridge Worker] ERROR: HTTP " + str_toString(response.status))
+        return jsonError("HTTP error " + str_toString(response.status))
+    }
+    
+    if response.body == nil {
+        print("[fetchBridge Worker] ERROR: Body is nil")
+        return jsonError("Empty response")
+    }
+    
+    print("[fetchBridge Worker] SUCCESS! Returning body")
+    return response.body
+}
+
+fn aiGenerateWorker(prompt) {
+    print("[aiGenerate Worker] prompt=" + prompt)
+    let body = "{\"model\":\"llama3.1:8b\",\"prompt\":\"" + prompt + "\",\"stream\":false}"
+    let raw = clientPost("http://127.0.0.1:11434/api/generate", body)
+    
+    if raw == nil {
+        return jsonError("No response from Ollama")
+    }
+    
+    return raw
+}
+
+fn kuyilReadFileWorker(pathParam) {
+    let path = processParam(pathParam)
+    
+    let fullPath = path
+    let pathLen = str_length(path)
+    
+    if pathLen > 0 {
+        let wpl = str_length(g_workspace_path)
+        let wsPrefix = str_substring(path, 0, wpl)
+        
+        if wsPrefix != g_workspace_path {
+            fullPath = g_workspace_path + path
+            print("[kuyilReadFile Worker] Prepended workspace path")
+        }
+    }
+    
+    if file_exists(fullPath) {
+        let content = file_readText(fullPath)
+        if content != nil {
+            let contentLen = str_length(content)
+            print("[kuyilReadFile Worker] Successfully read file, length: " + str_toString(contentLen))
+            
+            // Base64 encode to avoid ALL escaping issues with framework
+            let encoded = crypto_base64Encode(content)
+            if encoded == nil {
+                print("[kuyilReadFile Worker] ERROR: Base64 encoding failed")
+                return "// Error: Could not encode file - " + fullPath
+            }
+            
+            print("[kuyilReadFile Worker] Base64 encoded, returning")
+            return "BASE64:" + encoded
+        } else {
+            print("[kuyilReadFile Worker] ERROR: file_readText returned nil")
+            return "// Error: Could not read file - " + fullPath
+        }
+    }
+    
+    print("[kuyilReadFile Worker] ERROR: File does not exist")
+    return "// Error: File not found - " + fullPath
+}
+
+fn readDocumentationWorker(docNameParam) {
+    let docName = processParam(docNameParam)
+    print("[readDocumentation Worker] Reading doc: " + docName)
+    
+    // Use absolute path - avatars have different working directory
+    let docPath = "/home/vmukumar/akish/kuyil/docs/" + docName
+    print("[readDocumentation Worker] Trying path: " + docPath)
+    
+    let content = file_readText(docPath)
+    if content != nil {
+        print("[readDocumentation Worker] Success! Length: " + str_toString(str_length(content)))
+        
+        // Base64 encode to avoid ALL escaping issues
+        let encoded = crypto_base64Encode(content)
+        if encoded == nil {
+            return "ERROR: Could not encode documentation"
+        }
+        
+        return "BASE64:" + encoded
+    }
+    
+    print("[readDocumentation Worker] File not found")
+    return "# Documentation Not Found\\n\\nThe documentation file " + docName + " could not be found."
+}
+
+fn listDocsWorker(args) {
+    print("[listDocs Worker] Listing documentation files...")
+    return "[\"DOCUMENTATION_INDEX.md\",\"operators.md\",\"conditionals.md\",\"loops.md\",\"structs-and-methods.md\",\"avatars.md\",\"import-system.md\",\"ffi-guide.md\",\"language-reference.md\",\"quick-start.md\"]"
+}
+
+// ============================================
+// Helper Functions
+// ============================================
+
+// JSON response builders
+fn jsonError(message) {
+    return "{\"error\":\"" + message + "\"}"
+}
+
+fn jsonSuccess(dataFields) {
+    return "{\"success\":true," + dataFields + "}"
+}
+
+fn findDocPath(docName) {
+    let searchPaths = [
+        "../docs/" + docName,
+        "../docs/guides/" + docName,
+        "/usr/share/kuyil/docs/" + docName,
+        "/usr/share/kuyil/docs/guides/" + docName,
+        "/usr/local/share/kuyil/docs/" + docName,
+        "/usr/local/share/kuyil/docs/guides/" + docName,
+        "./docs/" + docName,
+        "./docs/guides/" + docName
+    ]
+    
+    if file_exists(searchPaths[0]) {
+        return searchPaths[0]
+    }
+    if file_exists(searchPaths[1]) {
+        return searchPaths[1]
+    }
+    if file_exists(searchPaths[2]) {
+        return searchPaths[2]
+    }
+    if file_exists(searchPaths[3]) {
+        return searchPaths[3]
+    }
+    if file_exists(searchPaths[4]) {
+        return searchPaths[4]
+    }
+    if file_exists(searchPaths[5]) {
+        return searchPaths[5]
+    }
+    if file_exists(searchPaths[6]) {
+        return searchPaths[6]
+    }
+    if file_exists(searchPaths[7]) {
+        return searchPaths[7]
+    }
+    
+    return ""
+}
+
+// Legacy functions for compatibility
+fn listExtensionsWorker(args) { return "[]" }
+fn getSettingsBridgeWorker(args) { return "{}" }
+
+// File operations worker functions
+fn createFolderWorker(argsJson) {
+    print("[createFolder Worker] Received: " + argsJson)
+    
+    // Clean the JSON string (remove extra quotes if present)
+    let cleanJson = processParam(argsJson)
+    print("[createFolder Worker] Clean JSON: " + cleanJson)
+    
+    // Extract path from JSON
+    let path = transcode_jsonGetField(cleanJson, "path")
+    
+    if path == nil {
+        print("[createFolder Worker] ERROR: No path field in JSON")
+        return jsonError("No path field")
+    }
+    
+    print("[createFolder Worker] Extracted path: " + path)
+    
+    // Prepend workspace path if not already absolute
+    let fullPath = path
+    if str_substring(path, 0, str_length(g_workspace_path)) != g_workspace_path {
+        fullPath = g_workspace_path + path
+    }
+    
+    print("[createFolder Worker] Full path: " + fullPath)
+    
+    // Create folder using system command
+    let result = kyl_system_exec("mkdir -p " + fullPath)
+    
+    if result == 0 {
+        print("[createFolder Worker] SUCCESS: Created " + fullPath)
+        return jsonSuccess("\"path\":\"" + fullPath + "\"")
+    } else {
+        print("[createFolder Worker] ERROR: Failed to create " + fullPath)
+        return jsonError("Failed to create folder")
+    }
+}
+
+fn createFileWorker(argsJson) {
+    print("[createFile Worker] Creating file")
+    print("[createFile Worker] Args length: " + str_toString(str_length(argsJson)))
+    
+    // Use processParam to clean the input
+    let cleanJson = processParam(argsJson)
+    
+    print("[createFile Worker] JSON preview: " + str_substring(cleanJson, 0, 60))
+    
+    // Extract path using JSON parser
+    print("[createFile Worker] Extracting path...")
+    let path = transcode_jsonGetField(cleanJson, "path")
+    
+    if path == nil or path == "" {
+        print("[createFile Worker] ERROR: Could not find path field")
+        return jsonError("Invalid JSON - no path field")
+    }
+    
+    print("[createFile Worker] Extracted path: " + path)
+    
+    // Prepend workspace path
+    let fullPath = g_workspace_path + path
+    print("[createFile Worker] Full path: " + fullPath)
+    
+    // Extract content using JSON parser
+    print("[createFile Worker] Extracting content...")
+    let content = transcode_jsonGetField(cleanJson, "content")
+    
+    if content == nil {
+        print("[createFile Worker] ERROR: Could not find content field")
+        return jsonError("No content field")
+    }
+    
+    // Content from JSON has escape sequences like \n, \t, \"
+    // Use system unescape to convert them properly
+    content = kyl_system_unescape(content)
+    
+    print("[createFile Worker] Content preview: " + str_substring(content, 0, 100))
+    print("[createFile Worker] Content length: " + str_toString(str_length(content)))
+    
+    // Write file
+    print("[createFile Worker] Writing file...")
+    let success = file_writeText(fullPath, content)
+    
+    print("[createFile Worker] Write result: " + str_toString(success))
+    
+    if success {
+        print("[createFile Worker] SUCCESS: Created " + fullPath)
+        
+        // Refresh file list cache
+        g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
+        print("[createFile Worker] Cache refreshed, files: " + str_toString(str_length(g_cached_file_list)))
+        
+        return jsonSuccess("\"path\":\"" + fullPath + "\"")
+    } else {
+        print("[createFile Worker] ERROR: Failed to create " + fullPath)
+        return jsonError("Failed to write file")
+    }
+}
+
+fn writeFileWorker(argsJson) {
+    print("[writeFile Worker] Writing file")
+    
+    // Use processParam to clean the input
+    let cleanJson = processParam(argsJson)
+    
+    print("[writeFile Worker] JSON preview: " + str_substring(cleanJson, 0, 60))
+    
+    // Extract path using JSON parser
+    let path = transcode_jsonGetField(cleanJson, "path")
+    
+    if path == nil or path == "" {
+        print("[writeFile Worker] ERROR: Could not find path field")
+        return jsonError("Invalid JSON - no path field")
+    }
+    
+    print("[writeFile Worker] Extracted path: " + path)
+    
+    // Prepend workspace path
+    let fullPath = g_workspace_path + path
+    print("[writeFile Worker] Full path: " + fullPath)
+    
+    // Extract content using JSON parser
+    let content = transcode_jsonGetField(cleanJson, "content")
+    
+    if content == nil {
+        print("[writeFile Worker] ERROR: Could not find content field")
+        return jsonError("No content field")
+    }
+    
+    // Content from JSON has escape sequences like \n, \t, \"
+    // Use system unescape to convert them properly
+    content = kyl_system_unescape(content)
+    
+    print("[writeFile Worker] Content length: " + str_toString(str_length(content)))
+    
+    // Write file
+    let success = file_writeText(fullPath, content)
+    
+    if success {
+        print("[writeFile Worker] SUCCESS: Wrote " + fullPath)
+        
+        // Refresh file list cache
+        g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
+        print("[writeFile Worker] Cache refreshed, files: " + str_toString(str_length(g_cached_file_list)))
+        
+        return jsonSuccess("\"path\":\"" + fullPath + "\"")
+    } else {
+        print("[writeFile Worker] ERROR: Failed to write " + fullPath)
+        return jsonError("Failed to write file")
+    }
+}
+
+fn deleteFileWorker(pathParam) {
+    let path = processParam(pathParam)
+    print("[deleteFile Worker] Deleting file: " + path)
+    
+    // Prepend workspace path if not already absolute
+    let fullPath = path
+    let pathLen = str_length(path)
+    
+    if pathLen > 0 {
+        let wpl = str_length(g_workspace_path)
+        let wsPrefix = str_substring(path, 0, wpl)
+        
+        if wsPrefix != g_workspace_path {
+            fullPath = g_workspace_path + path
+            print("[deleteFile Worker] Prepended workspace path")
+        }
+    }
+    
+    print("[deleteFile Worker] Full path: " + fullPath)
+    
+    // Check if file exists
+    if !file_exists(fullPath) {
+        print("[deleteFile Worker] ERROR: File not found")
+        return jsonError("File not found: " + path)
+    }
+    
+    print("[deleteFile Worker] File exists, attempting delete...")
+    
+    // Delete the file using system command
+    let result = kyl_system_capture("rm -f \"" + fullPath + "\" && echo 'OK' || echo 'FAIL'")
+    print("[deleteFile Worker] rm result: " + result)
+    
+    // Check if deletion was successful
+    if result != nil and str_indexOf(result, "OK") >= 0 {
+        print("[deleteFile Worker] SUCCESS: Deleted " + fullPath)
+        
+        // Refresh file list cache
+        g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -type f \\( -name '*.kyl' -o -name '*.js' -o -name '*.mjs' -o -name '*.py' -o -name '*.go' \\)")
+        print("[deleteFile Worker] Cache refreshed")
+        
+        return jsonSuccess("\"path\":\"" + fullPath + "\"")
+    } else {
+        print("[deleteFile Worker] ERROR: rm command failed")
+        return jsonError("Failed to delete file")
+    }
+}
+
+fn refreshCacheWorker(args) {
+    print("[refreshCache Worker] Refreshing file list cache...")
+    g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
+    print("[refreshCache Worker] Cache refreshed, length: " + str_toString(str_length(g_cached_file_list)))
+    return jsonSuccess("\"cached_files\":" + str_toString(str_length(g_cached_file_list)))
+}
+
+fn runFileWorker(pathParam) {
+    let path = processParam(pathParam)
+    print("[runFile Worker] Running file: " + path)
+    
+    // If path doesn't start with workspace path, prepend it
+    let fullPath = path
+    if str_length(path) > 0 {
+        let wsPrefix = str_substring(path, 0, str_length(g_workspace_path))
+        if wsPrefix != g_workspace_path {
+            fullPath = g_workspace_path + path
+        }
+    }
+    
+    print("[runFile Worker] Full path: " + fullPath)
+    
+    if !file_exists(fullPath) {
+        print("[runFile Worker] ERROR: File not found")
+        return jsonError("File not found: " + path)
+    }
+    
+    // Determine command based on file extension
+    let command = ""
+    let pathLen = str_length(fullPath)
+    
+    // Check for .js or .mjs (Node.js)
+    if str_indexOf(fullPath, ".js") >= 0 or str_indexOf(fullPath, ".mjs") >= 0 {
+        if str_substring(fullPath, pathLen - 3, pathLen) == ".js" or str_substring(fullPath, pathLen - 4, pathLen) == ".mjs" {
+            command = "node " + fullPath
+            print("[runFile Worker] Detected Node.js file")
+        }
+    }
+    
+    // Check for .py (Python)
+    if command == "" and str_indexOf(fullPath, ".py") >= 0 {
+        if str_substring(fullPath, pathLen - 3, pathLen) == ".py" {
+            command = "python3 " + fullPath
+            print("[runFile Worker] Detected Python file")
+        }
+    }
+    
+    // Check for .go (Go)
+    if command == "" and str_indexOf(fullPath, ".go") >= 0 {
+        if str_substring(fullPath, pathLen - 3, pathLen) == ".go" {
+            command = "go run " + fullPath
+            print("[runFile Worker] Detected Go file")
+        }
+    }
+    
+    // Check for .kyl (Kuyil) - default
+    if command == "" {
+        command = "./kuyil " + fullPath
+        print("[runFile Worker] Using Kuyil interpreter")
+    }
+    
+    // Execute the file and capture output
+    print("[runFile Worker] Executing: " + command)
+    let output = kyl_system_capture(command)
+    if output == nil {
+        output = ""
+    }
+    
+    print("[runFile Worker] Output length: " + str_toString(str_length(output)))
+    
+    // Escape quotes and newlines for JSON
+    output = str_replace(output, "\\", "\\\\")
+    output = str_replace(output, "\"", "\\\"")
+    output = str_replace(output, "\n", "\\n")
+    output = str_replace(output, "\r", "\\r")
+    output = str_replace(output, "\t", "\\t")
+    
+    return `{"success":true,"output":"` + output + `"}`
+}
+
+fn listWorkspaceFilesWorker(args) {
+    print("[listWorkspaceFiles Worker] Starting...")
+    
+    // Always refresh the cache to get the latest file list
+    // Include .kyl, .js, .mjs, .py, .go files
+    print("[listWorkspaceFiles Worker] Refreshing cache...")
+    g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -type f \\( -name '*.kyl' -o -name '*.js' -o -name '*.mjs' -o -name '*.py' -o -name '*.go' \\)")
+    let result = g_cached_file_list
+    
+    if result == nil or result == "" {
+        print("[listWorkspaceFiles Worker] No files found or cache empty")
+        return `{"success":true,"files":[]}`
+    }
+    
+    print("[listWorkspaceFiles Worker] Cache length: " + str_toString(str_length(result)))
+    
+    // Split by newlines to get file paths
+    let lines = str_split(result, "\n")
+    
+    // Build JSON array
+    let json = "["
+    let added = 0
+    let numLines = array_length(lines)
+    
+    print("[listWorkspaceFiles Worker] Processing " + str_toString(numLines) + " lines")
+    
+    let i = 0
+    while i < numLines and i < 50 {
+        let line = lines[i]
+        
+        if line != nil and line != "" {
+            let trimmed = str_trim(line)
+            if trimmed != "" {
+                // Remove workspace path prefix
+                let relativePath = str_replace(trimmed, g_workspace_path, "")
+                
+                // Remove leading slash if present
+                if str_length(relativePath) > 0 and str_substring(relativePath, 0, 1) == "/" {
+                    relativePath = str_substring(relativePath, 1, str_length(relativePath))
+                }
+                
+                if added > 0 {
+                    json = json + ","
+                }
+                json = json + `"` + relativePath + `"`
+                added = added + 1
+            }
+        }
+        i = i + 1
+    }
+    
+    json = json + "]"
+    
+    print("[listWorkspaceFiles Worker] SUCCESS: Returning " + str_toString(added) + " files")
+    
+    return `{"success":true,"files":` + json + `}`
+}
+
+// ============================================
+// Main Function
+// ============================================
+
+fn main() {
+    print("═══════════════════════════════════════════════════════")
+    print("   🚀 KUYIL AI IDE")
+    print("═══════════════════════════════════════════════════════")
+    
+    // Register worker avatars
+    registerHandler("fetchBridge", fetchBridgeWorker)
+    registerHandler("aiGenerate", aiGenerateWorker)
+    registerHandler("kuyilReadFile", kuyilReadFileWorker)
+    registerHandler("readDocumentation", readDocumentationWorker)
+    registerHandler("listDocs", listDocsWorker)
+    registerHandler("createFolder", createFolderWorker)
+    registerHandler("createFile", createFileWorker)
+    registerHandler("listWorkspaceFiles", listWorkspaceFilesWorker)
+    registerHandler("listExtensions", listExtensionsWorker)
+    registerHandler("getSettingsBridge", getSettingsBridgeWorker)
+    registerHandler("writeFile", writeFileWorker)
+    registerHandler("deleteFile", deleteFileWorker)
+    registerHandler("refreshCache", refreshCacheWorker)
+    registerHandler("runFile", runFileWorker)
+    
+    print("")
+    print("═══════════════════════════════════════════════════════")
+    print("  ✨ IDE Starting...")
+    print("  📚 Documentation integrated")
+    print("  🤖 AI ready (Ollama)")
+    print("═══════════════════════════════════════════════════════")
+    print("")
+    
+    // Pre-populate file list cache (avatars can't safely call library functions)
+    // Use find command for recursive file listing
+    print("[CACHE] Listing files in: " + g_workspace_path)
+    g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
+    print("[CACHE] file list returned: '" + g_cached_file_list + "'")
+    print("[CACHE] Length: " + str_length(g_cached_file_list))
+    if g_cached_file_list == nil {
+        g_cached_file_list = ""
+    }
+    
+    // Use runWebViewAppFromDist to properly handle local file URIs
+    // This avoids collision with embedded heapfs resources
+    runWebViewAppFromDist("Kuyil AI IDE", "kuyil-ai-ide/assets")
+    
+    print("✓ IDE shutdown complete")
+}
+
+main()

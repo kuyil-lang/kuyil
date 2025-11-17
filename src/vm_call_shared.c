@@ -101,33 +101,45 @@ CallResult vm_call_string_shared(CallContext* ctx, const char* callee_str, int a
     
     // Built-in functions
     if (strcmp(callee_str, "print") == 0) {
-        if (arg_count != 1) {
-            ctx->report_error(ctx->context, "print expects 1 argument");
+        if (arg_count < 1) {
+            ctx->report_error(ctx->context, "print expects at least 1 argument");
             return CALL_RESULT_ERROR;
         }
         
-        Value arg = args[0];
-        ctx->pop_n(ctx->context, arg_count + 1);
-        
-        // Print the value
-        switch (arg.type) {
-            case VALUE_NIL:
-                printf("nil\n");
-                break;
-            case VALUE_BOOL:
-                printf("%s\n", arg.as.boolean ? "true" : "false");
-                break;
-            case VALUE_NUMBER:
-                printf("%g\n", arg.as.number);
-                break;
-            case VALUE_STRING:
-                printf("%s\n", arg.as.string ? arg.as.string : "<null>");
-                break;
-            default:
-                printf("<value type=%d>\n", arg.type);
-                break;
+        // Print all arguments separated by spaces
+        for (int i = 0; i < arg_count; i++) {
+            Value arg = args[i];
+            
+            // Print the value
+            switch (arg.type) {
+                case VALUE_NIL:
+                    printf("nil");
+                    break;
+                case VALUE_BOOL:
+                    printf("%s", arg.as.boolean ? "true" : "false");
+                    break;
+                case VALUE_NUMBER:
+                    printf("%g", arg.as.number);
+                    break;
+                case VALUE_STRING:
+                    printf("%s", arg.as.string ? arg.as.string : "<null>");
+                    break;
+                default:
+                    printf("<value type=%d>", arg.type);
+                    break;
+            }
+            
+            // Print space between arguments (except after the last one)
+            if (i < arg_count - 1) {
+                printf(" ");
+            }
         }
         
+        // Print newline at the end
+        printf("\n");
+        fflush(stdout);
+        
+        ctx->pop_n(ctx->context, arg_count + 1);
         Value nilv = {VALUE_NIL};
         ctx->push(ctx->context, nilv);
         return CALL_RESULT_OK;

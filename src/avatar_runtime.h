@@ -75,6 +75,12 @@ size_t avatar_runtime_thread_count(AvatarRuntime* runtime);
 // Check if avatar has completed
 bool avatar_runtime_is_complete(AvatarHandle* handle);
 
+// Check if avatar had an error
+bool avatar_runtime_has_error(AvatarHandle* handle);
+
+// Get avatar error message (returns NULL if no error)
+const char* avatar_runtime_get_error(AvatarHandle* handle);
+
 // Get avatar result (only valid if completed)
 Value avatar_runtime_get_result(AvatarHandle* handle);
 

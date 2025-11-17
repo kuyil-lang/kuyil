@@ -2410,6 +2410,13 @@ InterpretResult vm_run(VM* vm) {
                         return INTERPRET_RUNTIME_ERROR;
                     }
                     
+                    // Check for avatar execution errors
+                    if (avatar_runtime_has_error(handle)) {
+                        const char* error_msg = avatar_runtime_get_error(handle);
+                        runtime_error(vm, "Avatar execution failed: %s", error_msg ? error_msg : "Unknown error");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    
                     // Get the result
                     Value result = avatar_runtime_get_result(handle);
                     vm_push(vm, result);

@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Kuyil IDE</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', sans-serif; background: #1e1e1e; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
+.header { background: #2d2d30; padding: 10px 16px; border-bottom: 1px solid #3e3e42; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 18px; color: #fff; }
+.header-actions { display: flex; gap: 8px; }
+.btn { background: #0e639c; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.btn:hover { background: #1177bb; }
+.btn-success { background: #16825d; }
+.btn-success:hover { background: #1a9d6e; }
+.container { display: flex; flex: 1; overflow: hidden; }
+.sidebar { width: 250px; background: #252526; border-right: 1px solid #3e3e42; display: flex; flex-direction: column; overflow-y: auto; }
+.sidebar-tabs { display: flex; background: #2d2d30; border-bottom: 1px solid #3e3e42; }
+.sidebar-tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 18px; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.sidebar-tab:hover { background: #37373d; }
+.sidebar-tab.active { border-bottom: 2px solid #0e639c; background: #37373d; }
+.sidebar-content { flex: 1; padding: 12px; }
+.sidebar-section { margin-bottom: 20px; }
+.sidebar-section h3 { font-size: 11px; text-transform: uppercase; color: #ccc; margin-bottom: 8px; }
+.extension-item { background: #2d2d30; padding: 10px; margin: 8px 0; border-radius: 4px; }
+.extension-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.extension-name { font-weight: bold; color: #4ec9b0; }
+.extension-status { color: #89d185; font-size: 12px; }
+.btn-small { padding: 4px 12px; font-size: 12px; }
+.file-item, .folder-item { padding: 6px 8px; cursor: pointer; border-radius: 3px; font-size: 13px; margin: 2px 0; display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.file-item:hover, .folder-item:hover { background: #2a2d2e; }
+.file-item.active { background: #37373d; color: #fff; border-left: 3px solid #0e639c; }
+.file-delete-btn { opacity: 0; color: #f48771; font-size: 12px; cursor: pointer; padding: 2px 6px; }
+.file-item:hover .file-delete-btn { opacity: 1; }
+.file-delete-btn:hover { color: #ff6b6b; font-weight: bold; }
+.icon { font-size: 16px; }
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.editor-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.editor { flex: 1; background: #1e1e1e; color: #d4d4d4; border: none; padding: 16px; font-family: 'Consolas', 'Courier New', monospace; font-size: 14px; line-height: 1.5; resize: none; }
+/* CodeMirror specific styles to constrain size */
+.CodeMirror { height: 100% !important; width: 100% !important; }
+.doc-viewer { display: none; flex: 1; overflow-y: auto; padding: 20px; background: #1e1e1e; color: #d4d4d4; line-height: 1.6; }
+.doc-viewer h1 { color: #4ec9b0; margin: 20px 0 12px; font-size: 28px; border-bottom: 2px solid #3e3e42; padding-bottom: 8px; }
+.doc-viewer h2 { color: #4ec9b0; margin: 16px 0 10px; font-size: 22px; border-bottom: 1px solid #3e3e42; padding-bottom: 6px; }
+.doc-viewer h3 { color: #9cdcfe; margin: 14px 0 8px; font-size: 18px; }
+.doc-viewer code { background: #2d2d30; color: #ce9178; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 13px; }
+.doc-viewer pre { background: #2d2d30; padding: 12px; border-radius: 6px; overflow-x: auto; border: 1px solid #3e3e42; margin: 10px 0; }
+.doc-viewer pre code { background: transparent; padding: 0; color: #d4d4d4; }
+.doc-viewer a { color: #4ec9b0; text-decoration: none; }
+.doc-viewer a:hover { text-decoration: underline; }
+.doc-viewer ul, .doc-viewer ol { padding-left: 22px; margin: 8px 0; }
+.doc-viewer li { margin: 4px 0; }
+.doc-viewer p { margin: 8px 0; }
+.terminal { height: 150px; background: #1e1e1e; border-top: 1px solid #3e3e42; padding: 12px; overflow-y: auto; font-family: Consolas, monospace; font-size: 13px; }
+.terminal-line { margin-bottom: 4px; }
+.ai-panel { width: 350px; background: #252526; border-left: 1px solid #3e3e42; display: flex; flex-direction: column; }
+.ai-header { padding: 12px; background: #2d2d30; border-bottom: 1px solid #3e3e42; font-size: 14px; font-weight: bold; }
+.ai-settings { background: #2d2d30; padding: 12px; border-bottom: 1px solid #3e3e42; }
+.ai-settings label { display: block; margin-bottom: 4px; font-size: 12px; }
+.ai-settings select { width: 100%; padding: 6px; background: #ffffff; color: #000000; border: 1px solid #3e3e42; border-radius: 3px; }
+.ai-settings select option { background: #ffffff; color: #000000; }
+.ai-messages { flex: 1; overflow-y: auto; padding: 12px; }
+.message { margin-bottom: 12px; padding: 10px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; }
+.message.user { background: #0e639c; color: white; margin-left: 30px; }
+.message.ai { background: #2d2d30; margin-right: 30px; }
+.message.system { background: #16825d; margin-right: 30px; font-size: 12px; }
+.ai-input-area { padding: 12px; border-top: 1px solid #3e3e42; }
+.ai-input { width: 100%; background: #3c3c3c; border: 1px solid #3e3e42; color: #d4d4d4; padding: 8px; border-radius: 4px; font-size: 13px; resize: vertical; min-height: 70px; font-family: inherit; }
+/* Global select and option styling for visibility */
+select { background: #ffffff; color: #000000; border: 1px solid #3e3e42; }
+select option { background: #ffffff; color: #000000; }
+</style>
+<!-- CodeMirror assets moved into HTML instead of Kuyil injection -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/mode/simple.min.js"></script>
+<style id="kuyilTheme">
+.cm-s-kuyilDark { background:#1e1e1e; color:#d4d4d4; }
+.cm-s-kuyilDark .CodeMirror-gutters { background:#252526; border-right:1px solid #3e3e42; }
+.cm-s-kuyilDark .cm-keyword { color:#c586c0; font-weight:bold; }
+.cm-s-kuyilDark .cm-atom { color:#4fc1ff; }
+.cm-s-kuyilDark .cm-number { color:#b5cea8; }
+.cm-s-kuyilDark .cm-string { color:#ce9178; }
+.cm-s-kuyilDark .cm-comment { color:#6a9955; font-style:italic; }
+.cm-s-kuyilDark .cm-operator { color:#d4d4d4; }
+.cm-s-kuyilDark .cm-bracket { color:#d4d4d4; }
+.cm-s-kuyilDark .CodeMirror-cursor { border-left:1px solid #aeafad; }
+.cm-s-kuyilDark .CodeMirror-selected { background:#264f78; }
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🚀 Kuyil AI IDE</h1>
+<div class="header-actions">
+<button class="btn" onclick="newFile()">📄 New</button>
+<button class="btn" onclick="saveFile()">💾 Save</button>
+<button class="btn btn-success" onclick="runCode()">▶️ Run</button>
+</div>
+</div>
+
+<div class="container">
+<div class="sidebar">
+<div class="sidebar-tabs">
+<div class="sidebar-tab active" onclick="switchTab('docs')" id="tab-docs">📚</div>
+<div class="sidebar-tab" onclick="switchTab('extensions')" id="tab-extensions">🧩</div>
+<div class="sidebar-tab" onclick="switchTab('settings')" id="tab-settings">⚙️</div>
+</div>
+<div class="sidebar-content">
+<!-- Documentation Tab -->
+<div id="content-docs" class="sidebar-section">
+<h3>📁 Project Files
+<button onclick="refreshProjectFiles()" style="float: right; padding: 2px 8px; font-size: 12px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 3px;">🔄 Refresh</button>
+</h3>
+<div class="folder-item" onclick="toggleFolder('project')">
+<span class="icon">📁</span> My Files
+</div>
+<div id="folder-project" style="margin-left: 20px; display: block;"></div>
+
+<h3 style="margin-top: 16px;">📦 Examples</h3>
+<div class="folder-item" onclick="toggleFolder('examples')">
+<span class="icon">📁</span> examples/
+</div>
+<div id="folder-examples" style="margin-left: 20px; display: none;">
+<div class="file-item"><span class="icon">📄</span> hello.kyl</div>
+<div class="file-item"><span class="icon">📄</span> fibonacci.kyl</div>
+<div class="file-item"><span class="icon">📄</span> http_server.kyl</div>
+<div class="file-item"><span class="icon">📄</span> factorial.kyl</div>
+<div class="file-item"><span class="icon">📄</span> avatars_demo.kyl</div>
+</div>
+
+<h3 style="margin-top: 16px;">🔌 Interfaces</h3>
+<div class="folder-item" onclick="toggleFolder('interfaces')">
+<span class="icon">📁</span> interfaces/
+</div>
+<div id="folder-interfaces" style="margin-left: 20px; display: none;">
+<div class="file-item"><span class="icon">📄</span> interface_http.kyl</div>
+<div class="file-item"><span class="icon">📄</span> interface_webview.kyl</div>
+<div class="file-item"><span class="icon">📄</span> interface_fileio.kyl</div>
+<div class="file-item"><span class="icon">📄</span> interface_system.kyl</div>
+<div class="file-item"><span class="icon">📄</span> interface_sqlite.kyl</div>
+</div>
+
+<h3 style="margin-top: 16px;">�📚 Kuyil Documentation</h3>
+<div class="folder-item" onclick="toggleFolder('kuyilref')">
+<span class="icon">📁</span> Language Reference
+</div>
+<div id="folder-kuyilref" style="margin-left: 20px; display: block;">
+<div class="file-item" onclick="openDoc('DOCUMENTATION_INDEX.md')"><span class="icon">📘</span> INDEX</div>
+<div class="file-item" onclick="openDoc('operators.md')"><span class="icon">📄</span> Operators</div>
+<div class="file-item" onclick="openDoc('conditionals.md')"><span class="icon">📄</span> Conditionals</div>
+<div class="file-item" onclick="openDoc('loops.md')"><span class="icon">📄</span> Loops</div>
+<div class="file-item" onclick="openDoc('structs-and-methods.md')"><span class="icon">📄</span> Structs</div>
+<div class="file-item" onclick="openDoc('avatars.md')"><span class="icon">📄</span> Avatars</div>
+<div class="file-item" onclick="openDoc('import-system.md')"><span class="icon">📄</span> Imports</div>
+<div class="file-item" onclick="openDoc('ffi-guide.md')"><span class="icon">📄</span> FFI</div>
+<div class="file-item" onclick="openDoc('language-reference.md')"><span class="icon">📄</span> Full Reference</div>
+</div>
+</div>
+
+<!-- Extensions Tab -->
+<div id="content-extensions" class="sidebar-section" style="display: none;">
+<h3>Installed Extensions</h3>
+<div class="extension-item">
+<div class="extension-header">
+<span class="extension-name">Kuyil Language Support</span>
+<span class="extension-status">✓ Active</span>
+</div>
+<div style="font-size: 12px; color: #aaa;">Syntax highlighting and CodeMirror integration</div>
+</div>
+<div class="extension-item">
+<div class="extension-header">
+<span class="extension-name">Ollama AI Bridge</span>
+<span class="extension-status">✓ Active</span>
+</div>
+<div style="font-size: 12px; color: #aaa;">Avatar-based async AI integration</div>
+</div>
+<h3 style="margin-top: 16px;">Available Extensions</h3>
+<div class="extension-item">
+<div class="extension-header">
+<span class="extension-name">Git Integration</span>
+<button class="btn btn-small">Install</button>
+</div>
+<div style="font-size: 12px; color: #aaa;">Version control support</div>
+</div>
+<div class="extension-item">
+<div class="extension-header">
+<span class="extension-name">Debugger</span>
+<button class="btn btn-small">Install</button>
+</div>
+<div style="font-size: 12px; color: #aaa;">Step-through debugging</div>
+</div>
+</div>
+
+<!-- Settings Tab -->
+<div id="content-settings" class="sidebar-section" style="display: none;">
+<h3>Editor Settings</h3>
+<label style="display: block; margin: 12px 0;">
+<input type="checkbox" checked> Auto Save
+</label>
+<label style="display: block; margin: 12px 0;">
+<input type="checkbox" checked> Line Numbers
+</label>
+<label style="display: block; margin: 12px 0;">
+<input type="checkbox"> Word Wrap
+</label>
+<h3 style="margin-top: 16px;">Theme</h3>
+<select style="width: 100%; margin-top: 8px; background: #ffffff; color: #000000; border: 1px solid #3e3e42; padding: 6px; border-radius: 3px;">
+<option selected>Kuyil Dark</option>
+<option>Monokai</option>
+<option>Dracula</option>
+</select>
+<h3 style="margin-top: 16px;">AI Model</h3>
+<select id="settingsAiModel" style="width: 100%; margin-top: 8px; background: #ffffff; color: #000000; border: 1px solid #3e3e42; padding: 6px; border-radius: 3px;">
+<option value="qwen2.5-coder:32b" selected>qwen2.5-coder:32b</option>
+<option value="llama3.1:8b">llama3.1:8b</option>
+<option value="llava:7b">llava:7b</option>
+</select>
+<h3 style="margin-top: 16px;">About</h3>
+<div style="font-size: 12px; color: #aaa; line-height: 1.6; margin-top: 8px;">
+<div>Kuyil AI IDE v1.0</div>
+<div>Built with WebView + Avatars</div>
+<div style="margin-top: 8px;">Features: Async AI, CodeMirror, Documentation</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="main">
+<div class="editor-container">
+<textarea id="editor" class="editor" spellcheck="false">// Kuyil Programming Language
+print("Welcome to Kuyil IDE!")
+
+// Try the documentation in the sidebar!
+</textarea>
+</div>
+<div class="doc-viewer" id="docViewer"></div>
+<div class="terminal" id="terminal">
+<div class="terminal-line" style="color: #89d185">✓ Kuyil IDE Ready</div>
+</div>
+</div>
+
+<div class="ai-panel">
+<div class="ai-header">🤖 AI Assistant</div>
+<div class="ai-settings">
+<label>Model:</label>
+<select id="aiModel">
+<option value="qwen2.5-coder:32b">qwen2.5-coder:32b</option>
+<option value="llama3.1:8b">llama3.1:8b</option>
+</select>
+</div>
+<div class="ai-messages" id="messages">
+<div class="message system">✅ Kuyil AI Ready! Click docs in sidebar.</div>
+</div>
+<div class="ai-input-area">
+<textarea id="aiInput" class="ai-input" placeholder="Ask AI about Kuyil..."></textarea>
+<button class="btn" onclick="askAI()" style="width: 100%; margin-top: 8px">Send</button>
+</div>
+</div>
+</div>
+
+<script>
+// Kuyil Framework Bridge Compatibility Layer
+// This wraps the new framework API (window.kuyil.call) to provide backwards compatibility
+
+// Wait for Kuyil bridge to be ready
+function waitForKuyilBridge(callback) {
+    if (window.kuyil && window.kuyil.call) {
+        // Framework is ready
+        window.kuyilReady = true;
+        callback();
+    } else {
+        console.log('[IDE] Waiting for Kuyil framework...');
+        setTimeout(function() { waitForKuyilBridge(callback); }, 50);
+    }
+}
+
+// Create wrapper functions for backwards compatibility
+window.setupBridgeWrappers = function() {
+    console.log('[IDE] Setting up bridge wrappers...');
+    
+    // Wrap fetchBridge - returns Promise
+    window.fetchBridge = async function(params) {
+        console.log('[fetchBridge] Calling via framework:', params);
+        return await window.kuyil.call('fetchBridge', params);
+    };
+    
+    // Wrap readDocumentation - returns Promise  
+    window.readDocumentation = async function(docName) {
+        console.log('[readDocumentation] Calling via framework:', docName);
+        return await window.kuyil.call('readDocumentation', docName);
+    };
+    
+    // Wrap listDocs - returns Promise
+    window.listDocs = async function() {
+        console.log('[listDocs] Calling via framework');
+        return await window.kuyil.call('listDocs', '');
+    };
+    
+    // Wrap kuyilReadFile - returns Promise
+    window.kuyilReadFile = async function(path) {
+        console.log('[kuyilReadFile] Calling via framework:', path);
+        return await window.kuyil.call('kuyilReadFile', path);
+    };
+    
+    // Wrap aiGenerate - returns Promise
+    window.aiGenerate = async function(prompt) {
+        console.log('[aiGenerate] Calling via framework:', prompt);
+        return await window.kuyil.call('aiGenerate', prompt);
+    };
+    
+    // Wrap writeFile - returns Promise
+    window.writeFile = async function(path, content) {
+        console.log('[writeFile] Calling via framework:', path);
+        const args = JSON.stringify({ path: path, content: content });
+        return await window.kuyil.call('writeFile', args);
+    };
+    
+    console.log('[IDE] ✅ Bridge wrappers ready');
+};
+
+// Define Kuyil simple mode and initialize CodeMirror
+document.addEventListener('DOMContentLoaded', function(){
+    if (window.CodeMirror && window.CodeMirror.defineSimpleMode) {
+        if (!window._kuyilMode) {
+            CodeMirror.defineSimpleMode('kuyil', {
+                start: [
+                    { regex: /\b(let|fn|import|return|if|else|while|for|avatar|nil|true|false)\b/, token: 'keyword' },
+                    { regex: /\b(int32|bool|string|array|object)\b/, token: 'atom' },
+                    { regex: /".*?"/, token: 'string' },
+                    { regex: /\/\/.*$/, token: 'comment' },
+                    { regex: /[0-9]+/, token: 'number' },
+                    { regex: /[{}()\[\]]/, token: 'bracket' }
+                ],
+                meta: { dontIndentStates: ['comment'], lineComment: '//'}
+            });
+            window._kuyilMode = true;
+        }
+        var ta = document.getElementById('editor');
+        if (ta && !window.kuyilEditor) {
+            window.kuyilEditor = CodeMirror.fromTextArea(ta, {
+                lineNumbers: true,
+                mode: 'kuyil',
+                theme: 'kuyilDark'
+            });
+            console.log('[IDE] CodeMirror initialized (HTML)');
+        }
+    }
+});
+let currentFile = 'main.kyl';
+
+function switchTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+    const tabEl = document.getElementById('tab-' + tabName);
+    if (tabEl) tabEl.classList.add('active');
+    
+    // Update content
+    document.querySelectorAll('.sidebar-content > div').forEach(c => c.style.display = 'none');
+    const contentEl = document.getElementById('content-' + tabName);
+    if (contentEl) contentEl.style.display = 'block';
+}
+
+function toggleFolder(folderId) {
+    const folder = document.getElementById('folder-' + folderId);
+    if (folder) {
+        folder.style.display = folder.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+function openDoc(docName) {
+    console.log('[openDoc] Opening:', docName);
+    addTerminal('📘 Loading ' + docName + '...');
+    const dv = document.getElementById('docViewer');
+    
+    if (!window.readDocumentation) {
+        console.error('[openDoc] readDocumentation not available');
+        addTerminal('❌ Documentation bridge not ready', '#f48771');
+        dv.innerHTML = '<div style="padding:20px;"><h2>📘 Documentation Not Available</h2><p>Bridge not ready</p></div>';
+        dv.style.display = 'block';
+        document.querySelector('.editor-container').style.display = 'none';
+        return;
+    }
+    
+    // readDocumentation is async (returns Promise)
+    window.readDocumentation(docName).then(function(content) {
+        console.log('[openDoc] Got content, length:', content ? content.length : 0);
+        
+        // Decode base64 if content is encoded
+        if (content && content.startsWith('BASE64:')) {
+            console.log('[openDoc] Decoding Base64 content');
+            try {
+                content = atob(content.substring(7));
+                console.log('[openDoc] Decoded length:', content.length);
+            } catch (e) {
+                console.error('[openDoc] Base64 decode error:', e);
+                addTerminal('❌ Failed to decode documentation', '#f48771');
+                return;
+            }
+        }
+        
+        if (content && content.length > 0 && !content.startsWith('# Documentation Not Found')) {
+            dv.innerHTML = renderMarkdown(content);
+            dv.style.display = 'block';
+            document.querySelector('.editor-container').style.display = 'none';
+            addTerminal('✅ Loaded: ' + docName, '#89d185');
+        } else {
+            console.warn('[openDoc] Doc not found or empty');
+            addTerminal('⚠️ Doc not found: ' + docName, '#f48771');
+            dv.innerHTML = '<div style="padding:20px;"><h2>📘 Documentation Not Found</h2><p>Could not load: <code>' + docName + '</code></p></div>';
+            dv.style.display = 'block';
+            document.querySelector('.editor-container').style.display = 'none';
+        }
+    }).catch(function(e) {
+        console.error('[openDoc] Error:', e);
+        addTerminal('❌ Error: ' + e.message, '#f48771');
+        dv.innerHTML = '<div style="padding:20px;"><h2>📘 Documentation Error</h2><p>Could not load: <code>' + docName + '</code></p><p>Error: ' + e.message + '</p></div>';
+        dv.style.display = 'block';
+        document.querySelector('.editor-container').style.display = 'none';
+    });
+}
+
+function renderMarkdown(raw) {
+    if (!raw) return '<p>Empty content</p>';
+    
+    let html = raw
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\r/g, '');
+    
+    // Code blocks first (before inline code)
+    const parts = html.split('```');
+    let result = '';
+    for (let i = 0; i < parts.length; i++) {
+        if (i % 2 === 0) {
+            result += parts[i];
+        } else {
+            const lines = parts[i].split('\n');
+            const lang = lines[0].trim();
+            const code = lines.slice(1).join('\n').trim();
+            result += '<pre><code>' + code + '</code></pre>';
+        }
+    }
+    
+    html = result;
+    
+    // Now other markdown
+    html = html
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/^#### (.*)$/gm, '<h4>$1</h4>')
+        .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+        .replace(/^\- (.*)$/gm, '<li>$1</li>')
+        .replace(/^---$/gm, '<hr>')
+        .replace(/\n\n/g, '</p><p>');
+    
+    return '<div style="padding:20px;"><p>' + html + '</p></div>';
+}
+
+async function newFile() {
+    const name = prompt('File name:', 'new.kyl');
+    if (name) {
+        try {
+            currentFile = name;
+            const initialContent = '// ' + name + '\n\n';
+            
+            // Create the file on backend
+            addTerminal('📄 Creating ' + name + '...', '#89d185');
+            const fileData = JSON.stringify({ path: name, content: initialContent });
+            const result = await window.kuyil.call('createFile', fileData);
+            console.log('[newFile] createFile result:', result);
+            
+            // Parse result to check success
+            const resultObj = JSON.parse(result);
+            if (resultObj.success) {
+                // Open in editor
+                if (window.kuyilEditor) {
+                    window.kuyilEditor.setValue(initialContent);
+                } else {
+                    document.getElementById('editor').value = initialContent;
+                }
+                document.querySelector('.editor-container').style.display = 'flex';
+                document.getElementById('docViewer').style.display = 'none';
+                addTerminal('✅ Created ' + name, '#89d185');
+                
+                // Refresh file list to show new file
+                setTimeout(function() { refreshProjectFiles(); }, 300);
+            } else {
+                addTerminal('❌ Failed to create: ' + (resultObj.error || 'Unknown error'), '#f48771');
+                currentFile = null;
+            }
+        } catch (error) {
+            console.error('[newFile] Error:', error);
+            addTerminal('❌ Failed to create file: ' + error.message, '#f48771');
+            currentFile = null;
+        }
+    }
+}
+
+async function saveFile() {
+    if (!currentFile) {
+        addTerminal('❌ No file open to save', '#f48771');
+        return;
+    }
+    
+    try {
+        // Get content from CodeMirror or textarea
+        let content;
+        if (window.kuyilEditor) {
+            content = window.kuyilEditor.getValue();
+        } else {
+            content = document.getElementById('editor').value;
+        }
+        
+        addTerminal('💾 Saving ' + currentFile + '...', '#89d185');
+        
+        // currentFile already contains the relative path (e.g., "sum_program/sum.kyl")
+        // The backend will prepend workspace path
+        
+        // Call writeFile backend function
+        const result = await window.writeFile(currentFile, content);
+        console.log('[saveFile] Result:', result);
+        
+        // Parse result
+        try {
+            const resultObj = JSON.parse(result);
+            if (resultObj.success) {
+                addTerminal('✅ Saved ' + currentFile, '#89d185');
+            } else {
+                addTerminal('❌ Save failed: ' + (resultObj.error || 'Unknown error'), '#f48771');
+            }
+        } catch (e) {
+            // Not JSON, treat as success message
+            addTerminal('✅ ' + result, '#89d185');
+        }
+    } catch (error) {
+        console.error('[saveFile] Error:', error);
+        addTerminal('❌ Failed to save: ' + error.message, '#f48771');
+    }
+}
+
+async function runCode() {
+    if (!currentFile) {
+        addTerminal('❌ No file open to run', '#f48771');
+        return;
+    }
+    
+    addTerminal('▶️ Running ' + currentFile + '...', '#89d185');
+    
+    try {
+        // Call runFile backend function
+        const result = await window.kuyil.call('runFile', currentFile);
+        console.log('[runCode] Result:', result);
+        
+        // Parse the result
+        try {
+            const resultObj = JSON.parse(result);
+            if (resultObj.success) {
+                if (resultObj.output) {
+                    addTerminal('📤 Output:', '#89d185');
+                    // Split by newlines and display each line
+                    const lines = resultObj.output.split('\n');
+                    lines.forEach(function(line) {
+                        if (line.trim() !== '') {
+                            addTerminal(line, '#d4d4d4');
+                        }
+                    });
+                } else {
+                    addTerminal('✅ Completed (no output)', '#89d185');
+                }
+            } else {
+                addTerminal('❌ Error: ' + (resultObj.error || 'Unknown error'), '#f48771');
+            }
+        } catch (e) {
+            console.error('[runCode] JSON parse error:', e);
+            // Not JSON, treat as direct output
+            addTerminal('📤 Raw Output:', '#89d185');
+            const lines = result.split('\n');
+            lines.forEach(function(line) {
+                addTerminal(line, '#d4d4d4');
+            });
+        }
+    } catch (error) {
+        console.error('[runCode] Error:', error);
+        addTerminal('❌ Failed to run: ' + error.message, '#f48771');
+    }
+}
+
+function askAI() {
+    const msg = document.getElementById('aiInput').value.trim();
+    if (!msg) return;
+    
+    addMessage(msg, 'user');
+    document.getElementById('aiInput').value = '';
+    
+    // Wait for bridge to be ready before proceeding
+    if (!window.kuyilReady) {
+        addMessage('⏳ Waiting for Kuyil bridge...', 'system');
+        waitForKuyilBridge(function() {
+            setupBridgeWrappers(); // Set up compatibility wrappers
+            addMessage('✅ Bridge ready, processing request...', 'system');
+            processAIRequest(msg);
+        });
+        return;
+    }
+    
+    processAIRequest(msg);
+}
+
+async function processAIRequest(msg) {
+    const model = document.getElementById('aiModel').value;
+    
+    console.log('[processAIRequest] Starting with message:', msg);
+    console.log('[processAIRequest] Model:', model);
+    console.log('[processAIRequest] fetchBridge type:', typeof window.fetchBridge);
+    
+    if (typeof window.fetchBridge !== 'function') {
+        addMessage('❌ AI bridge not ready (fetchBridge is ' + typeof window.fetchBridge + ')', 'ai');
+        addTerminal('❌ fetchBridge not available', '#f48771');
+        return;
+    }
+    
+    // Remove previous "thinking" messages
+    const messagesDiv = document.getElementById('messages');
+    const lastMsg = messagesDiv.lastElementChild;
+    if (lastMsg && lastMsg.textContent.includes('Thinking')) {
+        messagesDiv.removeChild(lastMsg);
+    }
+    
+    addMessage('🤖 Thinking...', 'system');
+    
+    const requestBody = JSON.stringify({
+        model: model,
+        prompt: msg,
+        stream: false
+    });
+    
+    console.log('[processAIRequest] Request body:', requestBody);
+    console.log('[processAIRequest] Request body length:', requestBody.length);
+    
+    // Call async fetchBridge - it now returns a Promise
+    console.log('[processAIRequest] Calling fetchBridge...');
+    addTerminal('📡 Sending request to Ollama...', '#89d185');
+    
+    try {
+        const result = await window.fetchBridge(requestBody);
+        console.log('[processAIRequest] fetchBridge returned');
+        console.log('[processAIRequest] Result type:', typeof result);
+        console.log('[processAIRequest] Result preview:', result ? result.substring(0, 100) : 'null');
+        
+        // Remove "thinking" message before showing response
+        const thinkingMsg = messagesDiv.lastElementChild;
+        if (thinkingMsg && thinkingMsg.textContent.includes('Thinking')) {
+            messagesDiv.removeChild(thinkingMsg);
+        }
+        
+        // Parse the response
+        handleAIResponse(result);
+    } catch (error) {
+        console.error('[processAIRequest] Error:', error);
+        addMessage('❌ Error: ' + error.message, 'system');
+        addTerminal('❌ Request failed: ' + error.message, '#f48771');
+    }
+}
+
+
+/**
+ * Parses the input text to extract a JSON string enclosed within ```json ... ```
+ * code blocks and converts it into a JavaScript object.
+ *
+ * @param {string} inputText The string containing the embedded JSON.
+ * @returns {object | null} The parsed JavaScript object, or null if parsing fails.
+ */
+function parseResponse(inputText) {
+    // Regular expression to find content between ```json and ```
+    // ([\s\S]*?) is the capture group for all characters (including newlines) non-greedily.
+    // const jsonMatch = inputText.match(/```json\s*([\s\S]*?)\s*```/);
+    const jsonMatch = inputText.match(/[\s\S]*?```json\s*([\s\S]*?)\s*```[\s\S]*?/);
+    console.log(inputText)
+    if (jsonMatch && jsonMatch[1]) {
+        // 1. Extract the captured JSON string and trim whitespace
+        const jsonString = jsonMatch[1].trim();
+
+        try {
+            // 2. Parse the string into a JavaScript object
+            const parsedObject = JSON.parse(jsonString);
+            console.log("✅ JSON successfully parsed.");
+            return parsedObject;
+        } catch (e) {
+            console.error("❌ ERROR: Failed to parse JSON string.", e);
+            return null;
+        }
+    } else {
+        console.warn("⚠️ Warning: JSON block (```json...```) not found in the text.");
+        return null;
+    }
+}
+
+async function handleAIResponse(result) {
+    console.log('[handleAIResponse] Processing:', result);
+    console.log('[handleAIResponse] Result type:', typeof result);
+    console.log('[handleAIResponse] Result length:', result ? result.length : 0);
+    
+    // Check if result is the literal string "nil" (from Kuyil)
+    if (result === 'nil' || result === 'null' || result === 'undefined') {
+        addMessage('❌ Bridge returned nil - check if Ollama is running', 'system');
+        addTerminal('❌ No response from Ollama (nil)', '#f48771');
+        return;
+    }
+    
+    // Check if result is empty or null
+    if (!result || result.trim() === '') {
+        addMessage('❌ Empty response from server', 'system');
+        addTerminal('❌ No response received', '#f48771');
+        return;
+    }
+    
+    try {
+        console.log(result)
+        let data = parseResponse(result);
+        console.log('[handleAIResponse] Parsed data:', data);
+        
+        if (!data) {
+            addMessage('❌ Could not parse AI response', 'system');
+            addTerminal('❌ Parse failed', '#f48771');
+            return;
+        }
+
+        data = data.actions
+        
+        // Check if data is an actions array
+        if (Array.isArray(data)) {
+            addMessage('🤖 Executing ' + data.length + ' actions...', 'system');
+            await executeActions(data);
+            return;
+        }
+        
+        console.log('[handleAIResponse] Data keys:', Object.keys(data).join(', '));
+        
+        // Check for error in response
+        if (data.error) {
+            addMessage('❌ Server error: ' + data.error, 'system');
+            addTerminal('❌ ' + data.error, '#f48771');
+            return;
+        }
+        
+        // Ollama returns response in 'response' field
+        if (data.response) {
+            console.log('[handleAIResponse] Found response field, length:', data.response.length);
+            addMessage(data.response, 'ai');
+            addTerminal('✅ AI response received (' + data.response.length + ' chars)', '#89d185');
+        } else if (data.content) {
+            // Some APIs use 'content' field
+            console.log('[handleAIResponse] Found content field');
+            addMessage(data.content, 'ai');
+            addTerminal('✅ AI response received', '#89d185');
+        } else {
+            console.log('[handleAIResponse] No response/content field found');
+            addMessage('⚠️ Empty response from AI (no response/content field)', 'system');
+            addMessage('Debug: ' + JSON.stringify(data).substring(0, 200), 'system');
+            addTerminal('⚠️ No response text in data', '#dcdcaa');
+        }
+    } catch (e) {
+        console.error('[handleAIResponse] Parse error:', e);
+        addMessage('❌ Parse error: ' + e.message, 'system');
+        addMessage('Raw response (first 500 chars): ' + result.substring(0, 500), 'system');
+        addTerminal('❌ Could not parse response: ' + e.message, '#f48771');
+    }
+}
+
+async function executeActions(actions) {
+    console.log('[executeActions] Processing', actions.length, 'actions');
+    
+    let lastFilePath = null;
+    
+    for (let i = 0; i < actions.length; i++) {
+        const action = actions[i];
+        console.log('[executeActions] Action', i + 1, ':', action.action, action);
+        
+        try {
+            if (action.action === 'create_folder') {
+                addTerminal('📁 Creating folder: ' + action.path, '#89d185');
+                const folderData = JSON.stringify({ path: action.path });
+                console.log('[executeActions] Calling createFolder with:', folderData);
+                const result = await window.kuyil.call('createFolder', folderData);
+                console.log('[executeActions] createFolder result:', result);
+                
+                // Parse result to check success
+                try {
+                    const resultObj = JSON.parse(result);
+                    if (resultObj.success) {
+                        addMessage('✅ Created folder: ' + action.path, 'system');
+                    } else {
+                        addMessage('❌ Failed to create folder: ' + (resultObj.error || 'Unknown error'), 'system');
+                    }
+                } catch (e) {
+                    addMessage('✅ Created folder: ' + action.path, 'system');
+                }
+                // Auto-refresh file list to show new folder
+                setTimeout(function() { refreshProjectFiles(); }, 300);
+                
+            } else if (action.action === 'create_file') {
+                addTerminal('📝 Creating file: ' + action.path, '#89d185');
+                const fileData = JSON.stringify({ path: action.path, content: action.content || '' });
+                console.log('[executeActions] Calling createFile with:', fileData.substring(0, 100));
+                const result = await window.kuyil.call('createFile', fileData);
+                console.log('[executeActions] createFile result:', result);
+                
+                // Parse result to check success
+                try {
+                    const resultObj = JSON.parse(result);
+                    if (resultObj.success) {
+                        addMessage('✅ Created file: ' + action.path, 'system');
+                        lastFilePath = action.path;
+                        // Auto-refresh file list to show new file
+                        setTimeout(function() { refreshProjectFiles(); }, 300);
+                    } else {
+                        addMessage('❌ Failed: ' + (resultObj.error || 'Unknown error'), 'system');
+                    }
+                } catch (e) {
+                    addMessage('✅ Created file: ' + action.path, 'system');
+                    lastFilePath = action.path;
+                    // Auto-refresh file list to show new file
+                    setTimeout(function() { refreshProjectFiles(); }, 300);
+                }
+                
+            } else if (action.action === 'replace_file' || action.action === 'write_file') {
+                addTerminal('✏️ Writing file: ' + action.path, '#89d185');
+                const fileData = JSON.stringify({ path: action.path, content: action.content || '' });
+                console.log('[executeActions] Calling writeFile with:', fileData.substring(0, 100));
+                const result = await window.kuyil.call('writeFile', fileData);
+                console.log('[executeActions] writeFile result:', result);
+                addMessage('✅ Wrote file: ' + action.path + ' (' + (action.content ? action.content.length : 0) + ' chars)', 'system');
+                lastFilePath = action.path;
+                // Auto-refresh file list to show new/modified file
+                setTimeout(function() { refreshProjectFiles(); }, 300);
+                
+            } else {
+                console.log('[executeActions] Unknown action:', action.action);
+                addMessage('⚠️ Unknown action: ' + action.action, 'system');
+            }
+        } catch (e) {
+            console.error('[executeActions] Error executing action:', e);
+            addMessage('❌ Error: ' + e.message + ' (action: ' + action.action + ', path: ' + action.path + ')', 'system');
+            addTerminal('❌ Action failed: ' + action.action + ' - ' + e.message, '#f48771');
+        }
+    }
+    
+    // Open the last created file
+    if (lastFilePath && window.kuyilReadFile) {
+        try {
+            addTerminal('📖 Opening: ' + lastFilePath, '#89d185');
+            let content = await window.kuyilReadFile(lastFilePath);
+            console.log('[executeActions] Got content, length:', content ? content.length : 0);
+            
+            // Decode base64 if content is encoded
+            if (content && content.startsWith('BASE64:')) {
+                console.log('[executeActions] Decoding Base64 content');
+                try {
+                    content = atob(content.substring(7));
+                    console.log('[executeActions] Decoded length:', content.length);
+                } catch (e) {
+                    console.error('[executeActions] Base64 decode error:', e);
+                    addTerminal('❌ Failed to decode file content', '#f48771');
+                    return;
+                }
+            }
+            
+            if (content && content !== 'nil') {
+                openFileInEditor(lastFilePath, content);
+                addMessage('📄 Opened: ' + lastFilePath, 'system');
+                
+                // Add to file tree
+                addFileToTree(lastFilePath);
+            }
+        } catch (e) {
+            console.error('[executeActions] Error opening file:', e);
+        }
+    }
+    
+    addMessage('✅ All actions completed!', 'system');
+    addTerminal('✅ Execution complete', '#89d185');
+}
+
+function openFileInEditor(filepath, content) {
+    currentFile = filepath;
+    
+    // Show editor, hide doc viewer
+    document.querySelector('.editor-container').style.display = 'flex';
+    document.getElementById('docViewer').style.display = 'none';
+    
+    // Set content in CodeMirror
+    if (window.kuyilEditor) {
+        window.kuyilEditor.setValue(content);
+    } else {
+        document.getElementById('editor').value = content;
+    }
+    
+    // Highlight the active file in the sidebar
+    highlightActiveFile(filepath);
+    
+    addTerminal('📝 Editing: ' + filepath, '#89d185');
+}
+
+function highlightActiveFile(filepath) {
+    // Remove active class from all file items
+    document.querySelectorAll('.file-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    // Add active class to the current file
+    const folderProject = document.getElementById('folder-project');
+    if (folderProject) {
+        const fileItems = folderProject.querySelectorAll('.file-item');
+        fileItems.forEach(item => {
+            // Check if this item corresponds to the current file
+            const itemText = item.textContent.trim().replace('📄', '').trim();
+            if (itemText === filepath || item.textContent.includes(filepath)) {
+                item.classList.add('active');
+            }
+        });
+    }
+}
+
+function addFileToTree(filepath) {
+    console.log('[addFileToTree] Adding file:', filepath);
+    
+    // filepath is already relative (from listWorkspaceFiles)
+    const displayPath = filepath;
+    
+    // Check if already in tree
+    const folderProject = document.getElementById('folder-project');
+    if (!folderProject) {
+        console.error('[addFileToTree] folderProject element not found');
+        return;
+    }
+    
+    const existing = Array.from(folderProject.querySelectorAll('.file-item')).find(
+        item => item.textContent.trim().includes(displayPath)
+    );
+    
+    if (existing) {
+        console.log('[addFileToTree] File already exists in tree');
+        return; // Already exists
+    }
+    
+    // Add new file item
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    
+    // Create file content wrapper
+    const fileContent = document.createElement('span');
+    fileContent.innerHTML = '<span class="icon">📄</span> ' + displayPath;
+    fileContent.style.flex = '1';
+    fileContent.style.cursor = 'pointer';
+    
+    // Create delete button
+    const deleteBtn = document.createElement('span');
+    deleteBtn.className = 'file-delete-btn';
+    deleteBtn.innerHTML = '🗑️';
+    deleteBtn.title = 'Delete file';
+    deleteBtn.onclick = async function(e) {
+        e.stopPropagation();
+        if (confirm('Delete ' + displayPath + '?')) {
+            try {
+                addTerminal('🗑️ Deleting: ' + displayPath, '#f48771');
+                const result = await window.kuyil.call('deleteFile', filepath);
+                const resultObj = JSON.parse(result);
+                if (resultObj.success) {
+                    addTerminal('✅ Deleted: ' + displayPath, '#89d185');
+                    if (currentFile === filepath) {
+                        currentFile = null;
+                        if (window.kuyilEditor) {
+                            window.kuyilEditor.setValue('// File deleted\n');
+                        }
+                    }
+                    // Refresh the file list immediately to show updated state
+                    console.log('[Delete] Refreshing file list...');
+                    await refreshProjectFiles();
+                } else {
+                    addTerminal('❌ Delete failed: ' + resultObj.error, '#f48771');
+                }
+            } catch (error) {
+                console.error('[Delete] Error:', error);
+                addTerminal('❌ Delete failed: ' + error.message, '#f48771');
+            }
+        }
+    };
+    
+    fileContent.onclick = async function(e) {
+        e.stopPropagation();
+        console.log('[File Click] Clicked:', displayPath);
+        console.log('[File Click] Full path:', filepath);
+        
+        if (!window.kuyilReadFile) {
+            console.error('[File Click] kuyilReadFile not available');
+            console.error('[File Click] window.kuyil:', typeof window.kuyil);
+            addTerminal('❌ File reader not ready', '#f48771');
+            return;
+        }
+        
+        try {
+            // Pass the relative path - backend will add workspace prefix
+            console.log('[File Click] Calling kuyilReadFile...');
+            addTerminal('📖 Opening: ' + displayPath + '...', '#89d185');
+            let content = await window.kuyilReadFile(filepath);
+            console.log('[File Click] Got content, length:', content ? content.length : 0);
+            console.log('[File Click] Content preview:', content ? content.substring(0, 50) : 'null');
+            
+            // Decode base64 if content is encoded (same as documentation)
+            if (content && content.startsWith('BASE64:')) {
+                console.log('[File Click] Decoding Base64 content');
+                try {
+                    content = atob(content.substring(7));
+                    console.log('[File Click] Decoded length:', content.length);
+                } catch (e) {
+                    console.error('[File Click] Base64 decode error:', e);
+                    addTerminal('❌ Failed to decode file content', '#f48771');
+                    return;
+                }
+            }
+            
+            if (content && !content.startsWith('// Error:')) {
+                console.log('[File Click] Opening in editor...');
+                openFileInEditor(filepath, content);
+                addTerminal('✅ Opened: ' + displayPath, '#89d185');
+            } else {
+                console.error('[File Click] Error in content:', content);
+                addTerminal('❌ Failed to read: ' + displayPath, '#f48771');
+            }
+        } catch (error) {
+            console.error('[File Click] Exception:', error);
+            addTerminal('❌ Error reading file: ' + error.message, '#f48771');
+        }
+    };
+    
+    fileItem.appendChild(fileContent);
+    fileItem.appendChild(deleteBtn);
+    
+    folderProject.appendChild(fileItem);
+    
+    // Make sure folder is expanded
+    folderProject.style.display = 'block';
+    console.log('[addFileToTree] File added to tree:', displayPath);
+}
+
+function addMessage(text, type) {
+    console.log('[executeAICommand] Processing command:', command);
+    const action = (command.action || '').toLowerCase();
+    
+    if (action === 'create_file' && command.filename && command.content) {
+        addTerminal('📝 Creating file: ' + command.filename, '#89d185');
+        // For now, just display the content - actual file creation would need backend
+        addMessage('File created: ' + command.filename, 'system');
+        addMessage('```\n' + command.content + '\n```', 'system');
+    } else if (action === 'replace_file' && command.filename && command.content) {
+        addTerminal('✏️ Replacing file: ' + command.filename, '#89d185');
+        addMessage('File replaced: ' + command.filename, 'system');
+    } else if (action === 'update_lines' && command.filename) {
+        addTerminal('📝 Updating file: ' + command.filename, '#89d185');
+        addMessage('File updated: ' + command.filename, 'system');
+    } else if (action === 'run_cmd' && command.command) {
+        addTerminal('▶️ Running: ' + command.command, '#89d185');
+        addMessage('Command executed: ' + command.command, 'system');
+    } else {
+        console.log('[executeAICommand] Unknown action or missing data:', action);
+    }
+}
+
+function addMessage(text, type) {
+    const div = document.createElement('div');
+    div.className = 'message ' + type;
+    div.textContent = text;
+    document.getElementById('messages').appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth' });
+}
+
+function addTerminal(text, color) {
+    const div = document.createElement('div');
+    div.className = 'terminal-line';
+    if (color) div.style.color = color;
+    div.textContent = text;
+    const term = document.getElementById('terminal');
+    if (term) {
+        term.appendChild(div);
+        term.scrollTop = term.scrollHeight;
+    }
+}
+
+// Show ready status
+setTimeout(function() {
+    addTerminal('📚 Documentation ready - click items in sidebar');
+    console.log('[Status Check] readDocumentation:', typeof window.readDocumentation);
+    console.log('[Status Check] fetchBridge:', typeof window.fetchBridge);
+    console.log('[Status Check] Available functions:', Object.keys(window).filter(k => k.includes('Bridge') || k.includes('kuyil') || k.includes('Docs')).join(', '));
+    if (typeof window.readDocumentation === 'function' && typeof window.fetchBridge === 'function') {
+        addTerminal('✅ All bridge functions ready', '#89d185');
+    } else if (typeof window.readDocumentation === 'function') {
+        addTerminal('⚠️ Partial bridge ready (no AI yet)', 'yellow');
+    } else {
+        addTerminal('⏳ Waiting for bridge functions...', 'yellow');
+    }
+}, 1500);
+
+// Additional delayed check to catch late bindings
+setTimeout(function() {
+    console.log('[Late Check] fetchBridge:', typeof window.fetchBridge);
+    console.log('[Late Check] readDocumentation:', typeof window.readDocumentation);
+    console.log('[Late Check] __kuyilTest:', window.__kuyilTest);
+    console.log('[Late Check] __fetchBridgeType:', window.__fetchBridgeType);
+    console.log('[Late Check] __fetchOk:', window.__fetchOk);
+    if (typeof window.fetchBridge === 'function' && typeof window.readDocumentation === 'function') {
+        console.log('[Late Check] ✓ Both bridges now available');
+        addTerminal('🔧 Late check: Bridges confirmed available', '#89d185');
+    } else {
+        console.log('[Late Check] ⚠️ Still missing bridges');
+        console.log('[Late Check] All window keys:', Object.keys(window).filter(k => !k.startsWith('webkit') && !k.startsWith('chrome')).sort().join(', '));
+        addTerminal('⚠️ Late check: Bridges still undefined!', '#f48771');
+    }
+}, 3000);
+
+// Refresh project files from workspace
+async function refreshProjectFiles() {
+    console.log('[refreshProjectFiles] Loading workspace files...');
+    const folderProject = document.getElementById('folder-project');
+    
+    if (!folderProject) {
+        console.error('[refreshProjectFiles] folder-project element not found');
+        return;
+    }
+    
+    try {
+        // Check if kuyil bridge is available
+        if (!window.kuyil || !window.kuyil.call) {
+            console.log('[refreshProjectFiles] Kuyil bridge not ready, waiting...');
+            folderProject.innerHTML = '<div style="padding: 5px; color: #dcdcaa;">⏳ Loading...</div>';
+            setTimeout(refreshProjectFiles, 500);
+            return;
+        }
+        
+        const response = await window.kuyil.call('listWorkspaceFiles', '{}');
+        console.log('[refreshProjectFiles] Response type:', typeof response);
+        console.log('[refreshProjectFiles] Response length:', response ? response.length : 0);
+        
+        if (!response || response === 'nil') {
+            console.error('[refreshProjectFiles] Got nil or empty response');
+            folderProject.innerHTML = '<div style="padding: 5px; color: #f48771;">No response from backend</div>';
+            return;
+        }
+        
+        const data = JSON.parse(response);
+        if (data.success && data.files) {
+            // Clear current files
+            folderProject.innerHTML = '';
+            
+            if (data.files.length === 0) {
+                folderProject.innerHTML = '<div style="padding: 5px; color: #888; font-style: italic;">No files yet</div>';
+            } else {
+                // Add each file
+                data.files.forEach(file => {
+                    addFileToTree(file);
+                });
+                console.log('[refreshProjectFiles] ✅ Loaded ' + data.files.length + ' files');
+            }
+        } else {
+            console.error('[refreshProjectFiles] Error in response:', data.error || 'Unknown error');
+            folderProject.innerHTML = '<div style="padding: 5px; color: #f48771;">Error: ' + (data.error || 'Unknown error') + '</div>';
+        }
+    } catch (error) {
+        console.error('[refreshProjectFiles] Exception:', error);
+        console.error('[refreshProjectFiles] Error stack:', error.stack);
+        folderProject.innerHTML = '<div style="padding: 5px; color: #f48771;">Failed to load files<br><span style="font-size: 10px;">' + error.message + '</span></div>';
+    }
+}
+
+// Load project files on startup - wait for bridge first!
+waitForKuyilBridge(function() {
+    console.log('[Startup] Bridge ready, setting up wrappers...');
+    setupBridgeWrappers(); // Set up compatibility wrappers
+    console.log('[Startup] Loading project files...');
+    setTimeout(function() {
+        refreshProjectFiles();
+    }, 500);
+});
+
+console.log('✓ Kuyil IDE Initialized');
+</script>
+</body>
+</html>
