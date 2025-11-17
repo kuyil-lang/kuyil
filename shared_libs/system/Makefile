@@ -1,17 +1,31 @@
-LIBNAME = libkylsystem.so
+LIBNAME = system
+BUILDDIR = ../../build/$(LIBNAME)
 LIBDIR = ../../libs
 
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -O2 -fPIC -I../../src
 LDFLAGS = -shared
 
-all: $(LIBDIR)/$(LIBNAME)
+TARGET = $(LIBDIR)/libkyl$(LIBNAME).so
+ARCHIVE = $(BUILDDIR)/libkyl$(LIBNAME).a
+OBJS = $(BUILDDIR)/system_utils.o
 
-$(LIBDIR)/$(LIBNAME): system_utils.c
+all: $(TARGET) $(ARCHIVE)
+
+$(BUILDDIR):
+	mkdir -p $(BUILDDIR)
+
+$(BUILDDIR)/%.o: %.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(TARGET): $(OBJS)
 	mkdir -p $(LIBDIR)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
+
+$(ARCHIVE): $(OBJS)
+	ar rcs $(ARCHIVE) $(OBJS)
 
 clean:
-	rm -f $(LIBDIR)/$(LIBNAME)
+	rm -rf $(BUILDDIR) $(TARGET)
 
 .PHONY: all clean

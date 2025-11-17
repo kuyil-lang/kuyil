@@ -3,6 +3,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -O2 -g -fPIC
 LIBS = -lcurl -lpthread -lm -ldl -levent
 SRCDIR = src
+BUILDDIR = build
 
 # Check if embedded_resources.c exists, include it automatically
 EMBED_SRC := $(wildcard $(SRCDIR)/embedded_resources.c)

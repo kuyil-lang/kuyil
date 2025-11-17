@@ -1367,24 +1367,26 @@ Value vm_import_module(int arg_count, Value* args) {
     // If simple name without path separators and .kyl extension, try multiple locations
     if (!file && !strchr(module_path, '/') && !strstr(module_path, ".kyl")) {
         LOG_DEBUG("Trying to resolve module: %s", module_path);
-        // 1. Try kyllibs/<name>.kyl (standard library location)
-        char kyllibs_path[1024];
-        snprintf(kyllibs_path, sizeof(kyllibs_path), "kyllibs/%s.kyl", module_path);
-        LOG_DEBUG("Checking kyllibs path: %s", kyllibs_path);
-        file = fopen(kyllibs_path, "r");
+        
+        // 1. Try interfaces/interface_<name>.kyl (primary for built-in interfaces)
+        char interface_path[1024];
+        snprintf(interface_path, sizeof(interface_path), "interfaces/interface_%s.kyl", module_path);
+        LOG_DEBUG("Checking interface path: %s", interface_path);
+        file = fopen(interface_path, "r");
         if (file) {
-            module_path = strdup(kyllibs_path);
-            LOG_INFO("Resolved '%s' to kyllibs: %s", original_module_name, kyllibs_path);
+            module_path = strdup(interface_path);
+            LOG_INFO("Resolved '%s' to interface file: %s", original_module_name, interface_path);
         }
         
-        // 2. Fallback to interfaces/interface_<name>.kyl
+        // 2. Fallback to kyllibs/<name>.kyl (for user libraries)
         if (!file) {
-            char interface_path[1024];
-            snprintf(interface_path, sizeof(interface_path), "interfaces/interface_%s.kyl", module_path);
-            file = fopen(interface_path, "r");
+            char kyllibs_path[1024];
+            snprintf(kyllibs_path, sizeof(kyllibs_path), "kyllibs/%s.kyl", module_path);
+            LOG_DEBUG("Checking kyllibs path: %s", kyllibs_path);
+            file = fopen(kyllibs_path, "r");
             if (file) {
-                module_path = strdup(interface_path);
-                LOG_INFO("Resolved '%s' to interface file: %s", original_module_name, interface_path);
+                module_path = strdup(kyllibs_path);
+                LOG_INFO("Resolved '%s' to kyllibs: %s", original_module_name, kyllibs_path);
             }
         }
     }

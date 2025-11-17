@@ -1,15 +1,28 @@
 CC=gcc
 CFLAGS=-Wall -Wextra -std=c99 -O2 -fPIC
-TARGET=../../libs/libkylstr.so
+LIBNAME=str
+BUILDDIR=../../build/$(LIBNAME)
+TARGET=../../libs/libkyl$(LIBNAME).so
+ARCHIVE=$(BUILDDIR)/libkyl$(LIBNAME).a
 SRC=libkylstr.c
+OBJS=$(BUILDDIR)/libkylstr.o
 
-all: $(TARGET)
+all: $(TARGET) $(ARCHIVE)
 
-$(TARGET): $(SRC)
+$(BUILDDIR):
+	mkdir -p $(BUILDDIR)
+
+$(BUILDDIR)/%.o: %.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(TARGET): $(OBJS)
 	mkdir -p ../../libs
-	$(CC) $(CFLAGS) -shared -o $(TARGET) $(SRC)
+	$(CC) $(CFLAGS) -shared -o $(TARGET) $(OBJS)
+
+$(ARCHIVE): $(OBJS)
+	ar rcs $(ARCHIVE) $(OBJS)
 
 clean:
-	rm -f $(TARGET)
+	rm -rf $(BUILDDIR) $(TARGET)
 
 .PHONY: all clean
