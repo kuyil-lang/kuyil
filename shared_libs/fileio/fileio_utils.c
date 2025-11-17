@@ -1077,11 +1077,133 @@ Value file_info(int arg_count, Value* args) {
     return result;
 }
 
+// Directory listing function - thread-safe, no popen()
+#include <dirent.h>
+
+Value kuyil_file_list_files(int arg_count, Value* args) {
+    fprintf(stderr, "[DEBUG list_files] Function called with %d args\n", arg_count);
+    fflush(stderr);
+    
+    // Handle namespace calling (argc=2) vs direct call (argc=1)
+    Value path_val = (arg_count == 2) ? args[1] : args[0];
+    Value pattern_val;
+    if (arg_count == 3) {
+        pattern_val = args[2];
+    } else if (arg_count == 2 && args[1].type == VALUE_STRING) {
+        pattern_val = args[1];
+    } else {
+        pattern_val.type = VALUE_NIL;
+    }
+    
+    if (path_val.type != VALUE_STRING) {
+        fprintf(stderr, "[DEBUG list_files] Error: path is not a string (type=%d)\n", path_val.type);
+        Value nil = {VALUE_NIL};
+        return nil;
+    }
+    
+    const char* dirpath = path_val.as.string;
+    const char* pattern = (pattern_val.type == VALUE_STRING) ? pattern_val.as.string : "*.kyl";
+    
+    fprintf(stderr, "[DEBUG list_files] Listing directory: %s with pattern: %s\n", dirpath, pattern);
+    fflush(stderr);
+    
+    // Open directory
+    DIR* dir = opendir(dirpath);
+    if (!dir) {
+        fprintf(stderr, "[DEBUG list_files] Error: cannot open directory %s (errno=%d)\n", dirpath, errno);
+        fflush(stderr);
+        Value nil = {VALUE_NIL};
+        return nil;
+    }
+    
+    fprintf(stderr, "[DEBUG list_files] Directory opened successfully\n");
+    fflush(stderr);
+    
+    // Build result string with newline-separated file paths
+    char* result = NULL;
+    size_t result_len = 0;
+    size_t result_cap = 1024;
+    result = malloc(result_cap);
+    if (!result) {
+        closedir(dir);
+        Value nil = {VALUE_NIL};
+        return nil;
+    }
+    result[0] = '\0';
+    
+    int file_count = 0;
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        // Check if it's a file (not directory)
+        if (entry->d_type != DT_REG && entry->d_type != DT_UNKNOWN) {
+            continue;
+        }
+        
+        // Check if name matches pattern (.kyl files)
+        const char* ext = strrchr(entry->d_name, '.');
+        if (!ext || strcmp(ext, ".kyl") != 0) {
+            continue;
+        }
+        
+        // Build full path
+        size_t path_len = strlen(dirpath) + strlen(entry->d_name) + 2;
+        char* full_path = malloc(path_len);
+        if (!full_path) continue;
+        
+        snprintf(full_path, path_len, "%s/%s", dirpath, entry->d_name);
+        
+        // Add to result
+        size_t needed = result_len + strlen(full_path) + 2;
+        if (needed > result_cap) {
+            result_cap = needed * 2;
+            char* new_result = realloc(result, result_cap);
+            if (!new_result) {
+                free(full_path);
+                break;
+            }
+            result = new_result;
+        }
+        
+        if (result_len > 0) {
+            strcat(result, "\n");
+            result_len++;
+        }
+        strcat(result, full_path);
+        result_len += strlen(full_path);
+        
+        free(full_path);
+        file_count++;
+    }
+    
+    closedir(dir);
+    
+    fprintf(stderr, "[DEBUG list_files] Found %d files, result length: %zu\n", file_count, result_len);
+    fflush(stderr);
+    
+    // Return result as string
+    Value ret;
+    ret.type = VALUE_STRING;
+    ret.as.string = result;
+    return ret;
+}
+
+// Wrapper for file.listFiles
+Value file_listFiles(int arg_count, Value* args) { 
+    return kuyil_file_list_files(arg_count, args);
+}
+
 // Snake-case no-underscore variants to satisfy interface binder fallback (e.g. file_readtext)
 Value file_readtext(int arg_count, Value* args) { return kuyil_file_read_text(arg_count, args); }
 Value file_readcsv(int arg_count, Value* args) { return kuyil_file_read_csv(arg_count, args); }
 Value file_readjson(int arg_count, Value* args) { return kuyil_file_read_json(arg_count, args); }
 Value file_readyaml(int arg_count, Value* args) { return kuyil_file_read_yaml(arg_count, args); }
+Value file_listfiles(int arg_count, Value* args) { return kuyil_file_list_files(arg_count, args); }
+
 
 // Library entry point for dynamic loading
 __attribute__((constructor))

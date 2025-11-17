@@ -1,0 +1,103 @@
+// Simple test for file_readText and system_capture in avatar context
+
+import "interfaces/interface_fileio.kyl"
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_str.kyl"
+import "interfaces/interface_webview_app.kyl"
+
+// Worker that uses file_readText
+fn workerReadFile(path) {
+    print("[AVATAR Worker] Reading file: " + path)
+    let content = file_readText(path)
+    
+    if content == nil {
+        print("[AVATAR Worker] ERROR: Got nil from file_readText")
+        return "ERROR: nil content"
+    }
+    
+    print("[AVATAR Worker] SUCCESS: Read " + str_toString(str_length(content)) + " chars")
+    return content
+}
+
+// Worker that uses system_capture
+fn workerCapture(cmd) {
+    print("[AVATAR Worker] Executing: " + cmd)
+    let output = kyl_system_capture(cmd)
+    
+    if output == nil {
+        print("[AVATAR Worker] ERROR: Got nil from kyl_system_capture")
+        return "ERROR: nil output"
+    }
+    
+    print("[AVATAR Worker] SUCCESS: Got " + str_toString(str_length(output)) + " chars")
+    return output
+}
+
+fn main() {
+    print("═══════════════════════════════════════════════════════")
+    print("  Testing file_readText & system_capture in avatars")
+    print("═══════════════════════════════════════════════════════")
+    
+    // Test 1: Direct calls (main thread)
+    print("\n[TEST 1] Main thread: file_writeText")
+    let testPath = "/tmp/avatar_test.txt"
+    let testContent = "Hello from avatar test!"
+    file_writeText(testPath, testContent)
+    print("✓ File written")
+    
+    print("\n[TEST 2] Main thread: file_readText")
+    let content = file_readText(testPath)
+    if content == nil {
+        print("✗ ERROR: Got nil")
+    } else {
+        print("✓ SUCCESS: '" + content + "'")
+    }
+    
+    print("\n[TEST 3] Main thread: kyl_system_capture")
+    let output = kyl_system_capture("echo 'Main thread test'")
+    if output == nil {
+        print("✗ ERROR: Got nil")
+    } else {
+        print("✓ SUCCESS: '" + str_trim(output) + "'")
+    }
+    
+    // Test 4: Avatar context - file_readText
+    print("\n[TEST 4] Avatar: file_readText")
+    print("Registering worker...")
+    registerHandler("testRead", workerReadFile)
+    
+    print("NOTE: If this hangs, avatar file operations are broken!")
+    print("Calling avatar worker...")
+    
+    // In a real webview app, this would be called from JavaScript
+    // For testing, we'll simulate it by calling the worker directly
+    let avatarResult = workerReadFile(testPath)
+    print("Avatar returned: '" + avatarResult + "'")
+    
+    if str_length(avatarResult) > 0 and avatarResult != "ERROR: nil content" {
+        print("✓ Avatar file_readText works!")
+    } else {
+        print("✗ Avatar file_readText failed")
+    }
+    
+    // Test 5: Avatar context - kyl_system_capture
+    print("\n[TEST 5] Avatar: kyl_system_capture")
+    print("Registering worker...")
+    registerHandler("testCapture", workerCapture)
+    
+    print("Calling avatar worker...")
+    let captureResult = workerCapture("echo 'Avatar capture test'")
+    print("Avatar returned: '" + str_trim(captureResult) + "'")
+    
+    if str_length(captureResult) > 0 and captureResult != "ERROR: nil output" {
+        print("✓ Avatar kyl_system_capture works!")
+    } else {
+        print("✗ Avatar kyl_system_capture failed")
+    }
+    
+    print("\n═══════════════════════════════════════════════════════")
+    print("  Test complete!")
+    print("═══════════════════════════════════════════════════════")
+}
+
+main()

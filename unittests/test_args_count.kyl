@@ -1,0 +1,24 @@
+// Test to see argument counts
+
+import "interfaces/interface_fileio.kyl"
+import "interfaces/interface_str.kyl"
+
+fn main() {
+    print("Test 1: file_writeText (should work)")
+    let wrote = file_writeText("/tmp/testarg.txt", "content")
+    print("Result: " + str_toString(wrote))
+    
+    print("\nTest 2: file_exists (should work)")  
+    let exists = file_exists("/tmp/testarg.txt")
+    print("Result: " + str_toString(exists))
+    
+    print("\nTest 3: file.readText (BUG HERE)")
+    let content = file.readText("/tmp/testarg.txt")
+    if content == nil {
+        print("Got nil!")
+    } else {
+        print("Got: " + content)
+    }
+}
+
+main()

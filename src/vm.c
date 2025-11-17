@@ -7,6 +7,7 @@
 #include "avatar_runtime.h"
 #include "async_http.h"
 #include "async_request_queue.h"
+#include "vm_call_shared.h"
 // HTTP functionality now in shared libraries
 #include "file_reader.h"
 #include "green_threads.h"
@@ -533,6 +534,56 @@ CallFrame* vm_setup_call_frame(CallFrame* frames, int* frame_count,
     return vm_setup_call_frame_ex(frames, frame_count, stack_top_ptr, function, arg_count, false);
 }
 
+// Helper functions for CallContext (main VM)
+static Value* vm_peek_helper(void* context, int distance) {
+    VM* vm = (VM*)context;
+    if (vm->stack_top - distance - 1 < vm->stack) {
+        return NULL;
+    }
+    return vm->stack_top - distance - 1;
+}
+
+static Value vm_pop_helper(void* context) {
+    VM* vm = (VM*)context;
+    return vm_pop(vm);
+}
+
+static void vm_push_helper(void* context, Value value) {
+    VM* vm = (VM*)context;
+    vm_push(vm, value);
+}
+
+static Value* vm_get_args_helper(void* context, int arg_count) {
+    VM* vm = (VM*)context;
+    // Stack layout: [...] [arg0, arg1, ..., argN-1, callee] <- stack_top
+    return vm->stack_top - arg_count - 1;
+}
+
+static void vm_pop_n_helper(void* context, int n) {
+    VM* vm = (VM*)context;
+    vm->stack_top -= n;
+    if (vm->stack_top < vm->stack) {
+        vm->stack_top = vm->stack;
+    }
+}
+
+static void vm_report_error_helper(void* context, const char* message) {
+    VM* vm = (VM*)context;
+    runtime_error(vm, "%s", message);
+}
+
+static bool vm_setup_frame_helper(void* context, Function* function, int arg_count) {
+    VM* vm = (VM*)context;
+    CallFrame* frame = vm_setup_call_frame(vm->frames, &vm->frame_count,
+                                            &vm->stack_top, function, arg_count);
+    return frame != NULL;
+}
+
+static bool vm_get_global_helper(void* context, const char* name, Value* out) {
+    VM* vm = (VM*)context;
+    return get_global(vm, name, out);
+}
+
 static bool call_value(VM* vm, Value callee, int arg_count) {
     if (callee.type == VALUE_FUNCTION) {
         // Function call
@@ -565,80 +616,33 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
     if (callee.type == VALUE_STRING) {
         kuyil_log_debug("call_value: callee string='%s' argc=%d", callee.as.string ? callee.as.string : "<null>", arg_count);
         
-        // Check if receiver (first arg) is an interface namespace marker string
-        // This handles cases like: file.readText() where file is a namespace, not a variable
-        // IMPORTANT: Only apply this if the unqualified function doesn't exist!
-        // This prevents false positives for functions like bind_interface_method("file", ...)
-        if (arg_count >= 1 && !is_dynamic_function(callee.as.string)) {
-            Value* args = vm->stack_top - arg_count - 1; // args[0] is first argument (receiver for methods)
-            
-            // Check if receiver is a STRING and is a registered interface name
-            if (args[0].type == VALUE_STRING && is_interface_name(args[0].as.string)) {
-                // Build dotted name: "interfaceName.methodName"
-                char dotted[256];
-                snprintf(dotted, sizeof(dotted), "%s.%s", args[0].as.string, callee.as.string);
-                
-                // Try to call the qualified function (drop the receiver)
-                if (is_dynamic_function(dotted)) {
-                    Value result = call_dynamic_function(dotted, arg_count - 1, args + 1);
-                    vm->stack_top -= arg_count + 1; // pop receiver, user args, and callee string
-                    vm_push(vm, result);
-                    return true;
-                } else {
-                    runtime_error(vm, "Undefined function '%s'.", dotted);
-                    return false;
-                }
-            }
-        }
+        // Set up call context for shared call handler
+        CallContext ctx = {
+            .peek = vm_peek_helper,
+            .pop = vm_pop_helper,
+            .push = vm_push_helper,
+            .get_args = vm_get_args_helper,
+            .pop_n = vm_pop_n_helper,
+            .report_error = vm_report_error_helper,
+            .setup_frame = vm_setup_frame_helper,
+            .context = vm,
+            .get_global = vm_get_global_helper,
+            .test_mode = vm->test_mode
+        };
         
-        // Special-case namespace method calls: receiver is a namespace object; resolve to dotted alias and drop receiver arg
+        CallResult result = vm_call_string_shared(&ctx, callee.as.string, arg_count);
+        
+        if (result == CALL_RESULT_ERROR) {
+            return false;
+        } else if (result == CALL_RESULT_OK) {
+            return true;
+        }
+        // CALL_RESULT_NOT_HANDLED: continue to main VM specific handlers below
+        
+        // Struct method dispatch: receiver is an object with __type
         if (arg_count >= 1) {
-            Value* args = vm->stack_top - arg_count - 1; // args[0] is first argument (receiver for methods)
+            Value* args = vm->stack_top - arg_count - 1;
             if (args[0].type == VALUE_OBJECT) {
-                const char* ns_name = NULL;
-                const char* if_name = NULL;
-                for (int i = 0; i < args[0].as.object.count; i++) {
-                    if (strcmp(args[0].as.object.keys[i], "__namespace__") == 0 && args[0].as.object.values[i].type == VALUE_STRING) {
-                        ns_name = args[0].as.object.values[i].as.string;
-                    } else if (strcmp(args[0].as.object.keys[i], "__interface__") == 0 && args[0].as.object.values[i].type == VALUE_STRING) {
-                        if_name = args[0].as.object.values[i].as.string;
-                    }
-                }
-                if ((ns_name && ns_name[0]) || (if_name && if_name[0])) {
-                    char dotted[256];
-                    // Prefer namespaced alias first
-                    if (ns_name && ns_name[0]) {
-                        snprintf(dotted, sizeof(dotted), "%s.%s", ns_name, callee.as.string);
-                        if (is_dynamic_function(dotted)) {
-                            kuyil_log_debug("Namespace dispatch: '%s' with %d args (dropping receiver)", dotted, arg_count - 1);
-                            Value result = call_dynamic_function(dotted, arg_count - 1, args + 1);
-                            vm->stack_top -= arg_count + 1; // pop receiver, user args, and callee string
-                            vm_push(vm, result);
-                            return true;
-                        }
-                    }
-                    // Fallback to interface dotted alias
-                    if (if_name && if_name[0]) {
-                        snprintf(dotted, sizeof(dotted), "%s.%s", if_name, callee.as.string);
-                        if (is_dynamic_function(dotted)) {
-                            kuyil_log_debug("Interface dispatch: '%s' with %d args (dropping receiver)", dotted, arg_count - 1);
-                            Value result = call_dynamic_function(dotted, arg_count - 1, args + 1);
-                            vm->stack_top -= arg_count + 1;
-                            vm_push(vm, result);
-                            return true;
-                        }
-                    }
-                    // If neither dotted alias exists but unqualified exists, still drop receiver to avoid arity mismatch
-                    if (is_dynamic_function(callee.as.string)) {
-                        kuyil_log_debug("Unqualified dispatch in namespace context: '%s' with %d args (dropping receiver)", callee.as.string, arg_count - 1);
-                        Value result = call_dynamic_function(callee.as.string, arg_count - 1, args + 1);
-                        vm->stack_top -= arg_count + 1;
-                        vm_push(vm, result);
-                        return true;
-                    }
-                }
-                // Non-namespace object fallback continues below (e.g., struct __type dispatch)
-                // Look for "__type" key
                 const char* type_name = NULL;
                 for (int i = 0; i < args[0].as.object.count; i++) {
                     if (strcmp(args[0].as.object.keys[i], "__type") == 0 &&
@@ -660,6 +664,7 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
                 }
             }
         }
+        
         // Test assertions (enabled in test mode)
         if (vm->test_mode) {
             if (strcmp(callee.as.string, "assert_true") == 0) {
@@ -765,60 +770,6 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             }
         }
 
-        // Check dynamic functions - but ONLY through explicit registrations (no fallback lookup)
-        // Functions must be registered as aliases or under their exact name
-        // For exported interfaces, only qualified names (interface.method) are registered
-        if (is_dynamic_function(callee.as.string)) {
-            kuyil_log_debug("call_value: dispatching dynamic function '%s'", callee.as.string);
-            Value* args = vm->stack_top - arg_count -1;
-            Value result = call_dynamic_function(callee.as.string, arg_count, args);
-            vm->stack_top -= arg_count + 1;
-            vm_push(vm, result);
-            return true;
-        }
-        
-        // Built-in function call by name
-        if (strcmp(callee.as.string, "print") == 0) {
-            Value* args = vm->stack_top - arg_count -1;
-            Value result = native_print(arg_count, args);
-            vm->stack_top -= arg_count + 1; // Pop args and function
-            vm_push(vm, result);
-            return true;
-        }
-        if (strcmp(callee.as.string, "typeof") == 0) {
-            Value* args = vm->stack_top - arg_count - 1;
-            const char* type_str = "unknown";
-            if (arg_count >= 1) {
-                type_str = value_type_name(args[0].type);
-            }
-            // Allocate string on heap and copy type name
-            size_t len = strlen(type_str);
-            char* result_str = (char*)malloc(len + 1);
-            if (result_str) {
-                strcpy(result_str, type_str);
-                Value result = {VALUE_STRING, .as.string = result_str};
-                vm->stack_top -= arg_count + 1; // Pop args and function
-                vm_push(vm, result);
-            } else {
-                // Out of memory, return nil
-                Value result = {VALUE_NIL};
-                vm->stack_top -= arg_count + 1;
-                vm_push(vm, result);
-            }
-            return true;
-        }
-        if (strcmp(callee.as.string, "array_length") == 0) {
-            Value* args = vm->stack_top - arg_count - 1;
-            double len = 0.0;
-            if (arg_count >= 1 && args[0].type == VALUE_ARRAY) {
-                len = (double)args[0].as.array.count;
-            }
-            vm->stack_top -= arg_count + 1; // Pop args and function
-            Value result = { VALUE_NUMBER, .as.number = len };
-            vm_push(vm, result);
-            return true;
-        }
-        
         // Logging function calls
         if (strcmp(callee.as.string, "log_fatal") == 0 ||
             strcmp(callee.as.string, "log_error") == 0 ||

@@ -24,6 +24,9 @@ interface str from "libs/libkylstr.so" {
   @alias("contains")
   bool str_contains(haystack: string, needle: string)
   
+  @alias("indexOf")
+  int32 str_indexOf(haystack: string, needle: string)
+  
   @alias("replace")
   string str_replace(input: string, from: string, to: string)
   

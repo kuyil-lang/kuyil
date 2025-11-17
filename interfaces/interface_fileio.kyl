@@ -26,4 +26,7 @@ interface file from "libs/libkylfileio.so" {
   
   @alias("info")
   object info(path: string)
+  
+  @alias("listFiles")
+  string listFiles(path: string)
 }

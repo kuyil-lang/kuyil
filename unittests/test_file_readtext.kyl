@@ -1,0 +1,207 @@
+// Unit test for file.readText() in avatar context
+
+import "interfaces/interface_fileio.kyl"
+import "interfaces/interface_system.kyl"
+import "interfaces/interface_str.kyl"
+import "interfaces/interface_webview_app.kyl"
+
+fn testReadTextDirect() {
+    print("=== Test 1: Direct file.readText() (main thread) ===")
+    
+    // Create a test file first
+    let testPath = "/tmp/test_readtext.txt"
+    let testContent = "Hello from test file!\nLine 2"
+    
+    print("Creating test file: " + testPath)
+    let created = file_writeText(testPath, testContent)
+    
+    if !created {
+        print("ERROR: Could not create test file")
+        return false
+    }
+    
+    print("Reading file directly...")
+    let content = file.readText(testPath)
+    
+    if content == nil {
+        print("ERROR: file.readText returned nil")
+        return false
+    }
+    
+    print("Content read: '" + content + "'")
+    print("Length: " + str_toString(str_length(content)))
+    
+    if content == testContent {
+        print("✓ Test 1 PASSED: Content matches")
+        return true
+    } else {
+        print("✗ Test 1 FAILED: Content mismatch")
+        return false
+    }
+}
+
+fn testSystemCaptureDirect() {
+    print("\n=== Test 2: Direct system.capture() (main thread) ===")
+    
+    print("Executing: echo 'Hello from capture'")
+    let output = system.capture("echo 'Hello from capture'")
+    
+    if output == nil {
+        print("ERROR: system.capture returned nil")
+        return false
+    }
+    
+    print("Output: '" + output + "'")
+    print("Length: " + str_toString(str_length(output)))
+    
+    if str_length(output) > 0 {
+        print("✓ Test 2 PASSED: Got output")
+        return true
+    } else {
+        print("✗ Test 2 FAILED: Empty output")
+        return false
+    }
+}
+
+fn workerReadText(path) {
+    print("[Worker] Starting file.readText for: " + path)
+    let content = file.readText(path)
+    print("[Worker] file.readText completed")
+    
+    if content == nil {
+        print("[Worker] ERROR: Got nil content")
+        return "ERROR: nil content"
+    }
+    
+    print("[Worker] Content length: " + str_toString(str_length(content)))
+    return content
+}
+
+fn workerSystemCapture(cmd) {
+    print("[Worker] Starting system.capture: " + cmd)
+    let output = system.capture(cmd)
+    print("[Worker] system.capture completed")
+    
+    if output == nil {
+        print("[Worker] ERROR: Got nil output")
+        return "ERROR: nil output"
+    }
+    
+    print("[Worker] Output length: " + str_toString(str_length(output)))
+    return output
+}
+
+fn testReadTextInAvatar() {
+    print("\n=== Test 3: file.readText() in avatar context ===")
+    
+    // Create test file
+    let testPath = "/tmp/test_avatar_readtext.txt"
+    let testContent = "Avatar test content"
+    
+    print("Creating test file: " + testPath)
+    file_writeText(testPath, testContent)
+    
+    print("Registering worker...")
+    registerHandler("testReadWorker", workerReadText)
+    
+    print("Calling worker via avatar...")
+    print("NOTE: If this hangs, the issue is confirmed!")
+    
+    // This should trigger the worker
+    let result = invokeHandler("testReadWorker", testPath)
+    
+    print("Worker returned")
+    
+    if result == nil {
+        print("ERROR: Worker returned nil")
+        return false
+    }
+    
+    print("Result: '" + result + "'")
+    
+    if result == testContent {
+        print("✓ Test 3 PASSED: Avatar file.readText works")
+        return true
+    } else {
+        print("✗ Test 3 FAILED: Content mismatch or error")
+        return false
+    }
+}
+
+fn testSystemCaptureInAvatar() {
+    print("\n=== Test 4: system.capture() in avatar context ===")
+    
+    print("Registering worker...")
+    registerHandler("testCaptureWorker", workerSystemCapture)
+    
+    print("Calling worker via avatar...")
+    print("NOTE: If this hangs, the issue is confirmed!")
+    
+    let result = invokeHandler("testCaptureWorker", "echo 'Avatar capture test'")
+    
+    print("Worker returned")
+    
+    if result == nil {
+        print("ERROR: Worker returned nil")
+        return false
+    }
+    
+    print("Result: '" + result + "'")
+    
+    if str_length(result) > 0 {
+        print("✓ Test 4 PASSED: Avatar system.capture works")
+        return true
+    } else {
+        print("✗ Test 4 FAILED: Empty result")
+        return false
+    }
+}
+
+fn main() {
+    print("╔════════════════════════════════════════════════════╗")
+    print("║  Unit Tests: file.readText & system.capture       ║")
+    print("╚════════════════════════════════════════════════════╝")
+    print("")
+    
+    let passed = 0
+    let total = 0
+    
+    // Test 1: Direct file.readText (should work)
+    total = total + 1
+    if testReadTextDirect() {
+        passed = passed + 1
+    }
+    
+    // Test 2: Direct system.capture (should work)
+    total = total + 1
+    if testSystemCaptureDirect() {
+        passed = passed + 1
+    }
+    
+    // Test 3: Avatar file.readText (THIS MIGHT HANG!)
+    print("\n⚠️  WARNING: Next test might hang if avatar bug exists")
+    print("Press Ctrl+C if it doesn't complete in 5 seconds\n")
+    
+    total = total + 1
+    if testReadTextInAvatar() {
+        passed = passed + 1
+    }
+    
+    // Test 4: Avatar system.capture (THIS MIGHT HANG!)
+    total = total + 1
+    if testSystemCaptureInAvatar() {
+        passed = passed + 1
+    }
+    
+    print("\n╔════════════════════════════════════════════════════╗")
+    print("║  Test Results: " + str_toString(passed) + "/" + str_toString(total) + " passed")
+    print("╚════════════════════════════════════════════════════╝")
+    
+    if passed == total {
+        print("✓ All tests passed!")
+    } else {
+        print("✗ Some tests failed")
+    }
+}
+
+main()

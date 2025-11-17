@@ -11,4 +11,8 @@ interface system from "libs/libkylsystem.so" {
   // Unescape a JSON string: convert \" to " and \\ to \
   // Example: unescape("{\"key\":\"value\"}") returns {"key":"value"}
   string unescape(str: string)
+  
+  // Execute a shell command and capture its output
+  // Example: capture("ls -la") returns the output as a string
+  string capture(command: string)
 }

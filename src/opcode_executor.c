@@ -625,10 +625,10 @@ bool exec_object_get(ExecContext* ctx) {
     }
     
     if (object.type != VALUE_OBJECT) {
-        printf("[OBJECT_GET ERROR] Expected object but got type %d\n", object.type);
-        if (object.type == VALUE_STRING) {
-            printf("[OBJECT_GET ERROR] String value: %.50s\n", object.as.string);
-        }
+        // printf("[OBJECT_GET ERROR] Expected object but got type %d\n", object.type);
+        // if (object.type == VALUE_STRING) {
+        //     printf("[OBJECT_GET ERROR] String value: %.50s\n", object.as.string);
+        // }
         *ctx->has_error = true;
         snprintf(ctx->error_message, ctx->error_msg_size, 
                 "Can only access properties on maps/objects");
@@ -636,20 +636,20 @@ bool exec_object_get(ExecContext* ctx) {
     }
     
     // DEBUG: Log object access in avatars
-    printf("[OBJECT_GET] Accessing key '%s' on object with %d properties\n", 
-           key.as.string, object.as.object.count);
+    // printf("[OBJECT_GET] Accessing key '%s' on object with %d properties\n", 
+    //        key.as.string, object.as.object.count);
     
     // Search for the key in the map
     bool found = false;
     for (int i = 0; i < object.as.object.count; i++) {
-        printf("[OBJECT_GET] Checking key[%d] = '%s'\n", i, object.as.object.keys[i]);
+        // printf("[OBJECT_GET] Checking key[%d] = '%s'\n", i, object.as.object.keys[i]);
         if (strcmp(object.as.object.keys[i], key.as.string) == 0) {
             Value val = object.as.object.values[i];
-            printf("[OBJECT_GET] FOUND! Type: %d\n", val.type);
-            if (val.type == VALUE_STRING) {
-                size_t len = val.as.string ? strlen(val.as.string) : 0;
-                printf("[OBJECT_GET] String ptr: %p, length: %zu\n", (void*)val.as.string, len);
-            }
+            // printf("[OBJECT_GET] FOUND! Type: %d\n", val.type);
+            // if (val.type == VALUE_STRING) {
+            //     size_t len = val.as.string ? strlen(val.as.string) : 0;
+            //     printf("[OBJECT_GET] String ptr: %p, length: %zu\n", (void*)val.as.string, len);
+            // }
             exec_push(ctx, val);
             found = true;
             break;
@@ -657,7 +657,7 @@ bool exec_object_get(ExecContext* ctx) {
     }
     
     if (!found) {
-        printf("[OBJECT_GET] Key '%s' NOT FOUND, returning nil\n", key.as.string);
+        // printf("[OBJECT_GET] Key '%s' NOT FOUND, returning nil\n", key.as.string);
         // Return nil for missing keys (like Go maps)
         Value nilv = {VALUE_NIL};
         exec_push(ctx, nilv);

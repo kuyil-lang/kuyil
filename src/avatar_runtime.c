@@ -4,6 +4,7 @@
 #include "thread_pool.h"
 #include "vm.h"
 #include "vm_library_integration.h"
+#include "vm_call_shared.h"
 #include "bytecode.h"
 #include "opcode_executor.h"
 #include <stdlib.h>
@@ -11,6 +12,16 @@
 #include <pthread.h>
 #include <time.h>
 #include <stdio.h>
+
+// Forward declarations
+struct AvatarHandle;
+struct AvatarRuntime;
+
+// Avatar VM context for shared call operations
+typedef struct {
+    VM* avatar_vm;
+    struct AvatarHandle* handle;
+} AvatarCallContext;
 
 // Avatar handle structure
 struct AvatarHandle {
@@ -26,17 +37,77 @@ struct AvatarHandle {
     char error_message[256];
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-    AvatarRuntime* runtime;
+    struct AvatarRuntime* runtime;
     struct AvatarHandle* next;
 };
 
 // Avatar runtime structure
 struct AvatarRuntime {
     ThreadPool* thread_pool;
-    AvatarHandle* handles;  // Linked list of active handles
+    struct AvatarHandle* handles;  // Linked list of active handles
     pthread_mutex_t handles_mutex;
     size_t pending_count;
 };
+
+// Helper functions for CallContext
+static Value* avatar_peek(void* context, int distance) {
+    AvatarCallContext* ctx = (AvatarCallContext*)context;
+    if (ctx->avatar_vm->stack_top - distance - 1 < ctx->avatar_vm->stack) {
+        return NULL;
+    }
+    return ctx->avatar_vm->stack_top - distance - 1;
+}
+
+static Value avatar_pop(void* context) {
+    AvatarCallContext* ctx = (AvatarCallContext*)context;
+    if (ctx->avatar_vm->stack_top <= ctx->avatar_vm->stack) {
+        Value nilv = {VALUE_NIL};
+        return nilv;
+    }
+    return *--ctx->avatar_vm->stack_top;
+}
+
+static void avatar_push(void* context, Value value) {
+    AvatarCallContext* ctx = (AvatarCallContext*)context;
+    if (ctx->avatar_vm->stack_top < ctx->avatar_vm->stack + STACK_MAX) {
+        *ctx->avatar_vm->stack_top++ = value;
+    }
+}
+
+static Value* avatar_get_args(void* context, int arg_count) {
+    AvatarCallContext* ctx = (AvatarCallContext*)context;
+    // Stack layout: [...] [arg0, arg1, ..., argN-1, callee] <- stack_top
+    return ctx->avatar_vm->stack_top - arg_count - 1;
+}
+
+static void avatar_pop_n(void* context, int n) {
+    AvatarCallContext* ctx = (AvatarCallContext*)context;
+    ctx->avatar_vm->stack_top -= n;
+    if (ctx->avatar_vm->stack_top < ctx->avatar_vm->stack) {
+        ctx->avatar_vm->stack_top = ctx->avatar_vm->stack;
+    }
+}
+
+static void avatar_report_error(void* context, const char* message) {
+    AvatarCallContext* ctx = (AvatarCallContext*)context;
+    ctx->handle->has_error = true;
+    snprintf(ctx->handle->error_message, sizeof(ctx->handle->error_message), "%s", message);
+}
+
+static bool avatar_setup_frame(void* context, Function* function, int arg_count) {
+    AvatarCallContext* ctx = (AvatarCallContext*)context;
+    CallFrame* frame = vm_setup_call_frame_ex(ctx->avatar_vm->frames, &ctx->avatar_vm->frame_count,
+                                                &ctx->avatar_vm->stack_top, function, arg_count, true);
+    return frame != NULL;
+}
+
+static bool avatar_get_global(void* context, const char* name, Value* out) {
+    // Avatars don't have direct global access in the current design
+    (void)context;
+    (void)name;
+    (void)out;
+    return false;
+}
 
 // Task function executed on worker thread
 static void* avatar_task_func(void* user_data) {
@@ -98,8 +169,8 @@ static void* avatar_task_func(void* user_data) {
     int local_count = handle->function->local_count;
     avatar_vm.stack_top = avatar_vm.stack + handle->arg_count;
     
-    printf("[AVATAR SETUP] Function has local_count=%d, arg_count=%d, allocating %d local slots\n",
-           local_count, handle->arg_count, local_count - handle->arg_count);
+    // printf("[AVATAR SETUP] Function has local_count=%d, arg_count=%d, allocating %d local slots\n",
+    //        local_count, handle->arg_count, local_count - handle->arg_count);
     
     // Allocate and initialize local variable slots (beyond parameters)
     for (int i = handle->arg_count; i < local_count; i++) {
@@ -114,8 +185,8 @@ static void* avatar_task_func(void* user_data) {
         *avatar_vm.stack_top++ = nil_val;
     }
     
-    printf("[AVATAR SETUP] Stack_top after locals = %ld (base=0, top=%ld)\n",
-           (long)(avatar_vm.stack_top - avatar_vm.stack), (long)(avatar_vm.stack_top - avatar_vm.stack));
+    // printf("[AVATAR SETUP] Stack_top after locals = %ld (base=0, top=%ld)\n",
+    //        (long)(avatar_vm.stack_top - avatar_vm.stack), (long)(avatar_vm.stack_top - avatar_vm.stack));
     
     // Now stack_top points after all locals - this is where expression evaluation starts
     // This matches vm_setup_call_frame_ex: *stack_top_ptr = frame->slots + arg_count;
@@ -198,7 +269,7 @@ static void* avatar_task_func(void* user_data) {
         
         switch (instruction) {
             case OP_RETURN: {
-                printf("[AVATAR] Executing OP_RETURN\n");
+                // printf("[AVATAR] Executing OP_RETURN\n");
                 // Pop return value from stack
                 Value result = exec_pop(&exec_ctx);
                 if (*exec_ctx.has_error) {
@@ -207,12 +278,12 @@ static void* avatar_task_func(void* user_data) {
                 }
                 
                 // DEBUG: Log what we're returning
-                printf("[AVATAR OP_RETURN] Type: %d\n", result.type);
-                if (result.type == VALUE_STRING && result.as.string) {
-                    size_t len = strlen(result.as.string);
-                    printf("[AVATAR OP_RETURN] String ptr: %p, length: %zu\n", (void*)result.as.string, len);
-                    printf("[AVATAR OP_RETURN] String (first 50 chars): %.50s\n", result.as.string);
-                }
+                // printf("[AVATAR OP_RETURN] Type: %d\n", result.type);
+                // if (result.type == VALUE_STRING && result.as.string) {
+                //     size_t len = strlen(result.as.string);
+                //     printf("[AVATAR OP_RETURN] String ptr: %p, length: %zu\n", (void*)result.as.string, len);
+                //     printf("[AVATAR OP_RETURN] String (first 50 chars): %.50s\n", result.as.string);
+                // }
                 
                 // Decrement frame count
                 avatar_vm.frame_count--;
@@ -223,12 +294,12 @@ static void* avatar_task_func(void* user_data) {
                 if (avatar_vm.frame_count == 0) {
                     // Top-level return - set result and exit
                     handle->result = result;
-                    if (result.type == VALUE_STRING && result.as.string) {
-                        size_t len = strlen(result.as.string);
-                        printf("[AVATAR OP_RETURN] Saved to handle->result, string length: %zu\n", len);
-                    } else {
-                        printf("[AVATAR OP_RETURN] Saved to handle->result, type: %d\n", result.type);
-                    }
+                    // if (result.type == VALUE_STRING && result.as.string) {
+                    //     size_t len = strlen(result.as.string);
+                    //     printf("[AVATAR OP_RETURN] Saved to handle->result, string length: %zu\n", len);
+                    // } else {
+                    //     printf("[AVATAR OP_RETURN] Saved to handle->result, type: %d\n", result.type);
+                    // }
                     running = false;
                 } else {
                     // Returning from nested call - restore stack to where callee was
@@ -409,8 +480,8 @@ static void* avatar_task_func(void* user_data) {
                     int min_stack_pos = handle->function->local_count;
                     
                     if (current_stack_pos <= min_stack_pos) {
-                        printf("[AVATAR OP_POP] BLOCKED: stack_pos=%d, cannot go below local_count=%d\n",
-                               current_stack_pos, min_stack_pos);
+                        // printf("[AVATAR OP_POP] BLOCKED: stack_pos=%d, cannot go below local_count=%d\n",
+                        //        current_stack_pos, min_stack_pos);
                         // Don't pop - stack is already at minimum safe level
                         break;
                     }
@@ -433,7 +504,7 @@ static void* avatar_task_func(void* user_data) {
                 avatar_vm.stack_top--;
                 
                 // Simple printing - may interleave with other output
-                printf("[AVATAR OUTPUT] ");
+                // printf("[AVATAR OUTPUT] ");
                 switch (value.type) {
                     case VALUE_NIL:
                         printf("nil\n");
@@ -458,9 +529,9 @@ static void* avatar_task_func(void* user_data) {
                 uint8_t slot = *frame->ip++;
                 exec_ctx.current_frame_slots = frame->slots;
                 // DEBUG: Log what we're loading
-                Value local_val = frame->slots[slot];
-                int stack_size = avatar_vm.stack_top - avatar_vm.stack;
-                printf("[AVATAR GET_LOCAL] Slot %d, type: %d, stack_size: %d\n", slot, local_val.type, stack_size);
+                // Value local_val = frame->slots[slot];
+                // int stack_size = avatar_vm.stack_top - avatar_vm.stack;
+                // printf("[AVATAR GET_LOCAL] Slot %d, type: %d, stack_size: %d\n", slot, local_val.type, stack_size);
                 exec_get_local(&exec_ctx, slot);
                 if (*exec_ctx.has_error) {
                     handle->result.type = VALUE_NIL;
@@ -473,11 +544,11 @@ static void* avatar_task_func(void* user_data) {
                 uint8_t slot = *frame->ip++;
                 exec_ctx.current_frame_slots = frame->slots;
                 // DEBUG: Log what we're setting
-                Value top_val = avatar_vm.stack_top[-1];
-                int stack_pos = avatar_vm.stack_top - avatar_vm.stack;
-                printf("[AVATAR SET_LOCAL] Slot %d = type %d, stack_pos=%d, slot_addr=%p, stack_addr=%p\n", 
-                       slot, top_val.type, stack_pos, 
-                       (void*)&frame->slots[slot], (void*)(avatar_vm.stack_top - 1));
+                // Value top_val = avatar_vm.stack_top[-1];
+                // int stack_pos = avatar_vm.stack_top - avatar_vm.stack;
+                // printf("[AVATAR SET_LOCAL] Slot %d = type %d, stack_pos=%d, slot_addr=%p, stack_addr=%p\n", 
+                //        slot, top_val.type, stack_pos, 
+                //        (void*)&frame->slots[slot], (void*)(avatar_vm.stack_top - 1));
                 exec_set_local(&exec_ctx, slot);
                 if (*exec_ctx.has_error) {
                     handle->result.type = VALUE_NIL;
@@ -538,6 +609,65 @@ static void* avatar_task_func(void* user_data) {
                 break;
             }
             
+            case OP_SET_GLOBAL: {
+                // Set global variable (write to main VM's globals)
+                uint8_t constant_idx = *frame->ip++;
+                
+                // Get the name from the constant pool
+                if (constant_idx >= frame->function->chunk.constant_count) {
+                    snprintf(handle->error_message, sizeof(handle->error_message),
+                            "Constant index out of bounds: %d", constant_idx);
+                    handle->has_error = true;
+                    handle->result.type = VALUE_NIL;
+                    return NULL;
+                }
+                
+                Value name_value = frame->function->chunk.constants[constant_idx];
+                if (name_value.type != VALUE_STRING) {
+                    snprintf(handle->error_message, sizeof(handle->error_message),
+                            "Global name is not a string");
+                    handle->has_error = true;
+                    handle->result.type = VALUE_NIL;
+                    return NULL;
+                }
+                
+                const char* name = name_value.as.string;
+                
+                // Pop the value to set
+                if (avatar_vm.stack_top <= avatar_vm.stack) {
+                    snprintf(handle->error_message, sizeof(handle->error_message),
+                            "Stack underflow in SET_GLOBAL");
+                    handle->has_error = true;
+                    handle->result.type = VALUE_NIL;
+                    return NULL;
+                }
+                Value value = *(--avatar_vm.stack_top);
+                
+                // Find the global in main VM and set it
+                int index = -1;
+                for (int i = 0; i < main_vm->global_count; i++) {
+                    if (strcmp(main_vm->globals[i].name, name) == 0) {
+                        index = i;
+                        break;
+                    }
+                }
+                
+                if (index == -1) {
+                    snprintf(handle->error_message, sizeof(handle->error_message),
+                            "Undefined variable '%s'", name);
+                    handle->has_error = true;
+                    handle->result.type = VALUE_NIL;
+                    return NULL;
+                }
+                
+                // Set the global value
+                main_vm->globals[index].value = value;
+                
+                // Push the value back (SET_GLOBAL returns the value)
+                *avatar_vm.stack_top++ = value;
+                break;
+            }
+            
             case OP_CALL: {
                 // OP_CALL: call a function - now with full call stack support!
                 uint8_t arg_count = *frame->ip++;
@@ -592,110 +722,42 @@ static void* avatar_task_func(void* user_data) {
                 }
                 // Handle VALUE_STRING (library functions and special functions)
                 else if (callee.type == VALUE_STRING) {
-                    // Special case: print function
-                    if (strcmp(callee.as.string, "print") == 0) {
-                        if (arg_count != 1) {
-                            handle->has_error = true;
-                            snprintf(handle->error_message, sizeof(handle->error_message),
-                                    "print expects 1 argument, got %d", arg_count);
-                            handle->result.type = VALUE_NIL;
-                            return NULL;
-                        }
-                        
-                        // Stack layout: [...] [arg0] [callee] <- stack_top
-                        // Get argument
-                        Value arg = *(avatar_vm.stack_top - arg_count - 1);
-                        
-                        // Pop callee and arguments
-                        avatar_vm.stack_top -= (arg_count + 1);
-                        
-                        // Print the value
-                        printf("[AVATAR OUTPUT] ");
-                        switch (arg.type) {
-                            case VALUE_NIL:
-                                printf("nil\n");
-                                break;
-                            case VALUE_BOOL:
-                                printf("%s\n", arg.as.boolean ? "true" : "false");
-                                break;
-                            case VALUE_NUMBER:
-                                printf("%g\n", arg.as.number);
-                                break;
-                            case VALUE_STRING:
-                                printf("%s\n", arg.as.string ? arg.as.string : "<null>");
-                                break;
-                            default:
-                                printf("<value type=%d>\n", arg.type);
-                                break;
-                        }
-                        
-                        // Push nil as return value
-                        Value nilv = {VALUE_NIL};
-                        *avatar_vm.stack_top++ = nilv;
-                        break;
-                    }
+                    // Set up call context for shared call handler
+                    AvatarCallContext avatar_ctx = {
+                        .avatar_vm = &avatar_vm,
+                        .handle = handle
+                    };
                     
-                    // Special case: typeof function
-                    if (strcmp(callee.as.string, "typeof") == 0) {
-                        if (arg_count != 1) {
-                            handle->has_error = true;
-                            snprintf(handle->error_message, sizeof(handle->error_message),
-                                    "typeof expects 1 argument, got %d", arg_count);
-                            handle->result.type = VALUE_NIL;
-                            return NULL;
-                        }
-                        
-                        // Stack layout: [...] [arg0] [callee] <- stack_top
-                        Value arg = *(avatar_vm.stack_top - arg_count - 1);
-                        
-                        // Pop callee and arguments
-                        avatar_vm.stack_top -= (arg_count + 1);
-                        
-                        // Return type as string
-                        Value result;
-                        result.type = VALUE_STRING;
-                        const char* type_names[] = {"nil", "bool", "number", "string", "array", "object", "function"};
-                        result.as.string = strdup(type_names[arg.type < 7 ? arg.type : 0]);
-                        *avatar_vm.stack_top++ = result;
-                        break;
-                    }
+                    CallContext ctx = {
+                        .peek = avatar_peek,
+                        .pop = avatar_pop,
+                        .push = avatar_push,
+                        .get_args = avatar_get_args,
+                        .pop_n = avatar_pop_n,
+                        .report_error = avatar_report_error,
+                        .setup_frame = avatar_setup_frame,
+                        .context = &avatar_ctx,
+                        .get_global = avatar_get_global,
+                        .test_mode = false
+                    };
                     
-                    // Special case: array_length function (stub - returns 0)
-                    if (strcmp(callee.as.string, "array_length") == 0) {
-                        avatar_vm.stack_top -= (arg_count + 1);  // Pop args and callee
-                        Value result;
-                        result.type = VALUE_NUMBER;
-                        result.as.number = 0;
-                        *avatar_vm.stack_top++ = result;
-                        break;
-                    }
                     
-                    // Check if it's a dynamic function
-                    if (!is_dynamic_function(callee.as.string)) {
-                        handle->has_error = true;
-                        snprintf(handle->error_message, sizeof(handle->error_message),
-                                "Unknown function in avatar: %s", callee.as.string);
+                    CallResult result = vm_call_string_shared(&ctx, callee.as.string, arg_count);
+                    
+                    if (result == CALL_RESULT_ERROR) {
                         handle->result.type = VALUE_NIL;
-                        printf("[AVATAR] ERROR: Unknown function: %s\n", callee.as.string);
                         return NULL;
+                    } else if (result == CALL_RESULT_OK) {
+                        // Successfully handled
+                        break;
                     }
+                    // CALL_RESULT_NOT_HANDLED: fall through to error
                     
-                    printf("[AVATAR] Calling dynamic function: %s\n", callee.as.string);
-                    
-                    // Get arguments from stack
-                    // Stack layout: [...] [arg0, arg1, ..., argN-1, callee] <- stack_top
-                    Value* args = avatar_vm.stack_top - arg_count - 1;
-                    
-                    // Call the dynamic function
-                    Value result = call_dynamic_function(callee.as.string, arg_count, args);
-                    
-                    // Pop arguments and callee from stack
-                    avatar_vm.stack_top -= (arg_count + 1);
-                    
-                    // Push result
-                    *avatar_vm.stack_top++ = result;
-                    printf("[AVATAR] Function returned, result type=%d\n", result.type);
-                    break;
+                    handle->has_error = true;
+                    snprintf(handle->error_message, sizeof(handle->error_message),
+                            "Unknown function in avatar: %s", callee.as.string);
+                    handle->result.type = VALUE_NIL;
+                    return NULL;
                 }
                 else {
                     // Unsupported callee type
@@ -712,7 +774,7 @@ static void* avatar_task_func(void* user_data) {
                 uint16_t offset = *frame->ip++ << 8;
                 offset |= *frame->ip++;
                 frame->ip += offset;
-                printf("[AVATAR] JUMP forward by %d\n", offset);
+                // printf("[AVATAR] JUMP forward by %d\n", offset);
                 break;
             }
             
@@ -795,20 +857,20 @@ static void* avatar_task_func(void* user_data) {
                 // Get property from map/object or namespace access
                 if (!exec_object_get(&exec_ctx)) {
                     handle->has_error = true;
-                    printf("[AVATAR] OBJECT_GET FAILED: %s\n", exec_ctx.error_message);
+                    // printf("[AVATAR] OBJECT_GET FAILED: %s\n", exec_ctx.error_message);
                     snprintf(handle->error_message, sizeof(handle->error_message),
                             "Error in OBJECT_GET: %s", exec_ctx.error_message);
                     handle->result.type = VALUE_NIL;
                     return NULL;
                 }
                 // DEBUG: Check what's on stack after OBJECT_GET
-                if (avatar_vm.stack_top > avatar_vm.stack) {
-                    Value top = avatar_vm.stack_top[-1];
-                    printf("[AVATAR POST-OBJECT_GET] Stack top type: %d\n", top.type);
-                    if (top.type == VALUE_STRING && top.as.string) {
-                        printf("[AVATAR POST-OBJECT_GET] String length: %zu\n", strlen(top.as.string));
-                    }
-                }
+                // if (avatar_vm.stack_top > avatar_vm.stack) {
+                //     Value top = avatar_vm.stack_top[-1];
+                //     printf("[AVATAR POST-OBJECT_GET] Stack top type: %d\n", top.type);
+                //     if (top.type == VALUE_STRING && top.as.string) {
+                //         printf("[AVATAR POST-OBJECT_GET] String length: %zu\n", strlen(top.as.string));
+                //     }
+                // }
                 break;
             
             case OP_OBJECT_SET:

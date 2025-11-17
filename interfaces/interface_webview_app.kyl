@@ -182,10 +182,12 @@ fn _runWebViewAppInternal(title, htmlContent, distFolder, useHeapFS) {
 
 // Wrapper that calls worker and pushes result to JS
 fn workerWithCallback(reqId, worker, args) {
+    print("[Avatar] workerWithCallback ENTERED for: " + reqId)
     print("[Avatar] Starting work for: " + reqId)
     let result = worker(args)
     print("[Avatar] Work completed for: " + reqId)
     print("[Avatar] Result type: " + typeof(result))
+    print("[Avatar] Result value: " + result)
     
     // Push result directly to JavaScript from avatar
     // The result is a JSON string, so we pass it as a string literal with proper escaping
@@ -200,7 +202,13 @@ fn workerWithCallback(reqId, worker, args) {
     // Pass as string, JavaScript will JSON.parse it
     let js = "try { window.handleKuyilResponse('" + reqId + "', '" + escaped + "'); } catch(e) { console.error('[Kuyil] Response error:', e.message, e); }"
     print("[Avatar] Pushing to JS")
-    eval(g_app_window, js)
+    print("[Avatar] JS code length: " + str_toString(str_length(js)))
+    print("[Avatar] JS preview: " + str_substring(js, 0, 200))
+    
+    // Try to eval and catch any errors
+    let evalResult = eval(g_app_window, js)
+    print("[Avatar] Eval result: " + str_toString(evalResult))
+    print("[Avatar] Eval completed")
     
     return "ok"
 }
@@ -248,6 +256,6 @@ fn _consoleForwarder(message) {
 
 // Inject framework JavaScript with pendingRequests tracking
 fn _injectFrameworkJS(html) {
-    let js = "<script>(function(){var oc=console.log;console.log=function(){var args=Array.prototype.slice.call(arguments);oc.apply(console,args);if(window.__kuyilConsole){window.__kuyilConsole(args.map(function(a){return typeof a==='object'?JSON.stringify(a):String(a);}).join(' '));}};})();var requestCounter=0;var pendingRequests={};window.kuyil={call:function(name,args){return new Promise(function(resolve,reject){var id=name+'_'+Date.now()+'_'+(requestCounter++);console.log('[Kuyil] Calling:',name,'with ID:',id);if(window.__kuyilBridge){var combined=id+'|'+name+'|'+JSON.stringify(args);window.__kuyilBridge(combined);console.log('[Kuyil] Sent to bridge:',combined);var t=setTimeout(function(){console.error('[Kuyil] Timeout for',id);reject(new Error('Timeout'));delete pendingRequests[id];},30000);pendingRequests[id]={timeout:t,resolve:resolve,reject:reject};console.log('[Kuyil] Stored',id,'in pendingRequests');}else{reject(new Error('No bridge'));}});}};window.handleKuyilResponse=function(id,result){console.log('[Kuyil] Response:',id,result);if(pendingRequests[id]){console.log('[Kuyil] Resolving!');pendingRequests[id].resolve(result);clearTimeout(pendingRequests[id].timeout);delete pendingRequests[id];}else{console.error('[Kuyil] No entry for',id,'pending:',Object.keys(pendingRequests));}};console.log('[Kuyil] Framework Ready');</script>"
+    let js = "<script>(function(){var oc=console.log;var oce=console.error;var ocw=console.warn;console.log=function(){var args=Array.prototype.slice.call(arguments);oc.apply(console,args);if(window.__kuyilConsole){window.__kuyilConsole('[LOG] '+args.map(function(a){return typeof a==='object'?JSON.stringify(a):String(a);}).join(' '));}};console.error=function(){var args=Array.prototype.slice.call(arguments);oce.apply(console,args);if(window.__kuyilConsole){window.__kuyilConsole('[ERROR] '+args.map(function(a){return typeof a==='object'?JSON.stringify(a):String(a);}).join(' '));}};console.warn=function(){var args=Array.prototype.slice.call(arguments);ocw.apply(console,args);if(window.__kuyilConsole){window.__kuyilConsole('[WARN] '+args.map(function(a){return typeof a==='object'?JSON.stringify(a):String(a);}).join(' '));}};})();var requestCounter=0;var pendingRequests={};window.kuyil={call:function(name,args){return new Promise(function(resolve,reject){var id=name+'_'+Date.now()+'_'+(requestCounter++);console.log('[Kuyil] Calling:',name,'with ID:',id);if(window.__kuyilBridge){var combined=id+'|'+name+'|'+JSON.stringify(args);window.__kuyilBridge(combined);console.log('[Kuyil] Sent to bridge:',combined);var t=setTimeout(function(){console.error('[Kuyil] Timeout for',id);reject(new Error('Timeout'));delete pendingRequests[id];},30000);pendingRequests[id]={timeout:t,resolve:resolve,reject:reject};console.log('[Kuyil] Stored',id,'in pendingRequests');}else{reject(new Error('No bridge'));}});}};window.handleKuyilResponse=function(id,result){console.log('[Kuyil] Response:',id,result);if(pendingRequests[id]){console.log('[Kuyil] Resolving!');pendingRequests[id].resolve(result);clearTimeout(pendingRequests[id].timeout);delete pendingRequests[id];}else{console.error('[Kuyil] No entry for',id,'pending:',Object.keys(pendingRequests));}};console.log('[Kuyil] Framework Ready');</script>"
     return str_replace(html, "</head>", js + "</head>")
 }

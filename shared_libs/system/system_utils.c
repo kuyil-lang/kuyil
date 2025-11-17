@@ -110,13 +110,105 @@ Value kyl_system_unescape(int arg_count, Value* args) {
     return result;
 }
 
+// Execute a shell command and capture its output
+// Usage: capture("ls -la") returns the output as a string
+Value kyl_system_capture(int arg_count, Value* args) {
+    Value result;
+    result.type = VALUE_NIL;
+    
+    // Handle both calling conventions:
+    // - Direct call: argc=1, argv[0] = command
+    // - Namespace call: argc=2, argv[0] = namespace object, argv[1] = command
+    Value cmd_val;
+    if (arg_count == 2) {
+        // Namespace call convention
+        cmd_val = args[1];
+    } else if (arg_count == 1) {
+        // Direct call convention
+        cmd_val = args[0];
+    } else {
+        // Unexpected argument count
+        fprintf(stderr, "Error: capture() requires exactly one string argument\n");
+        return result;
+    }
+    
+    if (cmd_val.type != VALUE_STRING) {
+        fprintf(stderr, "Error: capture() requires a string argument\n");
+        return result;
+    }
+    
+    const char* command = cmd_val.as.string;
+    
+    fprintf(stderr, "[DEBUG capture] About to execute: %s\n", command);
+    fflush(stderr);
+    
+    // Open pipe to command
+    FILE* pipe = popen(command, "r");
+    fprintf(stderr, "[DEBUG capture] popen returned: %p\n", (void*)pipe);
+    fflush(stderr);
+    
+    if (!pipe) {
+        fprintf(stderr, "Error: capture() failed to execute command\n");
+        return result;
+    }
+    
+    // Read output into buffer
+    char* output = NULL;
+    size_t output_size = 0;
+    size_t output_capacity = 4096;
+    output = (char*)malloc(output_capacity);
+    if (!output) {
+        pclose(pipe);
+        fprintf(stderr, "Error: capture() failed to allocate memory\n");
+        return result;
+    }
+    
+    fprintf(stderr, "[DEBUG capture] Starting to read output...\n");
+    fflush(stderr);
+    
+    char buffer[1024];
+    while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+        fprintf(stderr, "[DEBUG capture] Read line: %s", buffer);
+        fflush(stderr);
+        
+        size_t len = strlen(buffer);
+        if (output_size + len + 1 > output_capacity) {
+            output_capacity *= 2;
+            char* new_output = (char*)realloc(output, output_capacity);
+            if (!new_output) {
+                free(output);
+                pclose(pipe);
+                fprintf(stderr, "Error: capture() failed to reallocate memory\n");
+                return result;
+            }
+            output = new_output;
+        }
+        strcpy(output + output_size, buffer);
+        output_size += len;
+    }
+    
+    fprintf(stderr, "[DEBUG capture] Finished reading, closing pipe...\n");
+    fflush(stderr);
+    
+    pclose(pipe);
+    
+    fprintf(stderr, "[DEBUG capture] Pipe closed, returning result\n");
+    fflush(stderr);
+    
+    // Return the output as a string
+    result.type = VALUE_STRING;
+    result.as.string = output;
+    return result;
+}
+
 // Library initialization
 const char* library_interface() {
     return 
         "library system\n"
         "  function sleep(milliseconds: any) -> any\n"
         "  function timestamp() -> any\n"
-        "  function unescape(str: string) -> string\n";
+        "  function unescape(str: string) -> string\n"
+        "  function capture(command: string) -> string\n";
 }
 
 // Function registration
@@ -129,6 +221,7 @@ static FunctionEntry functions[] = {
     {"pause", kyl_system_sleep},
     {"timestamp", kyl_system_timestamp},
     {"unescape", kyl_system_unescape},
+    {"capture", kyl_system_capture},
     {NULL, NULL}
 };
 

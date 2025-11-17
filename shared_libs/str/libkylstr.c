@@ -17,6 +17,7 @@ const char* kyl_interface_signature_text =
     "str startsWith(input: string, prefix: string) -> bool\n"
     "str endsWith(input: string, suffix: string) -> bool\n"
     "str contains(haystack: string, needle: string) -> bool\n"
+    "str indexOf(haystack: string, needle: string) -> int32\n"
     "str replace(input: string, from: string, to: string) -> string\n"
     "str split(input: string, delimiter: string) -> string\n"
     "str toNumber(input: string) -> float64\n"
@@ -196,6 +197,25 @@ Value kyl_str_contains(int arg_count, Value* args) {
     Value result;
     result.type = VALUE_BOOL;
     result.as.boolean = strstr(args[0].as.string, args[1].as.string) != NULL;
+    return result;
+}
+
+// String indexOf function - returns first index of needle in haystack, or -1 if not found
+Value kyl_str_indexOf(int arg_count, Value* args) {
+    if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        Value result;
+        result.type = VALUE_NUMBER;
+        result.as.number = -1;
+        return result;
+    }
+    
+    const char* haystack = args[0].as.string;
+    const char* needle = args[1].as.string;
+    const char* pos = strstr(haystack, needle);
+    
+    Value result;
+    result.type = VALUE_NUMBER;
+    result.as.number = (pos != NULL) ? (double)(pos - haystack) : -1.0;
     return result;
 }
 

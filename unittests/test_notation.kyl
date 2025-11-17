@@ -1,0 +1,25 @@
+// Test underscore vs dot notation
+
+import "interfaces/interface_fileio.kyl"
+
+fn main() {
+    file_writeText("/tmp/test_notation.txt", "Hello")
+    
+    print("Test 1: Using file_readText (underscore)")
+    let content1 = file_readText("/tmp/test_notation.txt")
+    if content1 == nil {
+        print("ERROR: Got nil")
+    } else {
+        print("SUCCESS: " + content1)
+    }
+    
+    print("\nTest 2: Using file.readText (dot)")
+    let content2 = file.readText("/tmp/test_notation.txt")
+    if content2 == nil {
+        print("ERROR: Got nil")  
+    } else {
+        print("SUCCESS: " + content2)
+    }
+}
+
+main()
