@@ -1,11 +1,11 @@
 // WebView Bridge Demo - Direct JS Communication
 // Demonstrates executing JavaScript from Kuyil using webview_eval()
 
-import("../../interfaces/interface_system.kyl")
+import "system"
 
 // NOTE: Import order doesn't matter when using full function names!
 // Use webview_bind() and webview_eval() instead of short aliases
-import("../../interfaces/interface_webview.kyl")
+import "webview"
 
 // Global variable to hold window handle
 let global_window = 0

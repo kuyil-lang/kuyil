@@ -1,11 +1,11 @@
 // Working Bridge Demo - Polling + Main Loop Avatar Spawning
 // Webview callbacks set flags, main loop spawns avatars
 
-import "../../interfaces/interface_system.kyl"
-import "../../interfaces/interface_webview.kyl"
-import "../../interfaces/interface_http.kyl"
-import "../../interfaces/interface_str.kyl"
-import "../../interfaces/interface_eventloop.kyl"
+import "system"
+import "webview"
+import "http"
+import "str"
+import "eventloop"
 
 let window_global = nil
 let pending_request_id = ""

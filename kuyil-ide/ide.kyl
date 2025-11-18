@@ -595,7 +595,7 @@ fn main() {
     
     // Use runWebViewAppFromDist to properly handle local file URIs
     // This avoids collision with embedded heapfs resources
-    runWebViewAppFromDist("Kuyil AI IDE", "kuyil-ai-ide/assets")
+    runWebViewAppFromDist("Kuyil AI IDE", "kuyil-ide/assets")
     
     print("✓ IDE shutdown complete")
 }

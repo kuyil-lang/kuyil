@@ -133,9 +133,13 @@ static char* read_file(const char* path) {
     return buffer;
 }
 
-static void run_file(const char* path) {
+static void run_file(const char* path, int script_argc, char** script_argv) {
     VM vm;
     vm_init(&vm);
+    
+    // Set program arguments (sys.args)
+    vm_set_program_args(&vm, script_argc, script_argv);
+    
     // Record source path for better error reporting (file:line in stack traces)
     vm.current_source_path = path;
     set_current_source_path(path);
@@ -820,51 +824,57 @@ static void compile_file(const char* input_path, const char* output_path) {
 }
 
 static void print_usage() {
-    printf("Usage: kuyil [options] [script]\n\n");
-    printf("Options:\n");
-    printf("  -h, --help           Show this help message\n");
-    printf("  -d, --debug          Enable debug logging\n");
-    printf("  -c, --compile        Compile script to binary\n");
-    printf("  --native             Generate native executable (requires -c)\n");
-    printf("  --embed-bytecode     Embed bytecode instead of source (more secure)\n");
-    printf("  --target <platform>  Cross-compile target: windows, linux, macos\n");
-    printf("  -o <output>          Specify output file for compilation\n");
-    printf("                       Extensions: .kyc (bytecode), .c (C source), other (wrapper)\n");
-    printf("  -v, --version        Show version information\n");
-    printf("  --log-level <level>  Set logging level (debug|info|warning|error|fatal)\n");
-    printf("  --log-file <file>    Log to file instead of stderr\n");
-    printf("  --no-color           Disable colored log output\n");
-    printf("  --no-trace           Disable function call tracing\n");
-    printf("  --test               Enable test mode (assertions and FFI mocks)\n");
-    printf("  --coverage           Enable code coverage instrumentation\n");
-    printf("  --coverage-format <text|lcov>  Set coverage report format (default: text)\n");
-    printf("  -                    Read from stdin\n\n");
+    printf("Usage: kuyil [command] [options] [script] [-- script-args...]\n\n");
+    printf("Commands:\n");
+    printf("  run [options] <script>      Run a Kuyil script (default)\n");
+    printf("  build [options] <script>    Compile script to binary/bytecode\n");
+    printf("  test [options] <script>     Run tests with optional coverage\n");
+    printf("  (no command)                Interactive REPL\n\n");
+    printf("Run Options:\n");
+    printf("  -d, --debug                 Enable debug logging\n");
+    printf("  --log-level <level>         Set logging level (debug|info|warning|error|fatal)\n");
+    printf("  --log-file <file>           Log to file instead of stderr\n");
+    printf("  --no-color                  Disable colored log output\n");
+    printf("  --no-trace                  Disable function call tracing\n");
+    printf("  -                           Read from stdin\n\n");
+    printf("Build Options:\n");
+    printf("  --native                    Generate native executable\n");
+    printf("  --embed-bytecode            Embed bytecode instead of source (more secure)\n");
+    printf("  --target <platform>         Cross-compile target: windows, linux, macos\n");
+    printf("  -o <output>                 Specify output file\n");
+    printf("                              Extensions: .kyc (bytecode), .c (C source), other (wrapper)\n\n");
+    printf("Test Options:\n");
+    printf("  --coverage                  Enable code coverage instrumentation\n");
+    printf("  --coverage-format <format>  Coverage format: text (default) or lcov\n\n");
+    printf("Global Options:\n");
+    printf("  -h, --help                  Show this help message\n");
+    printf("  -v, --version               Show version information\n\n");
     printf("Examples:\n");
-    printf("  kuyil script.kyl                             Run script.kyl\n");
-    printf("  kuyil -d script.kyl                          Run with debug logging\n");
-    printf("  kuyil --log-level debug script.kyl           Run with debug logging\n");
-    printf("  kuyil --log-file app.log script.kyl          Log to file\n");
-    printf("  kuyil --test tests/sample.kyl                Run tests with assertions\n");
-    printf("  kuyil --coverage --coverage-format lcov script.kyl > coverage.info\n");
-    printf("  kuyil                                        Start interactive REPL\n");
-    printf("  kuyil -c script.kyl -o app                   Compile to wrapper binary\n");
-    printf("  kuyil -c script.kyl -o app.kyc               Compile to bytecode\n");
-    printf("  kuyil -c script.kyl -o app.c                 Compile to C source\n");
-    printf("  kuyil --native script.kyl -o myapp           Generate native binary\n");
-    printf("  kuyil --native --embed-bytecode script.kyl   Secure native binary with bytecode\n");
-    printf("  kuyil --native --target windows script.kyl   Cross-compile to Windows .exe\n");
-    printf("  kuyil --native --target macos script.kyl     Cross-compile to macOS binary\n");
-    printf("  echo 'print(\"Hi\")' | kuyil -                Run from stdin\n\n");
+    printf("  kuyil script.kyl                                Run script.kyl\n");
+    printf("  kuyil script.kyl -- arg1 arg2                   Run with arguments (sys.args)\n");
+    printf("  kuyil run -d script.kyl                         Run with debug logging\n");
+    printf("  kuyil run --log-file app.log script.kyl         Log to file\n");
+    printf("  kuyil test tests/sample.kyl                     Run tests\n");
+    printf("  kuyil test --coverage tests/sample.kyl          Run with coverage\n");
+    printf("  kuyil test --coverage-format lcov script.kyl > coverage.info\n");
+    printf("  kuyil build script.kyl -o app                   Compile to wrapper binary\n");
+    printf("  kuyil build script.kyl -o app.kyc               Compile to bytecode\n");
+    printf("  kuyil build --native script.kyl -o myapp        Generate native binary\n");
+    printf("  kuyil build --native --embed-bytecode script.kyl\n");
+    printf("  kuyil build --native --target windows script.kyl  Cross-compile to Windows\n");
+    printf("  kuyil                                           Start interactive REPL\n");
+    printf("  echo 'print(\"Hi\")' | kuyil -                   Run from stdin\n\n");
+    printf("Script Arguments (sys.args):\n");
+    printf("  Arguments after '--' are passed to the script:\n");
+    printf("    kuyil script.kyl -- foo bar\n");
+    printf("  Access in script:\n");
+    printf("    print(sys.args[0])  // \"script.kyl\"\n");
+    printf("    print(sys.args[1])  // \"foo\"\n");
+    printf("    print(sys.args[2])  // \"bar\"\n\n");
     printf("Cross-Compilation:\n");
-    printf("  --target windows     Requires: mingw-w64 (sudo apt-get install mingw-w64)\n");
-    printf("  --target macos       Requires: OSXCross (complex setup, use native Mac or CI)\n");
-    printf("  --target linux       Default on Linux systems\n\n");
-    printf("Logging in Kuyil:\n");
-    printf("  log_fatal(\"message\")   - Fatal error (exits program)\n");
-    printf("  log_error(\"message\")   - Error message\n");
-    printf("  log_warning(\"message\") - Warning message\n");
-    printf("  log_info(\"message\")    - Informational message\n");
-    printf("  log_debug(\"message\")   - Debug message\n");
+    printf("  --target windows     Requires: mingw-w64\n");
+    printf("  --target macos       Requires: OSXCross\n");
+    printf("  --target linux       Default on Linux systems\n");
 }
 
 static void print_version() {
@@ -1385,275 +1395,261 @@ int main(int argc, char* argv[]) {
     
     // HTTP subsystem now handled by shared libraries
     
+    // No arguments: start REPL
     if (argc == 1) {
         repl();
-    } else if (argc == 2) {
-        if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+        log_cleanup();
+        return 0;
+    }
+    
+    // Check for global options first
+    if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+        print_usage();
+        return 0;
+    } else if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
+        print_version();
+        return 0;
+    }
+    
+    // Determine command (run, build, test) or treat as direct file execution
+    const char* command = NULL;
+    int cmd_start_idx = 1;  // Index where command/file starts
+    
+    if (strcmp(argv[1], "run") == 0 || strcmp(argv[1], "build") == 0 || strcmp(argv[1], "test") == 0) {
+        command = argv[1];
+        cmd_start_idx = 2;
+    } else if (argv[1][0] != '-') {
+        // Direct file execution: kuyil script.kyl
+        command = "run";
+        cmd_start_idx = 1;
+    } else {
+        // Options without command, assume "run"
+        command = "run";
+        cmd_start_idx = 1;
+    }
+    
+    // Parse options and find script file + script arguments
+    char* input_file = NULL;
+    bool test_mode = (strcmp(command, "test") == 0);
+    bool build_mode = (strcmp(command, "build") == 0);
+    bool coverage_enabled = false;
+    const char* coverage_format = "text";
+    bool native_mode = false;
+    bool embed_bytecode = false;
+    char* output_file = NULL;
+    char* target_platform = NULL;
+    char* embed_dirs[16];
+    int embed_dir_count = 0;
+    
+    // Find "--" separator for script arguments
+    int script_arg_start = -1;
+    for (int i = cmd_start_idx; i < argc; i++) {
+        if (strcmp(argv[i], "--") == 0) {
+            script_arg_start = i + 1;
+            break;
+        }
+    }
+    int parse_until = (script_arg_start > 0) ? script_arg_start - 1 : argc;
+    
+    // Parse options
+    for (int i = cmd_start_idx; i < parse_until; i++) {
+        if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--debug") == 0) {
+            log_set_level(LOG_DEBUG);
+        } else if (strcmp(argv[i], "--log-level") == 0 && i + 1 < parse_until) {
+            const char* level = argv[++i];
+            if (strcmp(level, "debug") == 0) log_set_level(LOG_DEBUG);
+            else if (strcmp(level, "info") == 0) log_set_level(LOG_INFO);
+            else if (strcmp(level, "warning") == 0) log_set_level(LOG_WARNING);
+            else if (strcmp(level, "error") == 0) log_set_level(LOG_ERROR);
+            else if (strcmp(level, "fatal") == 0) log_set_level(LOG_FATAL);
+        } else if (strcmp(argv[i], "--log-file") == 0 && i + 1 < parse_until) {
+            FILE* log_file = fopen(argv[++i], "a");
+            if (log_file) log_set_output(log_file);
+        } else if (strcmp(argv[i], "--no-color") == 0) {
+            log_set_colored(false);
+        } else if (strcmp(argv[i], "--no-trace") == 0) {
+            log_set_trace_calls(false);
+        } else if (strcmp(argv[i], "--coverage") == 0) {
+            coverage_enabled = true;
+        } else if (strcmp(argv[i], "--coverage-format") == 0 && i + 1 < parse_until) {
+            coverage_format = argv[++i];
+        } else if (strcmp(argv[i], "--native") == 0) {
+            native_mode = true;
+        } else if (strcmp(argv[i], "--embed-bytecode") == 0) {
+            embed_bytecode = true;
+        } else if (strcmp(argv[i], "--target") == 0 && i + 1 < parse_until) {
+            target_platform = argv[++i];
+        } else if (strcmp(argv[i], "-o") == 0 && i + 1 < parse_until) {
+            output_file = argv[++i];
+        } else if (strcmp(argv[i], "--embed-dir") == 0 && i + 1 < parse_until) {
+            if (embed_dir_count < 16) {
+                embed_dirs[embed_dir_count++] = argv[++i];
+            }
+        } else if (strcmp(argv[i], "--check") == 0 || strcmp(argv[i], "--syntax-only") == 0) {
+            if (i + 1 < parse_until) {
+                check_syntax_only(argv[++i]);
+                return 0;
+            }
+        } else if (strcmp(argv[i], "-") == 0) {
+            input_file = argv[i];
+        } else if (argv[i][0] != '-') {
+            input_file = argv[i];
+        }
+    }
+    
+    // Handle embed directories if specified
+    if (embed_dir_count > 0) {
+        printf("Embedding resources from %d director%s...\n", 
+               embed_dir_count, embed_dir_count == 1 ? "y" : "ies");
+        
+        // Add interfaces directory automatically
+        embed_dirs[embed_dir_count++] = "interfaces";
+        
+        // Generate embedded_resources.c
+        if (embed_resources_from_dirs((const char**)embed_dirs, embed_dir_count, 
+                                     "src/embedded_resources.c") != 0) {
+            fprintf(stderr, "Error: Failed to generate embedded resources\n");
+            exit(1);
+        }
+        printf("\n");
+        
+        // Now rebuild kuyil with embedded resources
+        printf("Rebuilding with embedded resources...\n");
+        int ret = system("make -j4 2>&1 | grep -v 'Entering\\|Leaving' || true");
+        if (ret != 0) {
+            fprintf(stderr, "Error: Failed to rebuild (exit code %d)\n", ret);
+            exit(1);
+        }
+        printf("✅ Rebuild complete\n\n");
+        
+        // Re-exec the newly built kuyil without --embed-dir flags
+        printf("Re-executing with embedded resources...\n\n");
+        
+        // Build new argv without --embed-dir flags
+        char** new_argv = malloc(sizeof(char*) * (argc + 1));
+        int new_argc = 0;
+        new_argv[new_argc++] = argv[0];
+        
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "--embed-dir") == 0) {
+                i++; // Skip next argument
+                continue;
+            }
+            new_argv[new_argc++] = argv[i];
+        }
+        new_argv[new_argc] = NULL;
+        
+        // Re-exec
+        execv(argv[0], new_argv);
+        
+        // If execv fails
+        perror("Error re-executing kuyil");
+        exit(1);
+    }
+    
+    // Now execute based on command
+    if (strcmp(command, "run") == 0 || strcmp(command, "test") == 0) {
+        if (!input_file) {
+            fprintf(stderr, "Error: No input file specified\n");
             print_usage();
-        } else if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
-            print_version();
-        } else if (strcmp(argv[1], "-") == 0) {
+            exit(1);
+        }
+        
+        // Prepare script arguments (everything after "--")
+        int script_argc = 1;  // Start with input file as argv[0]
+        char** script_argv = malloc(sizeof(char*) * (argc + 1));
+        script_argv[0] = input_file;
+        
+        if (script_arg_start > 0) {
+            for (int i = script_arg_start; i < argc; i++) {
+                script_argv[script_argc++] = argv[i];
+            }
+        }
+        script_argv[script_argc] = NULL;
+        
+        // Run the script
+        VM vm;
+        vm_init(&vm);
+        vm_set_program_args(&vm, script_argc, script_argv);
+        
+        if (coverage_enabled) {
+            vm_enable_coverage(&vm, true, input_file);
+        }
+        if (test_mode) {
+            vm_enable_test_mode(&vm, true);
+        }
+        
+        InterpretResult result;
+        if (strcmp(input_file, "-") == 0) {
             // Read from stdin
-            char* input = malloc(64 * 1024); // 64KB buffer
+            char* input = malloc(64 * 1024);
             size_t pos = 0;
             int c;
-            
             while ((c = getchar()) != EOF && pos < 64 * 1024 - 1) {
                 input[pos++] = c;
             }
             input[pos] = '\0';
-            
-            VM vm;
-            vm_init(&vm);
-            vm_interpret(&vm, input);
-            vm_free(&vm);
-            
+            result = vm_interpret(&vm, input);
             free(input);
         } else {
-            run_file(argv[1]);
-        }
-    } else {
-        // Parse command line arguments
-        bool compile_mode = false;
-        bool native_mode = false;
-        bool embed_bytecode = false;
-        char* input_file = NULL;
-        char* output_file = NULL;
-        char* target_platform = NULL; // For cross-compilation
-        bool test_mode = false;
-        bool coverage_enabled = false;
-        const char* coverage_format = "text";
-        
-        // Embed directories (up to 16)
-        char* embed_dirs[16];
-        int embed_dir_count = 0;
-        
-        for (int i = 1; i < argc; i++) {
-            if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--debug") == 0) {
-                log_set_level(LOG_DEBUG);
-            } else if (strcmp(argv[i], "--embed-dir") == 0) {
-                if (i + 1 < argc) {
-                    if (embed_dir_count >= 16) {
-                        fprintf(stderr, "Error: Maximum 16 --embed-dir directories allowed\n");
-                        exit(1);
-                    }
-                    embed_dirs[embed_dir_count++] = argv[++i];
-                } else {
-                    fprintf(stderr, "Error: --embed-dir requires a directory path\n");
-                    exit(1);
-                }
-            } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--compile") == 0) {
-                compile_mode = true;
-            } else if (strcmp(argv[i], "--native") == 0) {
-                native_mode = true;
-                compile_mode = true;
-            } else if (strcmp(argv[i], "--embed-bytecode") == 0) {
-                embed_bytecode = true;
-            } else if (strcmp(argv[i], "--target") == 0) {
-                if (i + 1 < argc) {
-                    target_platform = argv[++i];
-                } else {
-                    fprintf(stderr, "Error: --target requires a platform (windows, linux, macos)\n");
-                    exit(1);
-                }
-            } else if (strcmp(argv[i], "-o") == 0) {
-                if (i + 1 < argc) {
-                    output_file = argv[++i];
-                } else {
-                    fprintf(stderr, "Error: -o requires an output filename\n");
-                    exit(1);
-                }
-            } else if (strcmp(argv[i], "--log-level") == 0) {
-                if (i + 1 < argc) {
-                    const char* level = argv[++i];
-                    if (strcmp(level, "debug") == 0) log_set_level(LOG_DEBUG);
-                    else if (strcmp(level, "info") == 0) log_set_level(LOG_INFO);
-                    else if (strcmp(level, "warning") == 0) log_set_level(LOG_WARNING);
-                    else if (strcmp(level, "error") == 0) log_set_level(LOG_ERROR);
-                    else if (strcmp(level, "fatal") == 0) log_set_level(LOG_FATAL);
-                    else {
-                        fprintf(stderr, "Error: Invalid log level '%s'\n", level);
-                        exit(1);
-                    }
-                } else {
-                    fprintf(stderr, "Error: --log-level requires a level\n");
-                    exit(1);
-                }
-            } else if (strcmp(argv[i], "--log-file") == 0) {
-                if (i + 1 < argc) {
-                    FILE* log_file = fopen(argv[++i], "a");
-                    if (log_file) {
-                        log_set_output(log_file);
-                    } else {
-                        fprintf(stderr, "Error: Cannot open log file '%s'\n", argv[i]);
-                        exit(1);
-                    }
-                } else {
-                    fprintf(stderr, "Error: --log-file requires a filename\n");
-                    exit(1);
-                }
-            } else if (strcmp(argv[i], "--no-color") == 0) {
-                log_set_colored(false);
-            } else if (strcmp(argv[i], "--no-trace") == 0) {
-                log_set_trace_calls(false);
-            } else if (strcmp(argv[i], "--test") == 0) {
-                test_mode = true;
-            } else if (strcmp(argv[i], "--coverage") == 0) {
-                coverage_enabled = true;
-            } else if (strcmp(argv[i], "--coverage-format") == 0) {
-                if (i + 1 < argc) {
-                    coverage_format = argv[++i];
-                } else {
-                    fprintf(stderr, "Error: --coverage-format requires a value (text|lcov)\n");
-                    exit(1);
-                }
-            } else if (strcmp(argv[i], "--check") == 0 || strcmp(argv[i], "--syntax-only") == 0) {
-                // Syntax check mode - validate syntax without execution
-                if (i + 1 < argc && argv[i + 1][0] != '-') {
-                    check_syntax_only(argv[++i]);
-                    return 0;
-                } else {
-                    fprintf(stderr, "Error: --check requires a filename\n");
-                    exit(1);
-                }
-            } else if (strcmp(argv[i], "-") == 0) {
-                input_file = argv[i];
-            } else if (argv[i][0] != '-') {
-                input_file = argv[i];
-            }
-        }
-        
-        // Process embed directories if specified
-        if (embed_dir_count > 0) {
-            printf("Embedding resources from %d director%s...\n", 
-                   embed_dir_count, embed_dir_count == 1 ? "y" : "ies");
-            
-            // Add interfaces directory automatically
-            embed_dirs[embed_dir_count++] = "interfaces";
-            
-            // Generate embedded_resources.c
-            if (embed_resources_from_dirs((const char**)embed_dirs, embed_dir_count, 
-                                         "src/embedded_resources.c") != 0) {
-                fprintf(stderr, "Error: Failed to generate embedded resources\n");
-                exit(1);
-            }
-            printf("\n");
-            
-            // Now rebuild kuyil with embedded resources
-            printf("Rebuilding with embedded resources...\n");
-            int ret = system("make -j4 2>&1 | grep -v 'Entering\\|Leaving' || true");
-            if (ret != 0) {
-                fprintf(stderr, "Error: Failed to rebuild (exit code %d)\n", ret);
-                exit(1);
-            }
-            printf("✅ Rebuild complete\n\n");
-            
-            // Re-exec the newly built kuyil without --embed-dir flags
-            printf("Re-executing with embedded resources...\n\n");
-            
-            // Build new argv without --embed-dir flags
-            char** new_argv = malloc(sizeof(char*) * (argc + 1));
-            int new_argc = 0;
-            new_argv[new_argc++] = argv[0]; // Keep program name
-            
-            for (int i = 1; i < argc; i++) {
-                if (strcmp(argv[i], "--embed-dir") == 0) {
-                    i++; // Skip next argument (the directory path)
-                    continue;
-                }
-                new_argv[new_argc++] = argv[i];
-            }
-            new_argv[new_argc] = NULL;
-            
-            // Re-exec
-            execv(argv[0], new_argv);
-            
-            // If execv fails
-            perror("Error re-executing kuyil");
-            exit(1);
-        }
-        
-        if (compile_mode) {
-            if (input_file == NULL) {
-                fprintf(stderr, "Error: No input file specified for compilation\n");
-                exit(1);
-            }
-            if (output_file == NULL) {
-                // Generate output filename
-                output_file = malloc(strlen(input_file) + 20);
-                strcpy(output_file, input_file);
-                char* dot = strrchr(output_file, '.');
-                if (dot) *dot = '\0';
-                if (native_mode) {
-                    strcat(output_file, "_native");
-                } else {
-                    strcat(output_file, "_compiled");
-                }
-            }
-            compile_file_with_options(input_file, output_file, native_mode, embed_bytecode, target_platform);
-        } else if (input_file != NULL) {
-            // Run with optional test/coverage modes
-            VM vm;
-            vm_init(&vm);
-            if (coverage_enabled) {
-                vm_enable_coverage(&vm, true, input_file);
-            }
-            if (test_mode) {
-                vm_enable_test_mode(&vm, true);
-            }
-
-            InterpretResult result;
-            if (strcmp(input_file, "-") == 0) {
-                // Read from stdin
-                char* input = malloc(64 * 1024);
-                size_t pos = 0; int c;
-                while ((c = getchar()) != EOF && pos < 64 * 1024 - 1) input[pos++] = c;
-                input[pos] = '\0';
-                result = vm_interpret(&vm, input);
-                free(input);
+            const char* ext = strrchr(input_file, '.');
+            if (ext && strcmp(ext, ".kyc") == 0) {
+                result = vm_interpret_bytecode(&vm, input_file);
             } else {
-                const char* ext = strrchr(input_file, '.');
-                if (ext && strcmp(ext, ".kyc") == 0) {
-                    result = vm_interpret_bytecode(&vm, input_file);
-                } else {
-                    char* source = read_file(input_file);
-                    result = vm_interpret(&vm, source);
-                    free(source);
-                }
+                char* source = read_file(input_file);
+                result = vm_interpret(&vm, source);
+                free(source);
             }
-
-            if (coverage_enabled) {
-                if (strcmp(coverage_format, "lcov") == 0) {
-                    vm_coverage_report_lcov(&vm);
-                } else {
-                    vm_coverage_report_text(&vm);
-                }
+        }
+        
+        if (coverage_enabled) {
+            if (strcmp(coverage_format, "lcov") == 0) {
+                vm_coverage_report_lcov(&vm);
+            } else {
+                vm_coverage_report_text(&vm);
             }
-
-            int failures = 0;
-            if (test_mode) {
-                // Use the same counter we print to avoid any mismatch
-                failures = vm.assertions_failed;
-                printf("\nTest summary: %d total, %d failed\n", vm.assertions_total, vm.assertions_failed);
-            }
-
-            // If tests failed, exit immediately with non-zero before further cleanup
-            if (test_mode && failures > 0) {
-                // Diagnostic log to confirm we hit this branch
-                kuyil_log_error("Exiting with test failures: %d", failures);
-                vm_free(&vm);
-                // Use _exit to avoid any atexit handlers accidentally altering status
-                _exit(1);
-            }
-
+        }
+        
+        int failures = 0;
+        if (test_mode) {
+            failures = vm.assertions_failed;
+            printf("\nTest summary: %d total, %d failed\n", vm.assertions_total, vm.assertions_failed);
+        }
+        
+        if (test_mode && failures > 0) {
+            kuyil_log_error("Exiting with test failures: %d", failures);
             vm_free(&vm);
-
-            if (result == INTERPRET_COMPILE_ERROR) exit(65);
-            if (result == INTERPRET_RUNTIME_ERROR) exit(70);
-        } else {
+            free(script_argv);
+            _exit(1);
+        }
+        
+        vm_free(&vm);
+        free(script_argv);
+        
+        if (result == INTERPRET_COMPILE_ERROR) exit(65);
+        if (result == INTERPRET_RUNTIME_ERROR) exit(70);
+    } else if (strcmp(command, "build") == 0) {
+        if (!input_file) {
+            fprintf(stderr, "Error: No input file specified for compilation\n");
             print_usage();
             exit(1);
         }
+        if (!output_file) {
+            // Generate output filename
+            output_file = malloc(strlen(input_file) + 20);
+            strcpy(output_file, input_file);
+            char* dot = strrchr(output_file, '.');
+            if (dot) *dot = '\0';
+            if (native_mode) {
+                strcat(output_file, "_native");
+            } else {
+                strcat(output_file, "_compiled");
+            }
+        }
+        compile_file_with_options(input_file, output_file, native_mode, embed_bytecode, target_platform);
+    } else {
+        print_usage();
+        exit(1);
     }
     
     log_cleanup();

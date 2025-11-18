@@ -1,6 +1,6 @@
 // Test the framework logic without GUI
-import "interfaces/interface_system.kyl"
-import "interfaces/interface_str.kyl"
+import "system"
+import "str"
 
 // Simulate framework state
 let g_handler_names = []

@@ -124,6 +124,68 @@ CallResult vm_call_string_shared(CallContext* ctx, const char* callee_str, int a
                 case VALUE_STRING:
                     printf("%s", arg.as.string ? arg.as.string : "<null>");
                     break;
+                case VALUE_ARRAY:
+                    printf("[");
+                    for (int j = 0; j < arg.as.array.count; j++) {
+                        Value elem = arg.as.array.values[j];
+                        if (elem.type == VALUE_STRING) {
+                            printf("\"%s\"", elem.as.string);
+                        } else if (elem.type == VALUE_NUMBER) {
+                            printf("%g", elem.as.number);
+                        } else if (elem.type == VALUE_OBJECT) {
+                            printf("{");
+                            for (int k = 0; k < elem.as.object.count; k++) {
+                                printf("\"%s\": ", elem.as.object.keys[k]);
+                                Value val = elem.as.object.values[k];
+                                if (val.type == VALUE_STRING) {
+                                    printf("\"%s\"", val.as.string);
+                                } else if (val.type == VALUE_NUMBER) {
+                                    printf("%g", val.as.number);
+                                } else {
+                                    printf("<value type=%d>", val.type);
+                                }
+                                if (k < elem.as.object.count - 1) printf(", ");
+                            }
+                            printf("}");
+                        } else {
+                            printf("<value type=%d>", elem.type);
+                        }
+                        if (j < arg.as.array.count - 1) printf(", ");
+                    }
+                    printf("]");
+                    break;
+                case VALUE_OBJECT:
+                    printf("{");
+                    for (int j = 0; j < arg.as.object.count; j++) {
+                        printf("\"%s\": ", arg.as.object.keys[j]);
+                        Value val = arg.as.object.values[j];
+                        if (val.type == VALUE_STRING) {
+                            printf("\"%s\"", val.as.string);
+                        } else if (val.type == VALUE_NUMBER) {
+                            printf("%g", val.as.number);
+                        } else if (val.type == VALUE_OBJECT) {
+                            // Nested object - print recursively
+                            printf("{");
+                            for (int k = 0; k < val.as.object.count; k++) {
+                                printf("\"%s\": ", val.as.object.keys[k]);
+                                Value nested = val.as.object.values[k];
+                                if (nested.type == VALUE_STRING) {
+                                    printf("\"%s\"", nested.as.string);
+                                } else if (nested.type == VALUE_NUMBER) {
+                                    printf("%g", nested.as.number);
+                                } else {
+                                    printf("<value type=%d>", nested.type);
+                                }
+                                if (k < val.as.object.count - 1) printf(", ");
+                            }
+                            printf("}");
+                        } else {
+                            printf("<value type=%d>", val.type);
+                        }
+                        if (j < arg.as.object.count - 1) printf(", ");
+                    }
+                    printf("}");
+                    break;
                 default:
                     printf("<value type=%d>", arg.type);
                     break;

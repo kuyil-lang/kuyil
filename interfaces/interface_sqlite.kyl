@@ -19,21 +19,21 @@ interface sqlite from "libs/libkylsqlite.so" {
   string sqlite_getLastError(handle: int32)
 }
 
-interface result {
+interface result from "libs/libkylsqlite.so" {
   @alias("firstRow")
-  int32 result_firstRow(handle: int32)
+  int32 sqlite_result_firstRow(handle: int32)
   
   @alias("nextRow")
-  int32 result_nextRow(handle: int32)
+  int32 sqlite_result_nextRow(handle: int32)
 }
 
-interface row {
+interface row from "libs/libkylsqlite.so" {
   @alias("getInt")
-  int32 row_getInt(rowHandle: int32, colIndex: int32)
+  int32 sqlite_row_getInt(rowHandle: int32, colIndex: int32)
   
   @alias("getText")
-  string row_getText(rowHandle: int32, colIndex: int32)
+  string sqlite_row_getText(rowHandle: int32, colIndex: int32)
   
   @alias("getReal")
-  float64 row_getReal(rowHandle: int32, colIndex: int32)
+  float64 sqlite_row_getReal(rowHandle: int32, colIndex: int32)
 }

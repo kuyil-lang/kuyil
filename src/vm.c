@@ -372,7 +372,13 @@ static void print_value(Value value) {
             printf("]");
             break;
         case VALUE_OBJECT:
-            printf("{Object with %d fields}", value.as.object.count);
+            printf("{");
+            for (int i = 0; i < value.as.object.count; i++) {
+                printf("\"%s\": ", value.as.object.keys[i]);
+                print_value(value.as.object.values[i]);
+                if (i < value.as.object.count - 1) printf(", ");
+            }
+            printf("}");
             break;
         case VALUE_FUNCTION:
             printf("[Function]");
@@ -3324,7 +3330,52 @@ void vm_init(VM* vm) {
     // Set global VM for library access
     set_current_vm(vm);
     
+    // Initialize program arguments (sys.args)
+    vm->program_args = NULL;
+    vm->program_args_count = 0;
+    
     LOG_INFO("FFI system initialized with %d functions", 53);
+}
+
+// Set program arguments and create sys.args namespace
+void vm_set_program_args(VM* vm, int argc, char** argv) {
+    // Store arguments in VM
+    vm->program_args_count = argc;
+    if (argc > 0) {
+        vm->program_args = malloc(sizeof(char*) * argc);
+        for (int i = 0; i < argc; i++) {
+            vm->program_args[i] = strdup(argv[i]);
+        }
+    }
+    
+    // Create sys object
+    Value sys_obj;
+    sys_obj.type = VALUE_OBJECT;
+    sys_obj.as.object.count = 1;
+    sys_obj.as.object.keys = malloc(sizeof(char*) * 1);
+    sys_obj.as.object.values = malloc(sizeof(Value) * 1);
+    
+    // Add sys.args as an array
+    Value args_array;
+    args_array.type = VALUE_ARRAY;
+    args_array.as.array.count = argc;
+    args_array.as.array.values = malloc(sizeof(Value) * argc);
+    
+    for (int i = 0; i < argc; i++) {
+        Value arg;
+        arg.type = VALUE_STRING;
+        arg.as.string = strdup(argv[i]);
+        args_array.as.array.values[i] = arg;
+    }
+    
+    // Add args to sys object
+    sys_obj.as.object.keys[0] = strdup("args");
+    sys_obj.as.object.values[0] = args_array;
+    
+    // Define sys as a global
+    define_global(vm, "sys", sys_obj);
+    
+    LOG_DEBUG("sys.args initialized with %d arguments", argc);
 }
 
 void vm_free(VM* vm) {
@@ -3368,6 +3419,15 @@ void vm_free(VM* vm) {
     
     // Cleanup VM library system (aliases, dynamic functions, loaded libs)
     vm_cleanup_library_system();
+    
+    // Free program arguments
+    if (vm->program_args) {
+        for (int i = 0; i < vm->program_args_count; i++) {
+            free(vm->program_args[i]);
+        }
+        free(vm->program_args);
+        vm->program_args = NULL;
+    }
     
     // Free globals
     for (int i = 0; i < vm->global_count; i++) {
@@ -3673,7 +3733,7 @@ InterpretResult vm_interpret_bytecode(VM* vm, const char* bytecode_path) {
     vm->frames[0].ip = function->chunk.code;
     vm->frames[0].slots = vm->stack;
     vm->frame_count = 1;
-
+    
     InterpretResult result = vm_run(vm);
 
     // Call shutdown functions after execution (regardless of result)

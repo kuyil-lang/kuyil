@@ -1,7 +1,7 @@
 // Green Thread Ollama Integration for Kuyil AI IDE
 // Demonstrates avatar/await with real Ollama API calls
 
-import("interfaces/interface_http.kyl")
+import "http"
 
 print("╔═══════════════════════════════════════════════════════╗")
 print("║  KUYIL AI IDE - GREEN THREAD OLLAMA INTEGRATION      ║")

@@ -1,8 +1,8 @@
 // Test the sleep function
 
-import("interfaces/interface_system.kyl")
+import "system"
 
-import("../../interfaces/interface_webview.kyl")
+import "webview"
 
 sleep(1000)
 

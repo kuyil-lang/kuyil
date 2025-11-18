@@ -67,6 +67,10 @@ typedef struct {
     
     // Async request queue for non-blocking I/O
     AsyncRequestQueue* request_queue;
+    
+    // Program arguments (sys.args)
+    char** program_args;
+    int program_args_count;
 } VM;
 
 typedef enum {
@@ -76,6 +80,7 @@ typedef enum {
 } InterpretResult;
 
 void vm_init(VM* vm);
+void vm_set_program_args(VM* vm, int argc, char** argv);
 void vm_free(VM* vm);
 InterpretResult vm_interpret(VM* vm, const char* source);
 InterpretResult vm_interpret_bytecode(VM* vm, const char* bytecode_path);

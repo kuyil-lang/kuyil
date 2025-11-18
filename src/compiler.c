@@ -1656,13 +1656,22 @@ static void compile_statement(ASTNode* node) {
 }
 
 static void compile_block(ASTNode* node) {
-    begin_scope();
+    // At script level (scope_depth == 0), blocks don't create new scopes
+    // This ensures while loops and blocks at script level work correctly
+    // Inside functions (scope_depth > 0), blocks create proper local scopes
+    bool is_script_level = (current->scope_depth == 0);
+    
+    if (!is_script_level) {
+        begin_scope();
+    }
     
     for (int i = 0; i < node->as.block.count; i++) {
         compile_statement(node->as.block.statements[i]);
     }
     
-    end_scope();
+    if (!is_script_level) {
+        end_scope();
+    }
 }
 
 

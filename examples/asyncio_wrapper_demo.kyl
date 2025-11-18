@@ -1,5 +1,5 @@
 // Example: Using asyncio wrappers with headers and timeouts
-import "libraries/asyncio_wrappers.kyl"
+import "asyncio"
 
 print("\n═══════════════════════════════════════")
 print("  Asyncio HTTP with Custom Options")
@@ -13,14 +13,14 @@ print("   Request ID: " + req1)
 // Example 2: GET with custom headers using direct Ex call
 print("\n2. GET with headers (direct):")
 let headers2 = ["User-Agent: Kuyil/1.0", "Accept: application/json"]
-let req2 = kyl_asyncio_httpGetEx("https://httpbin.org/headers", headers2, 0, 1000, 3000, 500)
+let req2 = httpGetEx("https://httpbin.org/headers", headers2, 0, 1000, 3000, 500)
 print("   Request ID: " + req2)
 
 // Example 3: POST with headers
 print("\n3. POST with headers:")
 let postHeaders = ["Content-Type: application/json"]
 let postBody = '{"name": "Kuyil", "type": "test"}'
-let req3 = kyl_asyncio_httpPostEx("https://httpbin.org/post", postBody, postHeaders, 0, 1000, 3000, 500)
+let req3 = httpPostEx("https://httpbin.org/post", postBody, postHeaders, 0, 1000, 3000, 500)
 print("   Request ID: " + req3)
 
 // Check status

@@ -5,8 +5,8 @@ print("════════════════════════�
 print("  Asyncio with Headers & Timeouts")
 print("═══════════════════════════════════════\n")
 
-// Load asyncio interface
-import("interfaces/interface_asyncio.kyl")
+// Load asyncio interface with generic import
+import "asyncio"
 print("Loaded asyncio library\n")
 
 print("1. Simple HTTP GET:")
@@ -14,7 +14,7 @@ print("   URL: https://httpbin.org/get")
 let req1 = httpGet("https://httpbin.org/get", nil)
 print("   Request ID:", req1)
 let result1 = waitResult(req1, 10000)  // 10 second timeout
-if (result1 != nil) {
+if result1 != nil {
     print("   Result received")
 } else {
     print("   Timeout or error")
@@ -38,7 +38,7 @@ let req2 = httpGetEx(
     500     // write_timeout (500ms)
 )
 let result2 = waitResult(req2, 10000)
-if (result2 != nil) {
+if result2 != nil {
     print("   Result received")
 } else {
     print("   Timeout or error")
@@ -53,14 +53,14 @@ let post_headers = [
 ]
 print("   URL: https://httpbin.org/post")
 print("   Body: JSON data")
-let req3 = asyncio_httpPostEx(
+let req3 = kyl_asyncio_httpPostEx(
     "https://httpbin.org/post",
     post_body,
     post_headers,
-    0, 1000, 3000, 500
+    1000, 3000, 500, 500
 )
 let result3 = waitResult(req3, 10000)
-if (result3 != nil) {
+if result3 != nil {
     print("   Result received")
 } else {
     print("   Timeout or error")

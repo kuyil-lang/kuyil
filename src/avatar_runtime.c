@@ -499,6 +499,20 @@ static void* avatar_task_func(void* user_data) {
                 }
                 break;
             
+            case OP_DUP: {
+                // Duplicate the top value on the stack
+                if (avatar_vm.stack_top <= avatar_vm.stack) {
+                    handle->has_error = true;
+                    snprintf(handle->error_message, sizeof(handle->error_message),
+                            "Stack underflow in DUP");
+                    handle->result.type = VALUE_NIL;
+                    return NULL;
+                }
+                Value value = *(avatar_vm.stack_top - 1);  // Peek at top
+                *avatar_vm.stack_top++ = value;             // Push duplicate
+                break;
+            }
+            
             case OP_PRINT: {
                 if (avatar_vm.stack_top < avatar_vm.stack + 1) {
                     handle->has_error = true;

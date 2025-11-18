@@ -8,7 +8,7 @@ let shopping = ["apples", "bananas", "milk", "bread", "eggs"]
 print("   Items:", shopping)
 print("   First item:", shopping[0])
 print("   Last item:", shopping[4])
-print()
+print("")
 
 // Example 2: Temperature readings
 print("2. Temperature Readings (Celsius):")
@@ -21,7 +21,7 @@ for (let i = 0; i < 7; i = i + 1) {
 }
 let avg = sum / 7
 print("   Average temperature:", avg)
-print()
+print("")
 
 // Example 3: Student scores
 print("3. Student Scores:")
@@ -36,7 +36,8 @@ for (let i = 1; i < 5; i = i + 1) {
     }
 }
 print("   Highest score:", highest)
-print()
+print("")
+
 
 // Example 4: Modifying array values
 print("4. Price Updates:")
@@ -48,7 +49,7 @@ for (let i = 0; i < 5; i = i + 1) {
     prices[i] = prices[i] * 0.9
 }
 print("   After 10% discount:", prices)
-print()
+print("")
 
 // Example 5: 2D Array (Matrix)
 print("5. Tic-Tac-Toe Board:")
@@ -57,7 +58,7 @@ print("   Row 1:", board[0])
 print("   Row 2:", board[1])
 print("   Row 3:", board[2])
 print("   Center square:", board[1][1])
-print()
+print("")
 
 // Example 6: Mixed data types
 print("6. User Profile:")
@@ -66,7 +67,7 @@ print("   Name:", user[0])
 print("   Age:", user[1])
 print("   Active:", user[2])
 print("   Email:", user[3])
-print()
+print("")
 
 // Example 7: RGB Colors:
 print("7. RGB Colors:")
@@ -75,7 +76,7 @@ print("   Red:", colors[0])
 print("   Green:", colors[1])
 print("   Blue:", colors[2])
 print("   Yellow:", colors[3])
-print()
+print("")
 
 // Example 8: Building array dynamically
 print("8. Dynamic Array Construction:")
@@ -83,7 +84,7 @@ let fibonacci = [0, 1]
 print("   Initial:", fibonacci)
 // Note: Currently arrays are fixed size, so we can't grow them
 // This will be supported in future versions with push() method
-print()
+print("")
 
 // Example 9: Array comparison
 print("9. Finding element:")
@@ -104,7 +105,7 @@ print("   Looking for:", target)
 if (found) {
     print("   Found at index:", foundIndex)
 }
-print()
+print("")
 
 // Example 10: Copy and modify
 print("10. Array Operations:")
@@ -117,6 +118,6 @@ for (let i = 0; i < 5; i = i + 1) {
     doubled[i] = original[i] * 2
 }
 print("   Doubled:", doubled)
-print()
+print("")
 
 print("=== All Examples Complete ===")

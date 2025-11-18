@@ -1,10 +1,10 @@
 // Minimal Bridge Demo - Manual Pattern
 // Shows the bridge pattern without framework complexity
 
-import "interfaces/interface_system.kyl"
-import "interfaces/interface_webview.kyl"
-import "interfaces/interface_http.kyl"
-import "interfaces/interface_str.kyl"
+import "system"
+import "webview"
+import "http"
+import "str"
 
 // Global state for async requests
 let window_global = nil

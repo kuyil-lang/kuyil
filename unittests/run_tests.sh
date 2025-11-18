@@ -18,12 +18,18 @@ TESTS=(
 PASSED=0
 FAILED=0
 
-cd "$(dirname "$0")"
+# Get the directory of this script
+SCRIPT_DIR="$(dirname "$0")"
+# Get the project root (parent of unittests)
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Run from project root so library paths work
+cd "$PROJECT_ROOT"
 
 for test in "${TESTS[@]}"; do
     echo "Running: $test"
     echo "----------------------------------------"
-    output=$(../kuyil "$test" 2>&1)
+    output=$(./kuyil "unittests/$test" 2>&1)
     if echo "$output" | grep -q "✓.*PASSED"; then
         echo "✓ PASSED"
         ((PASSED++))

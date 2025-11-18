@@ -1868,18 +1868,76 @@ Value vm_bind_interface_method(int arg_count, Value* args) {
         }
         
         if (!func_ptr) {
-            LOG_WARNING("bind_interface_method: underlying function not found for %s.%s (tried dlsym on all loaded libraries)", iface, method);
-            Value r = {VALUE_BOOL};
-            r.as.boolean = false;
-            return r;
+            // Check if any libraries are actually loaded (not just registered)
+            int actually_loaded = 0;
+            for (int i = 0; i < g_library_registry.library_count; i++) {
+                if (g_library_registry.libraries[i].is_loaded && g_library_registry.libraries[i].handle) {
+                    actually_loaded++;
+                }
+            }
+            
+            // If no libraries are actually loaded, this could be:
+            // 1. A pure Kuyil interface (no FFI)
+            // 2. Library path issue (e.g., running from different directory)
+            // Don't fail - just log and return success
+            // Function will fail at runtime if actually called without implementation
+            if (actually_loaded == 0) {
+                LOG_DEBUG("No libraries actually loaded when binding %s.%s - assuming pure interface or path issue", iface, method);
+                Value r = {VALUE_BOOL};
+                r.as.boolean = true;
+                return r;
+            }
+            
+            fprintf(stderr, "\n");
+            fprintf(stderr, "╔═══════════════════════════════════════════════════════════════╗\n");
+            fprintf(stderr, "║  KUYIL FATAL ERROR: Missing Interface Implementation         ║\n");
+            fprintf(stderr, "╚═══════════════════════════════════════════════════════════════╝\n");
+            fprintf(stderr, "\n");
+            fprintf(stderr, "Interface: %s\n", iface);
+            fprintf(stderr, "Method:    %s\n", method);
+            fprintf(stderr, "\n");
+            fprintf(stderr, "Searched %d loaded libraries for these symbol names:\n", g_library_registry.library_count);
+            for (int i = 0; try_names[i]; i++) {
+                fprintf(stderr, "  ✗ %s\n", try_names[i]);
+            }
+            fprintf(stderr, "\n");
+            fprintf(stderr, "Loaded libraries:\n");
+            for (int lib_idx = 0; lib_idx < g_library_registry.library_count; lib_idx++) {
+                SharedLibrary* lib = &g_library_registry.libraries[lib_idx];
+                if (lib->is_loaded && lib->handle) {
+                    fprintf(stderr, "  • %s (%s)\n", lib->name, lib->path);
+                }
+            }
+            fprintf(stderr, "\n");
+            fprintf(stderr, "SOLUTION: Implement wrapper function in the shared library\n");
+            fprintf(stderr, "\n");
+            fprintf(stderr, "Example implementation:\n");
+            fprintf(stderr, "  Value kyl_%s_%s(int arg_count, Value* args) {\n", iface, method_snake ? method_snake : method);
+            fprintf(stderr, "      // Extract parameters from args\n");
+            fprintf(stderr, "      // Call underlying C function\n");
+            fprintf(stderr, "      // Return result as Value\n");
+            fprintf(stderr, "  }\n");
+            fprintf(stderr, "\n");
+            fprintf(stderr, "This error prevents runtime segmentation faults.\n");
+            fprintf(stderr, "\n");
+            fflush(stderr);
+            
+            LOG_ERROR("bind_interface_method: underlying function not found for %s.%s (tried dlsym on all loaded libraries)", iface, method);
+            
+            // Exit with error to prevent runtime segfault
+            exit(70);
         }
     }
 
     if (!df) {
-        LOG_WARNING("bind_interface_method: underlying function not found for %s.%s", iface, method);
-        Value r = {VALUE_BOOL};
-        r.as.boolean = false;
-        return r;
+        fprintf(stderr, "\n[KUYIL][FATAL ERROR] Interface binding failed!\n");
+        fprintf(stderr, "  Interface: %s\n", iface);
+        fprintf(stderr, "  Method: %s\n", method);
+        fprintf(stderr, "  Dynamic function not registered properly\n\n");
+        fflush(stderr);
+        
+        LOG_ERROR("bind_interface_method: underlying function not found for %s.%s", iface, method);
+        exit(70);
     }
 
     // Prepare alias binding metadata

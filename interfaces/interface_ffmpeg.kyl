@@ -9,7 +9,7 @@ interface ffmpeg from "libs/libkylffmpeg.so" {
 }
 
 // Audio-related functions
-interface audio {
+interface audio from "libs/libkylffmpeg.so" {
   @alias("getDuration")
   float64 audio_getDuration(path: string)
   
@@ -60,10 +60,10 @@ interface audio {
 }
 
 // Audio editor
-interface editor {
+interface editor from "libs/libkylffmpeg.so" {
   @alias("create")
-  int32 editor_create()
+  int32 audio_editor_create()
   
   @alias("destroy")
-  bool editor_destroy(handle: int32)
+  bool audio_editor_destroy(handle: int32)
 }

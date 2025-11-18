@@ -1,4 +1,4 @@
-import("../../interfaces/interface_webview.kyl")
+import "webview"
 
 // Simple test without HTTP server
 print("Testing simple WebView...")

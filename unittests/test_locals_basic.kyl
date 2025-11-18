@@ -17,3 +17,5 @@ fn main() {
         print("✗ TEST1 FAILED: got " + str_toString(result))
     }
 }
+
+main()

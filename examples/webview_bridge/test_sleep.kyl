@@ -1,6 +1,6 @@
 // Test the sleep function
 
-import("../../interfaces/interface_system.kyl")
+import "system"
 
 print("Testing sleep function...")
 

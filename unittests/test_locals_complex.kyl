@@ -38,3 +38,5 @@ fn main() {
         print("✗ TEST6 FAILED: got " + result)
     }
 }
+
+main()
