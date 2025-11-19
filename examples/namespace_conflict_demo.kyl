@@ -1,5 +1,5 @@
-import("../interfaces/interface_str.kyl") as str
-import("../interfaces/interface_math.kyl") as math
+import("interfaces/interface_str.kyl") as str
+import("interfaces/interface_math.kyl") as math
 
 print("=== Namespace Conflict Demo ===")
 print("")

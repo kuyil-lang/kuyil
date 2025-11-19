@@ -1,0 +1,120 @@
+// Machine Learning Library Interface for Kuyil
+// Scikit-learn style ML algorithms
+// Provides: Clustering, Regression, Metrics (more coming soon)
+
+// ============================================
+// K-Means Clustering
+// ============================================
+interface KMeans from "libs/libkylml.so" {
+    // Create K-Means model
+    // Args: n_clusters, max_iterations, tolerance
+    fn ml_kmeansCreate(n_clusters, max_iterations, tolerance)
+    
+    // Fit model to data
+    // Args: model, dataset (array of vectors), n_samples
+    // Returns: converged (boolean)
+    fn ml_kmeansFit(model, dataset)
+    
+    // Predict cluster labels for new data
+    // Args: model, dataset
+    // Returns: array of cluster labels (integers)
+    fn ml_kmeansPredict(model, dataset)
+    
+    // Fit and predict in one step
+    fn ml_kmeansFitPredict(model, dataset)
+    
+    // Get cluster centers
+    // Returns: array of center vectors
+    fn ml_kmeansGetCenters(model)
+    
+    // Get inertia (sum of squared distances to centers)
+    fn ml_kmeansGetInertia(model)
+    
+    // Get number of iterations performed
+    fn ml_kmeansGetIterations(model)
+    
+    // Save model to file
+    // Args: model, filename (string)
+    // Returns: success (boolean)
+    fn ml_kmeansSave(model, filename)
+    
+    // Load model from file
+    // Args: filename (string)
+    // Returns: model handle
+    fn ml_kmeansLoad(filename)
+    
+    // Destroy model
+    fn ml_kmeansDestroy(model)
+}
+
+// ============================================
+// Linear Regression
+// ============================================
+interface LinearRegression from "libs/libkylml.so" {
+    // Create linear regression model
+    // Args: fit_intercept (boolean), method ("normal" or "gradient_descent")
+    fn ml_linearRegressionCreate(fit_intercept, method)
+    
+    // Fit model to training data
+    // Args: model, X (features), y (targets)
+    fn ml_linearRegressionFit(model, X, y)
+    
+    // Predict targets for new data
+    // Args: model, X (features)
+    // Returns: array of predicted values
+    fn ml_linearRegressionPredict(model, X)
+    
+    // Get coefficients (weights)
+    fn ml_linearRegressionGetCoefficients(model)
+    
+    // Get intercept (bias)
+    fn ml_linearRegressionGetIntercept(model)
+    
+    // Calculate R² score
+    fn ml_linearRegressionScore(model, X, y)
+    
+    // Save model to file
+    // Args: model, filename (string)
+    // Returns: success (boolean)
+    fn ml_linearRegressionSave(model, filename)
+    
+    // Load model from file
+    // Args: filename (string)
+    // Returns: model handle
+    fn ml_linearRegressionLoad(filename)
+    
+    fn ml_linearRegressionDestroy(model)
+}
+
+// ============================================
+// ML Metrics
+// ============================================
+interface MLMetrics from "libs/libkylml.so" {
+    // Classification Metrics
+    fn ml_accuracyScore(y_true, y_pred)
+    fn ml_precisionScore(y_true, y_pred)
+    fn ml_recallScore(y_true, y_pred)
+    fn ml_f1Score(y_true, y_pred)
+    fn ml_confusionMatrix(y_true, y_pred)
+    
+    // Regression Metrics
+    fn ml_meanSquaredError(y_true, y_pred)
+    fn ml_rootMeanSquaredError(y_true, y_pred)
+    fn ml_meanAbsoluteError(y_true, y_pred)
+    fn ml_r2Score(y_true, y_pred)
+    
+}
+
+// Note: Available now:
+// ✓ K-Means Clustering (k-means++)
+// ✓ Linear Regression (gradient descent)
+// ✓ Classification Metrics (accuracy, precision, recall, F1, confusion matrix)
+// ✓ Regression Metrics (MSE, RMSE, MAE, R²)
+//
+// Coming soon (implementations ready, need API fixes):
+// - Logistic Regression
+// - KNN Classifier  
+// - StandardScaler / MinMaxScaler
+// - Train/test split utilities
+// - PCA (dimensionality reduction)
+// - DBSCAN clustering

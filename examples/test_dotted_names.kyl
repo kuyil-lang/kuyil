@@ -1,6 +1,6 @@
 // Test if dotted names work without namespace
-import("../interfaces/interface_str.kyl") as str
-import("../interfaces/interface_math.kyl") as math
+import("interfaces/interface_str.kyl") as str
+import("interfaces/interface_math.kyl") as math
 
 let text = "test"
 print("Using dotted names:")

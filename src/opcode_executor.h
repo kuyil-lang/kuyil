@@ -5,6 +5,7 @@
 #include "ast.h"
 #include "bytecode.h"
 #include <stdbool.h>
+#include <stdio.h>  // for snprintf()
 
 // Execution context - abstraction over VM and Avatar VM
 typedef struct {

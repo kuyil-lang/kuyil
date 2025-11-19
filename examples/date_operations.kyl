@@ -1,7 +1,7 @@
 // Date Operations Example - Working Functions Only
 // Demonstrates date/time functions that are confirmed working
-import("../interfaces/interface_datetime.kyl")
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_datetime.kyl")
+import("interfaces/interface_str.kyl")
 
 print("=== Date and Time Operations Demo ===")
 

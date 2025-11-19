@@ -306,7 +306,7 @@ static void add_alias_binding_entry(const char* alias_name,
                                     char** param_specs,
                                     const char* return_spec);
 
-static void build_path(char* out, size_t out_sz, const char* a, const char* b) {
+static void __attribute__((unused)) build_path(char* out, size_t out_sz, const char* a, const char* b) {
     // join a + "/" + b with simple logic
     size_t la = strlen(a);
     bool need_slash = la > 0 && a[la-1] != '/';
@@ -319,7 +319,7 @@ static bool file_exists_simple(const char* path) {
     return false;
 }
 
-static void get_executable_dir(char* out, size_t out_sz) {
+static void __attribute__((unused)) get_executable_dir(char* out, size_t out_sz) {
 #ifdef __linux__
     char buf[1024];
     ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf)-1);
@@ -398,6 +398,7 @@ static bool register_dynamic_functions(VM* vm) {
 }
 
 static void register_system_functions(VM* vm) {
+    (void)vm;  // Unused parameter
     // Register library introspection functions
     register_dynamic_function("get_library_count", vm_get_library_count, FUNC_SIG_VALUE_ARGS);
     register_dynamic_function("get_library_name", vm_get_library_name, FUNC_SIG_VALUE_ARGS);
@@ -567,7 +568,9 @@ static Value wrapper_void_void(int arg_count, Value* args, void* func_ptr) {
     (void)arg_count; (void)args; // Unused parameters
     void (*func)(void) = (void (*)(void))func_ptr;
     func();
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
@@ -583,7 +586,9 @@ static Value wrapper_int_void(int arg_count, Value* args, void* func_ptr) {
 
 static Value wrapper_ptr_string(int arg_count, Value* args, void* func_ptr) {
     if (arg_count != 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -598,7 +603,9 @@ static Value wrapper_ptr_string(int arg_count, Value* args, void* func_ptr) {
 
 static Value wrapper_int_ptr_string(int arg_count, Value* args, void* func_ptr) {
     if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -614,7 +621,9 @@ static Value wrapper_int_ptr_string(int arg_count, Value* args, void* func_ptr) 
 
 static Value wrapper_void_ptr(int arg_count, Value* args, void* func_ptr) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -622,7 +631,9 @@ static Value wrapper_void_ptr(int arg_count, Value* args, void* func_ptr) {
     void* ptr = (void*)(intptr_t)args[0].as.number;
     func(ptr);
     
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
@@ -640,7 +651,9 @@ static Value wrapper_ptr_void(int arg_count, Value* args, void* func_ptr) {
 
 static Value wrapper_int_ptr(int arg_count, Value* args, void* func_ptr) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -656,7 +669,9 @@ static Value wrapper_int_ptr(int arg_count, Value* args, void* func_ptr) {
 
 static Value wrapper_ptr_string_ptr(int arg_count, Value* args, void* func_ptr) {
     if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -695,6 +710,8 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
             const char* types = colon ? colon + 1 : spec;
             // Skip leading whitespace
             while (*types == ' ' || *types == '\t') types++;
+            // If no type spec provided (empty string), skip type checking
+            if (*types == '\0') continue;
             // Make a mutable copy to tokenize by '|'
             char buf[256];
             strncpy(buf, types, sizeof(buf)-1);
@@ -898,7 +915,9 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args) {
     
     // Function not found
     LOG_WARNING("Dynamic function not found: %s", name);
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
@@ -1105,13 +1124,17 @@ Value vm_get_library_count(int arg_count, Value* args) {
 // Get library name by index
 Value vm_get_library_name(int arg_count, Value* args) {
     if (arg_count < 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
     int index = (int)args[0].as.number;
     if (index < 0 || index >= g_library_registry.library_count) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1124,13 +1147,17 @@ Value vm_get_library_name(int arg_count, Value* args) {
 // Get library path by index
 Value vm_get_library_path(int arg_count, Value* args) {
     if (arg_count < 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
     int index = (int)args[0].as.number;
     if (index < 0 || index >= g_library_registry.library_count) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1143,13 +1170,17 @@ Value vm_get_library_path(int arg_count, Value* args) {
 // Check if library is loaded by index
 Value vm_is_library_loaded(int arg_count, Value* args) {
     if (arg_count < 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
     int index = (int)args[0].as.number;
     if (index < 0 || index >= g_library_registry.library_count) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1162,13 +1193,17 @@ Value vm_is_library_loaded(int arg_count, Value* args) {
 // Get library function count by index
 Value vm_get_library_function_count(int arg_count, Value* args) {
     if (arg_count < 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
     int index = (int)args[0].as.number;
     if (index < 0 || index >= g_library_registry.library_count) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1191,7 +1226,9 @@ Value vm_get_loaded_libraries_info(int arg_count, Value* args) {
     
     char* info = malloc(total_size);
     if (!info) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1228,7 +1265,9 @@ Value vm_get_total_function_count(int arg_count, Value* args) {
 // Add a library configuration inline: add_library("name", "path", optional)
 Value vm_add_library(int arg_count, Value* args) {
     if (arg_count < 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1268,7 +1307,9 @@ Value vm_add_library(int arg_count, Value* args) {
 // Load a specific library by name: load_library("webview")
 Value vm_load_library_inline(int arg_count, Value* args) {
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1460,7 +1501,7 @@ Value vm_import_module(int arg_count, Value* args) {
         return result;
     }
     
-    fread(source, 1, file_size, file);
+    (void)fread(source, 1, file_size, file);
     source[file_size] = '\0';
     fclose(file);
     
@@ -1659,7 +1700,9 @@ Value vm_dlopen_only(int arg_count, Value* args) {
     LOG_INFO("[vm_dlopen_only] CALLED with %d arguments", arg_count);
     if (arg_count < 1 || args[0].type != VALUE_STRING) {
         LOG_ERROR("dlopen_only: Missing or invalid path argument");
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
 
@@ -1672,7 +1715,9 @@ Value vm_dlopen_only(int arg_count, Value* args) {
 
     if (name_buf[0] == '\0') {
         LOG_WARNING("dlopen_only: could not derive library name from path: %s", path);
-        Value result = {VALUE_BOOL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
         result.as.boolean = false;
         return result;
     }
@@ -1691,7 +1736,9 @@ Value vm_dlopen_only(int arg_count, Value* args) {
     if (!lib) {
         if (g_library_registry.library_count >= MAX_LIBRARIES) {
             LOG_WARNING("dlopen_only: maximum libraries reached; cannot add %s", name_buf);
-            Value result = {VALUE_BOOL};
+            Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
             result.as.boolean = false;
             return result;
         }
@@ -1714,7 +1761,9 @@ Value vm_dlopen_only(int arg_count, Value* args) {
         lib->handle = dlopen(lib->path, RTLD_LAZY);
         if (!lib->handle) {
             LOG_WARNING("dlopen_only: failed to open %s: %s", lib->path, dlerror());
-            Value result = {VALUE_BOOL};
+            Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
             result.as.boolean = false;
             return result;
         }
@@ -1751,7 +1800,9 @@ static int find_dynamic_function_idx(const char* name) {
 // This will look for the C function and create convenient aliases
 Value vm_bind_interface_method(int arg_count, Value* args) {
     if (arg_count < 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
-        Value r = {VALUE_BOOL};
+        Value r;
+        memset(&r, 0, sizeof(Value));
+        r.type = VALUE_BOOL;
         r.as.boolean = false;
         return r;
     }
@@ -1883,7 +1934,9 @@ Value vm_bind_interface_method(int arg_count, Value* args) {
             // Function will fail at runtime if actually called without implementation
             if (actually_loaded == 0) {
                 LOG_DEBUG("No libraries actually loaded when binding %s.%s - assuming pure interface or path issue", iface, method);
-                Value r = {VALUE_BOOL};
+                Value r;
+                memset(&r, 0, sizeof(Value));
+                r.type = VALUE_BOOL;
                 r.as.boolean = true;
                 return r;
             }
@@ -2039,7 +2092,9 @@ Value vm_bind_interface_method(int arg_count, Value* args) {
     if (method_snake) free(method_snake);
     if (method_camel) free(method_camel);
 
-    Value r = {VALUE_BOOL};
+    Value r;
+    memset(&r, 0, sizeof(Value));
+    r.type = VALUE_BOOL;
     r.as.boolean = true;
     return r;
 }

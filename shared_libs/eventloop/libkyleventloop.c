@@ -22,7 +22,9 @@ const char* kyl_interface_signature_text =
 // Process pending tasks (call from event loop)
 __attribute__((visibility("default")))
 Value kyl_eventloop_processPendingTasks(int arg_count, Value* args) {
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = 0;
     
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
@@ -44,7 +46,9 @@ Value kyl_eventloop_tasksEmpty(int arg_count, Value* args) {
     (void)arg_count;
     (void)args;
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = vm_task_queue_empty();
     
     return result;
@@ -56,7 +60,9 @@ Value kyl_eventloop_taskCount(int arg_count, Value* args) {
     (void)arg_count;
     (void)args;
     
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = (double)vm_task_queue_size();
     
     return result;
@@ -65,7 +71,9 @@ Value kyl_eventloop_taskCount(int arg_count, Value* args) {
 // Process avatar completions (call from event loop)
 __attribute__((visibility("default")))
 Value kyl_eventloop_processAvatarCompletions(int arg_count, Value* args) {
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = 0;
     
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
@@ -87,7 +95,9 @@ Value kyl_eventloop_avatarPendingCount(int arg_count, Value* args) {
     (void)arg_count;
     (void)args;
     
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = (double)vm_avatar_pending_count();
     
     return result;

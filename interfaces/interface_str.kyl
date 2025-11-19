@@ -37,7 +37,7 @@ interface str from "libs/libkylstr.so" {
   float64 str_toNumber(input: string)
   
   @alias("toString")
-  string str_toString(value: number)
+  string str_toString(value: any)
   
   @alias("slice")
   string str_slice(input: string, start: int32, end: int32)

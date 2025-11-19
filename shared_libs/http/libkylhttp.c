@@ -399,7 +399,9 @@ static int json_extract_number_value(const char* body, const char* key, double* 
 // HTTP server creation function - creates or returns existing server
 Value kyl_http_server(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -420,7 +422,9 @@ Value kyl_http_server(int arg_count, Value* args) {
 // HTTP GET route registration
 Value kyl_http_get(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -442,7 +446,9 @@ Value kyl_http_get(int arg_count, Value* args) {
 // HTTP POST route registration
 Value kyl_http_post(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -462,7 +468,9 @@ Value kyl_http_post(int arg_count, Value* args) {
 // HTTP PUT route registration
 Value kyl_http_put(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -482,7 +490,9 @@ Value kyl_http_put(int arg_count, Value* args) {
 // HTTP DELETE route registration
 Value kyl_http_delete(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -502,7 +512,9 @@ Value kyl_http_delete(int arg_count, Value* args) {
 // HTTP server listen function
 Value kyl_http_listen(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -523,7 +535,9 @@ Value kyl_http_listen(int arg_count, Value* args) {
 // HTTP client GET function
 Value kyl_http_client_get(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -550,7 +564,9 @@ Value kyl_http_clientGet(int arg_count, Value* args) {
 // HTTP client POST function
 Value kyl_http_client_post(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -577,7 +593,9 @@ Value kyl_http_clientPost(int arg_count, Value* args) {
 
 // HTTP static file serving: supports either (root) or (url_prefix, root)
 Value kyl_http_static(int arg_count, Value* args) {
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     if (!g_http_server) return result;
 
     if (arg_count == 1 && args[0].type == VALUE_STRING) {
@@ -688,7 +706,9 @@ static void* http_listen_thread_fn(void* arg) {
 
 // Start HTTP server in background thread: http_start_server(port)
 Value kyl_http_start_server(int arg_count, Value* args) {
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = false;
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
         return result;
@@ -1296,13 +1316,17 @@ after_ops:
 Value kyl_http_register_route(int arg_count, Value* args) {
     if (arg_count != 3) {
         printf("registerRoute requires 3 arguments: method, path, callback\n");
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
     if (!g_http_server) {
         printf("HTTP server not initialized\n");
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1312,7 +1336,9 @@ Value kyl_http_register_route(int arg_count, Value* args) {
     
     if (args[0].type != VALUE_STRING || args[1].type != VALUE_STRING || args[2].type != VALUE_STRING) {
         printf("Method, path, and handler must be strings\n");
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1340,7 +1366,9 @@ Value kyl_http_register_route(int arg_count, Value* args) {
 // Set response status: response_set_status(res, 200)
 Value kyl_response_set_status(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1349,14 +1377,18 @@ Value kyl_response_set_status(int arg_count, Value* args) {
     
     http_response_set_status(res, status_code);
     
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
 // Set response body: response_set_body(res, "Hello")
 Value kyl_response_set_body(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1365,14 +1397,18 @@ Value kyl_response_set_body(int arg_count, Value* args) {
     
     http_response_set_body(res, body, strlen(body));
     
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
 // Set response JSON: response_set_json(res, "{\"key\": \"value\"}")
 Value kyl_response_set_json(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1381,7 +1417,9 @@ Value kyl_response_set_json(int arg_count, Value* args) {
     
     http_response_set_json(res, json);
     
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
@@ -1389,7 +1427,9 @@ Value kyl_response_set_json(int arg_count, Value* args) {
 Value kyl_response_add_header(int arg_count, Value* args) {
     if (arg_count != 3 || args[0].type != VALUE_NUMBER || 
         args[1].type != VALUE_STRING || args[2].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1399,7 +1439,9 @@ Value kyl_response_add_header(int arg_count, Value* args) {
     
     http_response_add_header(res, name, value);
     
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
@@ -1408,7 +1450,9 @@ Value kyl_response_add_header(int arg_count, Value* args) {
 // Get request method: request_get_method(req)
 Value kyl_request_get_method(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1423,7 +1467,9 @@ Value kyl_request_get_method(int arg_count, Value* args) {
 // Get request path: request_get_path(req)
 Value kyl_request_get_path(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1438,7 +1484,9 @@ Value kyl_request_get_path(int arg_count, Value* args) {
 // Get request body: request_get_body(req)
 Value kyl_request_get_body(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1453,7 +1501,9 @@ Value kyl_request_get_body(int arg_count, Value* args) {
 // Extract JSON string field with default: request_get_json_string(req, key, default)
 Value kyl_request_get_json_string(int arg_count, Value* args) {
     if (arg_count != 3 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     HttpRequest* req = (HttpRequest*)http_get_ptr((int)args[0].as.number);
@@ -1475,7 +1525,9 @@ Value kyl_request_get_json_string(int arg_count, Value* args) {
 // Extract JSON number field with default: request_get_json_number(req, key, default)
 Value kyl_request_get_json_number(int arg_count, Value* args) {
     if (arg_count != 3 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     HttpRequest* req = (HttpRequest*)http_get_ptr((int)args[0].as.number);
@@ -1497,7 +1549,9 @@ Value kyl_request_get_json_number(int arg_count, Value* args) {
 // Extract JSON bool field with default: request_get_json_bool(req, key, default)
 Value kyl_request_get_json_bool(int arg_count, Value* args) {
     if (arg_count != 3 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     HttpRequest* req = (HttpRequest*)http_get_ptr((int)args[0].as.number);
@@ -1519,7 +1573,9 @@ Value kyl_request_get_json_bool(int arg_count, Value* args) {
 // Get request parameter: request_get_param(req, "id")
 Value kyl_request_get_param(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1541,7 +1597,9 @@ Value kyl_request_get_param(int arg_count, Value* args) {
 // Get request header: request_get_header(req, "Content-Type")
 Value kyl_request_get_header(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -1564,14 +1622,18 @@ Value kyl_request_get_header(int arg_count, Value* args) {
 // This native C implementation has direct byte access and handles CRLF properly
 Value kyl_request_parse_multipart(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("|");
         return result;
     }
     
     HttpRequest* req = (HttpRequest*)http_get_ptr((int)args[0].as.number);
     if (!req || !req->body || req->body_length == 0) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("|");
         return result;
     }
@@ -1579,14 +1641,18 @@ Value kyl_request_parse_multipart(int arg_count, Value* args) {
     // Extract boundary from Content-Type header
     const char* ct = http_request_get_header(req, "Content-Type");
     if (!ct || strstr(ct, "multipart/form-data") == NULL) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("|");
         return result;
     }
     
     const char* boundary_start = strstr(ct, "boundary=");
     if (!boundary_start) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("|");
         return result;
     }
@@ -1619,7 +1685,9 @@ Value kyl_request_parse_multipart(int arg_count, Value* args) {
     }
     
     if (!part_start || part_start >= body + body_len) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("|");
         return result;
     }
@@ -1644,7 +1712,9 @@ Value kyl_request_parse_multipart(int arg_count, Value* args) {
     }
     
     if (!content_start || !headers_end) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("|");
         return result;
     }
@@ -1701,7 +1771,9 @@ Value kyl_request_parse_multipart(int arg_count, Value* args) {
     size_t result_len = filename_len + 1 + content_len + 1;
     char* result_str = malloc(result_len);
     if (!result_str) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("|");
         return result;
     }
@@ -1720,7 +1792,9 @@ Value kyl_request_parse_multipart(int arg_count, Value* args) {
 // Extract a specific form field value from multipart/form-data
 Value kyl_request_get_multipart_field(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
@@ -1729,7 +1803,9 @@ Value kyl_request_get_multipart_field(int arg_count, Value* args) {
     const char* field_name = args[1].as.string;
     
     if (!req || !req->body || req->body_length == 0 || !field_name) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
@@ -1737,14 +1813,18 @@ Value kyl_request_get_multipart_field(int arg_count, Value* args) {
     // Extract boundary from Content-Type header
     const char* ct = http_request_get_header(req, "Content-Type");
     if (!ct || strstr(ct, "multipart/form-data") == NULL) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
     
     const char* boundary_start = strstr(ct, "boundary=");
     if (!boundary_start) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
@@ -1766,7 +1846,9 @@ Value kyl_request_get_multipart_field(int arg_count, Value* args) {
     // Find the field in the body
     const char* field_pos = strnstr(req->body, search_pattern, req->body_length);
     if (!field_pos) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
@@ -1777,7 +1859,9 @@ Value kyl_request_get_multipart_field(int arg_count, Value* args) {
         line_end++;
     }
     if (line_end >= req->body + req->body_length) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
@@ -1811,7 +1895,9 @@ Value kyl_request_get_multipart_field(int arg_count, Value* args) {
     size_t value_len = value_end - value_start;
     char* value = malloc(value_len + 1);
     if (!value) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
@@ -1990,7 +2076,9 @@ Value kyl_request_parse_multipart_fields(int arg_count, Value* args) {
 // Args: (req_handle, field_name, output_path)
 // Returns: 1 on success, 0 on failure
 Value kyl_request_save_multipart_file(int arg_count, Value* args) {
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = 0;
     
     FILE* debug = fopen("/tmp/save_multipart_debug.txt", "w");

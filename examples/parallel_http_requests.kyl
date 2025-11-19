@@ -1,5 +1,5 @@
 
-import("../interfaces/interface_http.kyl")
+import("interfaces/interface_http.kyl")
 
 fn fetchGitHubZen() {
     print("  → Fetching GitHub Zen quote...")

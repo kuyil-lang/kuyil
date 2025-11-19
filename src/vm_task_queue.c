@@ -1,4 +1,5 @@
 // vm_task_queue.c - Thread-safe task queue implementation
+#define _GNU_SOURCE  // For strdup()
 #define _POSIX_C_SOURCE 199309L
 #include "vm_task_queue.h"
 #include <stdlib.h>

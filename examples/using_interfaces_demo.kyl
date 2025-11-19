@@ -2,13 +2,13 @@
 // Each interface file provides @loadlib + typed method signatures
 
 // Import string library interface
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_str.kyl")
 
 // Import math library interface  
-import("../interfaces/interface_math.kyl")
+import("interfaces/interface_math.kyl")
 
 // Import datetime library interface
-import("../interfaces/interface_datetime.kyl")
+import("interfaces/interface_datetime.kyl")
 
 // Now you can use the functions with clean aliases
 print("=== String Operations ===")

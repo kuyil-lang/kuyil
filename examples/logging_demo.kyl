@@ -1,5 +1,5 @@
 // Simple Logging Demo for Kuyil
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_str.kyl")
 // Demonstrates basic structured logging patterns
 
 print("=== Kuyil Logging System Demo ===")

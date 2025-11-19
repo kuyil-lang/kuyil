@@ -133,7 +133,7 @@ static char* read_file(const char* path) {
     return buffer;
 }
 
-static void run_file(const char* path, int script_argc, char** script_argv) {
+static void __attribute__((unused)) run_file(const char* path, int script_argc, char** script_argv) {
     VM vm;
     vm_init(&vm);
     
@@ -191,7 +191,7 @@ static void compile_to_wrapper(const char* input_path, const char* output_path, 
     // Make executable
     char chmod_cmd[512];
     snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod +x %s", output_path);
-    system(chmod_cmd);
+    (void)system(chmod_cmd);
 }
 
 static void compile_to_bytecode(const char* input_path, const char* output_path, const char* source) {
@@ -641,6 +641,7 @@ static void compile_to_native_binary(const char* input_path, const char* output_
     const char* obj_ext;
     const char* libs;
     const char* extra_flags = "";
+    (void)obj_ext;  // Used in conditional compilation
     
     // If no target specified, use current platform
     if (!target_platform) {
@@ -721,7 +722,7 @@ static void compile_to_native_binary(const char* input_path, const char* output_
         // Make executable
         char chmod_command[1024];
         snprintf(chmod_command, sizeof(chmod_command), "chmod +x %s", output_path);
-        system(chmod_command);
+        (void)system(chmod_command);
         
         if (embed_bytecode) {
             printf("✅ Created native binary '%s' with embedded bytecode (secure)\n", output_path);
@@ -780,7 +781,7 @@ static void compile_file_with_options(const char* input_path, const char* output
     free(source);
 }
 
-static void compile_file(const char* input_path, const char* output_path) {
+static void __attribute__((unused)) compile_file(const char* input_path, const char* output_path) {
     char* source = read_file(input_path);
     
     // Default to wrapper mode for backward compatibility

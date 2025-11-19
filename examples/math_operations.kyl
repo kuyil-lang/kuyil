@@ -1,7 +1,7 @@
 // Math Operations Example - Simplified and Robust
 // Demonstrates mathematical functions via modular library system
-import("../interfaces/interface_math.kyl")
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_math.kyl")
+import("interfaces/interface_str.kyl")
 
 print("=== Basic Math Operations Demo ===")
 

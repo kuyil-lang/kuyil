@@ -1,7 +1,7 @@
 // FFmpeg Audio Processing Example
 // Demonstrates audio file analysis using FFmpeg
 
-import("../interfaces/interface_ffmpeg.kyl") as ffmpeg
+import("interfaces/interface_ffmpeg.kyl") as ffmpeg
 
 print("=== FFmpeg Audio Analysis Example ===")
 print("")

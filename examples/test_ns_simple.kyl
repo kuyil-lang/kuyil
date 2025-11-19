@@ -1,5 +1,5 @@
 // Simple test of namespace object creation
-import("../interfaces/interface_str.kyl") as ns
+import("interfaces/interface_str.kyl") as ns
 
 print("ns type check:")
 print("ns value:", ns)

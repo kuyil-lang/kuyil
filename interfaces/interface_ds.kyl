@@ -1,0 +1,180 @@
+// Data Structures Library Interface for Kuyil
+// Provides: Stack, Queue, PriorityQueue, List, TreeMap, Graph, ConcurrentHashMap, Decorators
+
+// ============================================
+// Stack (LIFO)
+// ============================================
+interface Stack from "libs/libkylds.so" {
+    fn ds_stackCreate() // Returns stack handle
+    fn ds_stackDestroy(stack)
+    fn ds_stackPush(stack, value)
+    fn ds_stackPop(stack) // Returns value or nil
+    fn ds_stackPeek(stack) // Returns value without removing
+    fn ds_stackSize(stack) // Returns size
+    fn ds_stackIsEmpty(stack) // Returns boolean
+    fn ds_stackClear(stack)
+}
+
+// ============================================
+// Queue (FIFO)
+// ============================================
+interface Queue from "libs/libkylds.so" {
+    fn ds_queueCreate()
+    fn ds_queueDestroy(queue)
+    fn ds_queueEnqueue(queue, value)
+    fn ds_queueDequeue(queue) // Returns value or nil
+    fn ds_queuePeek(queue)
+    fn ds_queueSize(queue)
+    fn ds_queueIsEmpty(queue)
+    fn ds_queueClear(queue)
+}
+
+// ============================================
+// Priority Queue (Min-Heap by default)
+// ============================================
+interface PriorityQueue from "libs/libkylds.so" {
+    fn ds_priorityQueueCreate(isMaxHeap) // isMaxHeap: 0=min-heap, 1=max-heap
+    fn ds_priorityQueueDestroy(pq)
+    fn ds_priorityQueueInsert(pq, priority, value) // priority is number, value is any
+    fn ds_priorityQueueExtract(pq) // Returns {priority, value} or nil
+    fn ds_priorityQueuePeek(pq)
+    fn ds_priorityQueueSize(pq)
+    fn ds_priorityQueueIsEmpty(pq)
+    fn ds_priorityQueueClear(pq)
+    fn ds_priorityQueueChangePriority(pq, oldPriority, newPriority, value)
+}
+
+// ============================================
+// List (Dynamic Array / ArrayList)
+// ============================================
+interface List from "libs/libkylds.so" {
+    fn ds_listCreate()
+    fn ds_listDestroy(list)
+    fn ds_listAdd(list, value) // Add to end
+    fn ds_listInsert(list, index, value) // Insert at index
+    fn ds_listGet(list, index) // Get by index
+    fn ds_listSet(list, index, value) // Set by index
+    fn ds_listRemove(list, value) // Remove first occurrence
+    fn ds_listRemoveAt(list, index) // Remove by index
+    fn ds_listIndexOf(list, value) // Find index or -1
+    fn ds_listContains(list, value) // Returns boolean
+    fn ds_listSize(list)
+    fn ds_listIsEmpty(list)
+    fn ds_listClear(list)
+    fn ds_listSort(list) // Sort in ascending order
+    fn ds_listReverse(list)
+    fn ds_listToArray(list) // Convert to Kuyil array
+}
+
+// ============================================
+// TreeMap (Red-Black Tree / Sorted Map)
+// ============================================
+interface TreeMap from "libs/libkylds.so" {
+    fn ds_treeMapCreate()
+    fn ds_treeMapDestroy(map)
+    fn ds_treeMapPut(map, key, value) // Insert or update
+    fn ds_treeMapGet(map, key) // Get value by key or nil
+    fn ds_treeMapRemove(map, key) // Remove by key
+    fn ds_treeMapContains(map, key)
+    fn ds_treeMapSize(map)
+    fn ds_treeMapIsEmpty(map)
+    fn ds_treeMapClear(map)
+    fn ds_treeMapKeys(map) // Returns array of keys (sorted)
+    fn ds_treeMapValues(map) // Returns array of values
+    fn ds_treeMapFirstKey(map) // Min key
+    fn ds_treeMapLastKey(map) // Max key
+    fn ds_treeMapFloorKey(map, key) // Largest key <= key
+    fn ds_treeMapCeilingKey(map, key) // Smallest key >= key
+}
+
+// ============================================
+// Graph (Directed/Undirected, Weighted/Unweighted)
+// ============================================
+interface Graph from "libs/libkylds.so" {
+    fn ds_graphCreate(vertexCount, isDirected) // vertexCount, 0=undirected, 1=directed
+    fn ds_graphDestroy(graph)
+    fn ds_graphAddEdge(graph, fromVertex, toVertex, weight) // weight optional (default 1.0)
+    fn ds_graphRemoveEdge(graph, fromVertex, toVertex)
+    fn ds_graphHasEdge(graph, fromVertex, toVertex)
+    fn ds_graphGetNeighbors(graph, vertexId) // Returns array of neighbor IDs
+    fn ds_graphVertexCount(graph)
+    fn ds_graphEdgeCount(graph)
+    fn ds_graphBFS(graph, startVertex) // Returns array of vertices in BFS order
+    fn ds_graphDFS(graph, startVertex) // Returns array of vertices in DFS order
+    fn ds_graphShortestPath(graph, fromVertex, toVertex) // Dijkstra's algorithm
+    fn ds_graphTopologicalSort(graph) // Returns array or nil if cycle
+    fn ds_graphConnectedComponents(graph) // Returns array of component arrays
+    fn ds_graphIsAcyclic(graph) // Check if graph has cycles
+    fn ds_graphMinSpanningTree(graph) // MST for undirected weighted graph
+}
+
+// ============================================
+// Concurrent HashMap (Thread-Safe)
+// ============================================
+interface ConcurrentHashMap from "libs/libkylds.so" {
+    fn ds_concurrentHashMapCreate(initialCapacity) // capacity hint
+    fn ds_concurrentHashMapDestroy(map)
+    fn ds_concurrentHashMapPut(map, key, value) // Thread-safe put
+    fn ds_concurrentHashMapGet(map, key) // Thread-safe get
+    fn ds_concurrentHashMapRemove(map, key) // Thread-safe remove
+    fn ds_concurrentHashMapContains(map, key)
+    fn ds_concurrentHashMapSize(map)
+    fn ds_concurrentHashMapIsEmpty(map)
+    fn ds_concurrentHashMapClear(map)
+    fn ds_concurrentHashMapKeys(map) // Snapshot of keys
+    fn ds_concurrentHashMapPutIfAbsent(map, key, value) // Only put if key doesn't exist
+    fn ds_concurrentHashMapReplace(map, key, oldValue, newValue) // CAS operation
+}
+
+// ============================================
+// Decorators & HTTP Route Registration
+// ============================================
+interface Decorators from "libs/libkylds.so" {
+    // Decorator registry
+    fn ds_decoratorCreate(name, funcName) // Create decorator entry
+    fn ds_decoratorAddMetadata(decoratorId, key, value) // Add metadata
+    fn ds_decoratorGetMetadata(decoratorId, key)
+    fn ds_decoratorList() // List all decorators
+    
+    // HTTP Route registration (common decorator use case)
+    fn ds_routeRegister(method, path, handlerFunc) // Register HTTP route
+    fn ds_routeRegisterRegex(method, pathRegex, paramNames, handlerFunc) // With regex
+    fn ds_routeFind(method, path) // Find matching route, returns {handler, params}
+    fn ds_routeList() // List all routes
+    fn ds_routeClear() // Clear all routes
+    
+    // Generic function metadata (for any decorator pattern)
+    fn ds_metaSet(funcName, key, value) // Store metadata for function
+    fn ds_metaGet(funcName, key) // Get metadata
+    fn ds_metaGetAll(funcName) // Get all metadata as object
+    fn ds_metaHas(funcName, key) // Check if metadata exists
+}
+
+// Vector Operations for ML/AI
+// ============================================
+interface VectorOps from "libs/libkylds.so" {
+    // Basic vector operations
+    fn ds_vectorDotProduct(vec1, vec2) // Dot product of two vectors
+    fn ds_vectorMagnitude(vec) // L2 norm (magnitude) of vector
+    fn ds_vectorNormalize(vec) // Normalize to unit vector
+    
+    // Similarity and distance metrics
+    fn ds_vectorCosineSimilarity(vec1, vec2) // Cosine similarity [-1, 1]
+    fn ds_vectorEuclideanDistance(vec1, vec2) // L2 distance
+    fn ds_vectorManhattanDistance(vec1, vec2) // L1 distance
+    
+    // Vector arithmetic
+    fn ds_vectorAdd(vec1, vec2) // Element-wise addition
+    fn ds_vectorSubtract(vec1, vec2) // Element-wise subtraction
+    fn ds_vectorScale(vec, scalar) // Scalar multiplication
+}
+
+// K-Nearest Neighbors & Similarity Search
+// ============================================
+interface KNN from "libs/libkylds.so" {
+    // KNN search
+    fn ds_knnFind(queryVec, dataset, k, metric) // Find K nearest neighbors, returns indices
+    fn ds_knnFindWithDistances(queryVec, dataset, k, metric) // Returns [{index, distance}, ...]
+    fn ds_knnFindByThreshold(queryVec, dataset, threshold, metric) // Find all within threshold
+    fn ds_knnSimilarityMatrix(dataset, metric) // Compute pairwise distances
+}

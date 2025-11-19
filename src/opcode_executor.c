@@ -42,7 +42,9 @@ bool exec_add(ExecContext* ctx) {
     
     if (a.type == VALUE_NUMBER && b.type == VALUE_NUMBER) {
         // Numeric addition
-        Value result = {VALUE_NUMBER};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
         result.as.number = a.as.number + b.as.number;
         exec_push(ctx, result);
         return true;
@@ -95,7 +97,9 @@ bool exec_add(ExecContext* ctx) {
         memcpy(new_str, str_a, len_a);
         memcpy(new_str + len_a, str_b, len_b + 1);
         
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = new_str;
         exec_push(ctx, result);
         return true;
@@ -120,7 +124,9 @@ bool exec_add(ExecContext* ctx) {
             new_values[a.as.array.count + i] = b.as.array.values[i];
         }
         
-        Value result = {VALUE_ARRAY};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_ARRAY;
         result.as.array.count = new_count;
         result.as.array.values = new_values;
         exec_push(ctx, result);
@@ -151,7 +157,9 @@ bool exec_subtract(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = a.as.number - b.as.number;
     exec_push(ctx, result);
     return true;
@@ -175,7 +183,9 @@ bool exec_multiply(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = a.as.number * b.as.number;
     exec_push(ctx, result);
     return true;
@@ -206,7 +216,9 @@ bool exec_divide(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = a.as.number / b.as.number;
     exec_push(ctx, result);
     return true;
@@ -237,7 +249,9 @@ bool exec_modulo(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     // Use fmod for floating point modulo
     result.as.number = fmod(a.as.number, b.as.number);
     exec_push(ctx, result);
@@ -261,7 +275,9 @@ bool exec_negate(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_NUMBER};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
     result.as.number = -val.as.number;
     exec_push(ctx, result);
     return true;
@@ -276,7 +292,9 @@ bool exec_not(ExecContext* ctx) {
     }
     
     Value val = exec_pop(ctx);
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = is_falsy(val);
     exec_push(ctx, result);
     return true;
@@ -337,7 +355,9 @@ bool exec_equal(ExecContext* ctx) {
     Value b = exec_pop(ctx);
     Value a = exec_pop(ctx);
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = values_equal(a, b);
     exec_push(ctx, result);
     return true;
@@ -354,7 +374,9 @@ bool exec_not_equal(ExecContext* ctx) {
     Value b = exec_pop(ctx);
     Value a = exec_pop(ctx);
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = !values_equal(a, b);
     exec_push(ctx, result);
     return true;
@@ -378,7 +400,9 @@ bool exec_greater(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = a.as.number > b.as.number;
     exec_push(ctx, result);
     return true;
@@ -402,7 +426,9 @@ bool exec_greater_equal(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = a.as.number >= b.as.number;
     exec_push(ctx, result);
     return true;
@@ -426,7 +452,9 @@ bool exec_less(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = a.as.number < b.as.number;
     exec_push(ctx, result);
     return true;
@@ -450,7 +478,9 @@ bool exec_less_equal(ExecContext* ctx) {
         return false;
     }
     
-    Value result = {VALUE_BOOL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
     result.as.boolean = a.as.number <= b.as.number;
     exec_push(ctx, result);
     return true;
@@ -482,7 +512,9 @@ bool exec_array_create(ExecContext* ctx, uint8_t element_count) {
     }
     
     // Push array value
-    Value result = {VALUE_ARRAY};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_ARRAY;
     result.as.array = arr;
     exec_push(ctx, result);
     return true;
@@ -570,7 +602,9 @@ bool exec_array_set(ExecContext* ctx) {
 
 // OP_OBJECT_NEW: Create empty map/object
 bool exec_object_new(ExecContext* ctx) {
-    Value obj = {VALUE_OBJECT};
+    Value obj;
+    memset(&obj, 0, sizeof(Value));
+    obj.type = VALUE_OBJECT;
     obj.as.object.count = 0;
     obj.as.object.keys = NULL;
     obj.as.object.values = NULL;
@@ -599,7 +633,9 @@ bool exec_object_get(ExecContext* ctx) {
     // Handle array.length property
     if (object.type == VALUE_ARRAY) {
         if (strcmp(key.as.string, "length") == 0) {
-            Value result = {VALUE_NUMBER};
+            Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
             result.as.number = (double)object.as.array.count;
             exec_push(ctx, result);
             return true;
@@ -613,7 +649,9 @@ bool exec_object_get(ExecContext* ctx) {
     // Handle string.length property
     if (object.type == VALUE_STRING) {
         if (strcmp(key.as.string, "length") == 0) {
-            Value result = {VALUE_NUMBER};
+            Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NUMBER;
             result.as.number = (double)strlen(object.as.string);
             exec_push(ctx, result);
             return true;
@@ -767,14 +805,18 @@ void exec_push_nil(ExecContext* ctx) {
 
 // OP_TRUE: Push true value
 void exec_push_true(ExecContext* ctx) {
-    Value val = {VALUE_BOOL};
+    Value val;
+    memset(&val, 0, sizeof(Value));
+    val.type = VALUE_BOOL;
     val.as.boolean = true;
     exec_push(ctx, val);
 }
 
 // OP_FALSE: Push false value
 void exec_push_false(ExecContext* ctx) {
-    Value val = {VALUE_BOOL};
+    Value val;
+    memset(&val, 0, sizeof(Value));
+    val.type = VALUE_BOOL;
     val.as.boolean = false;
     exec_push(ctx, val);
 }

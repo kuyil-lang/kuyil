@@ -298,7 +298,9 @@ bool load_library(const char* library_name) {
                          iface_name, method_name, param_count);
                 
                 // Build Value array for params
-                Value param_array = {VALUE_ARRAY};
+                Value param_array;
+                memset(&param_array, 0, sizeof(Value));
+                param_array.type = VALUE_ARRAY;
                 param_array.as.array.count = param_count;
                 if (param_count > 0) {
                     param_array.as.array.values = malloc(sizeof(Value) * param_count);
@@ -492,6 +494,7 @@ void* get_library_function(const char* library_name, const char* function_name) 
 }
 
 bool register_library_functions(VM* vm) {
+    (void)vm;  // Unused parameter
     // Register functions from libraries.conf pre-loaded libraries
     // These get added to g_dynamic_functions[], which the interface system
     // uses via bind_interface_method() to create convenient aliases.
@@ -536,13 +539,19 @@ void library_loader_cleanup(void) {
 
 // Native function wrappers for different signatures
 Value native_library_call_void_void(int arg_count, Value* args, void* func_ptr) {
+    (void)args;  // Unused parameter
+    (void)arg_count;  // Unused parameter
     void (*func)(void) = (void (*)(void))func_ptr;
     func();
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
 Value native_library_call_int_void(int arg_count, Value* args, void* func_ptr) {
+    (void)args;  // Unused parameter
+    (void)arg_count;  // Unused parameter
     int (*func)(void) = (int (*)(void))func_ptr;
     int result = func();
     Value val;
@@ -553,7 +562,9 @@ Value native_library_call_int_void(int arg_count, Value* args, void* func_ptr) {
 
 Value native_library_call_ptr_string(int arg_count, Value* args, void* func_ptr) {
     if (arg_count != 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -568,7 +579,9 @@ Value native_library_call_ptr_string(int arg_count, Value* args, void* func_ptr)
 
 Value native_library_call_int_ptr_string(int arg_count, Value* args, void* func_ptr) {
     if (arg_count != 2 || args[0].type != VALUE_NUMBER || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -584,7 +597,9 @@ Value native_library_call_int_ptr_string(int arg_count, Value* args, void* func_
 
 Value native_library_call_void_ptr(int arg_count, Value* args, void* func_ptr) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -592,7 +607,9 @@ Value native_library_call_void_ptr(int arg_count, Value* args, void* func_ptr) {
     void* ptr = (void*)(intptr_t)args[0].as.number;
     func(ptr);
     
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 

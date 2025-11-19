@@ -8,6 +8,7 @@ import "interfaces/interface_webview_app.kyl"
 import "interfaces/interface_str.kyl"
 import "interfaces/interface_transcoder.kyl"
 import "interfaces/interface_crypto.kyl"
+import "interfaces/interface_ds.kyl"
 
 // ============================================
 // Configuration

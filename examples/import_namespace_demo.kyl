@@ -1,8 +1,8 @@
 // Demo for import with namespace to avoid conflicts
 
 // Import with namespace
-import("../interfaces/interface_str.kyl") as strlib
-import("../interfaces/interface_math.kyl") as mathlib
+import("interfaces/interface_str.kyl") as strlib
+import("interfaces/interface_math.kyl") as mathlib
 
 // Now methods are accessed via namespace
 print("=== Namespace Demo ===")

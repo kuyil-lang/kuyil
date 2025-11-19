@@ -1,6 +1,6 @@
 // Transcoder/Compression Interface Demo
-import("../interfaces/interface_transcoder.kyl")
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_transcoder.kyl")
+import("interfaces/interface_str.kyl")
 
 print("=== Transcoder (Compression) Demo ===")
 

@@ -2,7 +2,7 @@
 print("Testing export keyword functionality...\n");
 
 // Import a module with exported functions
-import("export_demo.kyl");
+import("examples/export_demo.kyl");
 
 print("--- Testing exported functions ---");
 

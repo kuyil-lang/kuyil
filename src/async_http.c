@@ -2,6 +2,7 @@
 #include "async_http.h"
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>  // for strncasecmp()
 #include <stdio.h>
 #include <event2/event.h>
 
@@ -54,6 +55,8 @@ static size_t write_callback(void* contents, size_t size, size_t nmemb, void* us
 
 // Timer callback for curl_multi_socket_action
 static void timer_callback(evutil_socket_t fd, short kind, void* userp) {
+    (void)kind;  // Unused parameter
+    (void)fd;  // Unused parameter
     AsyncHttpClient* client = (AsyncHttpClient*)userp;
     int running_handles;
     
@@ -62,7 +65,7 @@ static void timer_callback(evutil_socket_t fd, short kind, void* userp) {
 }
 
 // Socket callback for libevent integration
-static void event_callback(evutil_socket_t fd, short kind, void* userp) {
+static void __attribute__((unused)) event_callback(evutil_socket_t fd, short kind, void* userp) {
     AsyncHttpClient* client = (AsyncHttpClient*)userp;
     int action = ((kind & EV_READ) ? CURL_CSELECT_IN : 0) |
                  ((kind & EV_WRITE) ? CURL_CSELECT_OUT : 0);
@@ -74,6 +77,7 @@ static void event_callback(evutil_socket_t fd, short kind, void* userp) {
 
 // Curl timer function - schedules libevent timer
 static int multi_timer_cb(CURLM* multi, long timeout_ms, void* userp) {
+    (void)multi;  // Unused parameter
     AsyncHttpClient* client = (AsyncHttpClient*)userp;
     
     struct timeval timeout;
@@ -153,6 +157,7 @@ AsyncHttpRequest* async_http_post_ex(
     AsyncHttpCallback callback,
     void* user_data
 ) {
+    (void)write_timeout_ms;  // Unused parameter
     if (!client || !url || !callback) return NULL;
     
     AsyncHttpRequest* req = calloc(1, sizeof(AsyncHttpRequest));
@@ -252,6 +257,7 @@ AsyncHttpRequest* async_http_get_ex(
     AsyncHttpCallback callback,
     void* user_data
 ) {
+    (void)write_timeout_ms;  // Unused parameter
     if (!client || !url || !callback) return NULL;
     
     AsyncHttpRequest* req = calloc(1, sizeof(AsyncHttpRequest));

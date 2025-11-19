@@ -1,7 +1,7 @@
 // SQLite Database Usage Example
 // Demonstrates basic database operations with SQLite
 
-import("../interfaces/interface_sqlite.kyl") as db
+import("interfaces/interface_sqlite.kyl") as db
 
 print("=== SQLite Database Example ===")
 print("")

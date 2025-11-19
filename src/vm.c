@@ -228,7 +228,7 @@ void vm_coverage_report_lcov(VM* vm) {
     }
 }
 
-static void concatenate(VM* vm) {
+static void __attribute__((unused)) concatenate(VM* vm) {
     Value b = vm_pop(vm);
     Value a = vm_pop(vm);
     
@@ -386,7 +386,7 @@ static void print_value(Value value) {
     }
 }
 
-static Value native_print(int arg_count, Value* args) {
+static Value __attribute__((unused)) native_print(int arg_count, Value* args) {
     for (int i = 0; i < arg_count; i++) {
         print_value(args[i]);
         if (i < arg_count - 1) printf(" ");
@@ -402,9 +402,11 @@ static Value native_print(int arg_count, Value* args) {
 // String manipulation functions now handled by modular library system
 
 // Number conversion functions
-static Value native_to_number(int arg_count, Value* args) {
+static Value __attribute__((unused)) native_to_number(int arg_count, Value* args) {
     if (arg_count != 1) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -436,9 +438,11 @@ static Value native_to_number(int arg_count, Value* args) {
     return result;
 }
 
-static Value native_to_string(int arg_count, Value* args) {
+static Value __attribute__((unused)) native_to_string(int arg_count, Value* args) {
     if (arg_count != 1) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -603,7 +607,9 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         if (function->chunk.count == 0) {
             // No bytecode, return nil for now
             vm->stack_top -= arg_count + 1;
-            Value result = {VALUE_NIL};
+            Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
             vm_push(vm, result);
             return true;
         }
@@ -799,7 +805,9 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             }
             
             vm->stack_top -= arg_count + 1; // Pop args and function
-            Value result = {VALUE_NIL};
+            Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
             vm_push(vm, result);
             return true;
         }
@@ -1912,7 +1920,7 @@ static uint8_t read_byte(VM* vm) {
     return *vm->frames[vm->frame_count - 1].ip++;
 }
 
-static uint16_t read_short(VM* vm) {
+static uint16_t __attribute__((unused)) read_short(VM* vm) {
     vm->frames[vm->frame_count - 1].ip += 2;
     return (uint16_t)((vm->frames[vm->frame_count - 1].ip[-2] << 8) |
                        vm->frames[vm->frame_count - 1].ip[-1]);
@@ -1923,10 +1931,12 @@ static Value read_constant(VM* vm) {
     return vm->frames[vm->frame_count - 1].function->chunk.constants[constant];
 }
 
+#if 0  // Unused function - kept for future use
 static const char* read_string(VM* vm) {
     Value constant = read_constant(vm);
     return constant.as.string;
 }
+#endif
 
 InterpretResult vm_run(VM* vm) {
     
@@ -3792,6 +3802,7 @@ int vm_process_async_requests(int max_requests) {
 // Process event loop for async operations
 // timeout_ms: milliseconds to wait for events  
 int vm_process_events(int timeout_ms) {
+    (void)timeout_ms;  // Reserved for future use
     if (!g_current_vm || !g_current_vm->event_base) return 0;
     
     // Process libevent loop (non-blocking)

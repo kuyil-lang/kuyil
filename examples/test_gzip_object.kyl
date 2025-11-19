@@ -1,6 +1,6 @@
 // Test gzip with byte array object return
-import("../interfaces/interface_str.kyl")
-import("../interfaces/interface_transcoder.kyl")
+import("interfaces/interface_str.kyl")
+import("interfaces/interface_transcoder.kyl")
 
 let original = "Hello World! This is a test of gzip compression with byte arrays."
 print("Original: ")

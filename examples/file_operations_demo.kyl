@@ -14,8 +14,8 @@
 //     - Avatar workers also can't fix this (type already corrupted)
 //     - Only workaround: Use functions that don't need return values, or use file:// URLs
 
-import("../interfaces/interface_fileio.kyl")
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_fileio.kyl")
+import("interfaces/interface_str.kyl")
 
 print("=== File Operations Demo ===")
 print("⚠️  Note: Return value type issue affects all file functions")

@@ -1,7 +1,7 @@
 // ******** arithmetic <start> *****
-import("../interfaces/interface_str.kyl")
-import("../interfaces/interface_math.kyl")
-import("../interfaces/interface_datetime.kyl")
+import("interfaces/interface_str.kyl")
+import("interfaces/interface_math.kyl")
+import("interfaces/interface_datetime.kyl")
 let j = 100
 let t = 10
 let a = j + 10 - t * 5
@@ -67,7 +67,7 @@ print("sqrt(16) =", sqrt(16))
 print("pow(2, 3) =", pow(2, 3))
 
 // Test string library functions  
-import("../interfaces/interface_str.kyl") as str
+import("interfaces/interface_str.kyl") as str
 print("Testing String Library:")
 let str1 = "Hello World"
 print("str_length('Hello World') =", str.length(str1))
@@ -75,7 +75,7 @@ print("str_upper('Hello World') =", str.upper(str1))
 print("str_contains('Hello World', 'World') =", str.contains(str1, "World"))
 
 // Test date/time library functions
-import("../interfaces/interface_datetime.kyl") as datetime
+import("interfaces/interface_datetime.kyl") as datetime
 print("Testing DateTime Library:")
 print("Current date:", now())
 print("Current timestamp:", unix())
@@ -87,7 +87,7 @@ let result = sqrt(pow(2, 8))
 print(upper(name), "computed:", result)
 
 // Test HTTP client (using fast GitHub API)
-import("../interfaces/interface_http.kyl") as http
+import("interfaces/interface_http.kyl") as http
 let data = clientGet("https://api.github.com/zen")
 print("Fetched", length(data), "bytes")
 

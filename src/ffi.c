@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <unistd.h>  // for unlink()
 
 // Global FFI error state
 static FFIError g_last_error = FFI_ERROR_NONE;
@@ -633,6 +634,7 @@ void* ffi_kuyil_to_c(Value* kuyil_val, FFIType target_type, size_t* size) {
 }
 
 Value* ffi_c_to_kuyil(void* c_val, FFIType source_type, size_t size) {
+    (void)size;  // Unused parameter
     if (!c_val && source_type != FFI_TYPE_VOID) {
         Value* nil_val = ffi_malloc(sizeof(Value));
         nil_val->type = VALUE_NIL;
@@ -1618,6 +1620,7 @@ KuyilSourceAnalysis* ffi_analyze_kuyil_source(const char* source_file) {
 
 int ffi_create_smart_shared_library(const char* lib_name, const char* source_file, 
                                    const char* output_path, int flags) {
+    (void)flags;  // Unused parameter
     if (!lib_name || !source_file || !output_path) {
         kuyil_log_error("Invalid parameters for smart library creation");
         return -1;

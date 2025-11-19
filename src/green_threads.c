@@ -195,7 +195,7 @@ static Observable* get_observable_by_handle(int handle) {
     return g_observables[handle];
 }
 
-static void unregister_observable(int handle) {
+static void __attribute__((unused)) unregister_observable(int handle) {
     if (handle <= 0 || handle >= MAX_OBSERVABLES) return;
     g_observables[handle] = NULL;
 }
@@ -351,6 +351,7 @@ void observable_error(Observable* obs, const char* error) {
 
 // Default observer callbacks
 static void default_on_next(Observer* observer, Value value) {
+    (void)value;  // Unused parameter
     kuyil_log_debug("[OBS] Observer %d received value", observer->id);
     // In real implementation, this would call back into Kuyil VM
 }
@@ -629,6 +630,7 @@ VMMessage* message_queue_get_completed(MessageQueue* queue, int message_id) {
 }
 
 void message_queue_complete(MessageQueue* queue, int message_id, Value result) {
+    (void)result;  // Unused parameter
     if (!queue) return;
     
     pthread_mutex_lock(&queue->mutex);
@@ -690,6 +692,8 @@ int vm_process_background_jobs(VM* vm) {
 }
 
 Value vm_execute_queued_function(VM* vm, const char* func_name, Value* args, int arg_count) {
+    (void)args;  // Unused parameter
+    (void)vm;  // Unused parameter
     // Simplified function execution - in real implementation this would:
     // 1. Look up function in VM's function table
     // 2. Set up call frame with arguments  

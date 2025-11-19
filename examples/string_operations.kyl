@@ -1,6 +1,6 @@
 // String Operations Example
 // Demonstrates string manipulation functions via modular library system
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_str.kyl")
 
 print("=== String Operations Demo ===")
 

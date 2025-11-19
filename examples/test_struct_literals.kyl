@@ -1,5 +1,5 @@
 // Test struct literal syntax and serialization
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_str.kyl")
 
 print("=== Testing Struct Literals and Serialization ===")
 print("")

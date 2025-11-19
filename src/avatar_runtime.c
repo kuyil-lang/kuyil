@@ -927,6 +927,7 @@ static void* avatar_task_func(void* user_data) {
 
 // Completion callback executed on main thread
 static void avatar_completion_func(void* completion_data, void* result) {
+    (void)result;  // Unused parameter
     AvatarHandle* handle = (AvatarHandle*)completion_data;
     
     pthread_mutex_lock(&handle->mutex);

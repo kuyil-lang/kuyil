@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 // Helper functions
-static int g_destruct_temp_counter = 0; // for generating unique temp names
+static int __attribute__((unused)) g_destruct_temp_counter = 0; // for generating unique temp names
 static Token* current_token(Parser* parser) {
     if (parser->current >= parser->count) {
         // Return EOF token if we've reached the end
@@ -2042,6 +2042,7 @@ static ASTNode* interface_declaration_impl(Parser* parser, bool is_exported) {
         Token* method_ident = NULL;
         Token* possible_return_type = NULL; // Capture simple single-token return type if present
         int start_pos = parser->current;
+        (void)start_pos;  // May be used for error reporting
         while (!parser_is_at_end(parser)) {
             Token* t = current_token(parser);
             // If we see an identifier and next token is '(', treat it as method name

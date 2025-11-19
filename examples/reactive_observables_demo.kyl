@@ -1,5 +1,5 @@
 // Reactive Observables Concept Demo for Kuyil
-import("../interfaces/interface_str.kyl")
+import("interfaces/interface_str.kyl")
 // Demonstrates reactive programming patterns and Observable concepts
 
 print("=== Kuyil Reactive Observables Demo ===")

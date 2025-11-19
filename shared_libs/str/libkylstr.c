@@ -30,7 +30,9 @@ const char* kyl_interface_signature_text =
 // String length function
 Value kyl_str_length(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -44,7 +46,9 @@ Value kyl_str_length(int arg_count, Value* args) {
 Value kyl_str_substring(int arg_count, Value* args) {
     if (arg_count < 2 || arg_count > 3 || args[0].type != VALUE_STRING || 
         args[1].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -78,7 +82,9 @@ Value kyl_str_substring(int arg_count, Value* args) {
 // String upper case function
 Value kyl_str_upper(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -100,7 +106,9 @@ Value kyl_str_upper(int arg_count, Value* args) {
 // String lower case function
 Value kyl_str_lower(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -122,7 +130,9 @@ Value kyl_str_lower(int arg_count, Value* args) {
 // String trim function
 Value kyl_str_trim(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -223,7 +233,9 @@ Value kyl_str_indexOf(int arg_count, Value* args) {
 Value kyl_str_replace(int arg_count, Value* args) {
     if (arg_count != 3 || args[0].type != VALUE_STRING || 
         args[1].type != VALUE_STRING || args[2].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -260,7 +272,9 @@ Value kyl_str_replace(int arg_count, Value* args) {
 // String split function - returns array as string with | separator
 Value kyl_str_split(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -269,7 +283,9 @@ Value kyl_str_split(int arg_count, Value* args) {
     
     if (strlen(delimiter) == 0) {
         // Empty delimiter, return array with original string
-        Value result = {VALUE_ARRAY};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_ARRAY;
         result.as.array.values = malloc(sizeof(Value));
         result.as.array.count = 1;
         result.as.array.values[0].type = VALUE_STRING;
@@ -286,7 +302,9 @@ Value kyl_str_split(int arg_count, Value* args) {
     }
     
     // Create array
-    Value result = {VALUE_ARRAY};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_ARRAY;
     result.as.array.values = malloc(sizeof(Value) * count);
     result.as.array.count = 0;
     
@@ -308,7 +326,9 @@ Value kyl_str_split(int arg_count, Value* args) {
 // Number conversion function
 Value kyl_str_to_number(int arg_count, Value* args) {
     if (arg_count != 1) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -343,7 +363,9 @@ Value kyl_str_to_number(int arg_count, Value* args) {
 // String conversion function
 Value kyl_str_to_string(int arg_count, Value* args) {
     if (arg_count != 1) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -384,7 +406,9 @@ Value kyl_str_to_string(int arg_count, Value* args) {
 Value kyl_str_slice(int arg_count, Value* args) {
     if (arg_count < 2 || arg_count > 3 || args[0].type != VALUE_STRING || 
         args[1].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -422,7 +446,9 @@ Value kyl_str_slice(int arg_count, Value* args) {
 // Regex match function (returns true if pattern matches)
 Value kyl_str_regexMatch(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_BOOL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
         result.as.boolean = false;
         return result;
     }
@@ -452,7 +478,9 @@ Value kyl_str_regexMatch(int arg_count, Value* args) {
 // Regex extract function (returns first match or empty string)
 Value kyl_str_regexExtract(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
@@ -467,7 +495,9 @@ Value kyl_str_regexExtract(int arg_count, Value* args) {
     
     if (ret != 0) {
         // Regex compilation failed
-        Value result = {VALUE_STRING};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
         result.as.string = strdup("");
         return result;
     }
@@ -499,7 +529,9 @@ Value kyl_str_regexExtract(int arg_count, Value* args) {
 
 // Convert byte array to string
 Value kyl_str_bytesToString(int arg_count, Value* args) {
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     
     if (arg_count != 1 || args[0].type != VALUE_ARRAY) {
         return result;

@@ -57,7 +57,9 @@ Value kyl_datetime_current(int arg_count, Value* args) {
 
 Value kyl_date_add(int arg_count, Value* args) {
     if (arg_count != 3 || args[0].type != VALUE_STRING || args[1].type != VALUE_NUMBER || args[2].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -68,7 +70,9 @@ Value kyl_date_add(int arg_count, Value* args) {
     // Parse input date (YYYY-MM-DD format)
     struct tm tm_info = {0};
     if (sscanf(date_str, "%d-%d-%d", &tm_info.tm_year, &tm_info.tm_mon, &tm_info.tm_mday) != 3) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     tm_info.tm_year -= 1900; // tm_year is years since 1900
@@ -82,7 +86,9 @@ Value kyl_date_add(int arg_count, Value* args) {
     } else if (strcmp(unit, "years") == 0 || strcmp(unit, "year") == 0) {
         tm_info.tm_year += amount;
     } else {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -100,7 +106,9 @@ Value kyl_date_add(int arg_count, Value* args) {
 
 Value kyl_date_sub(int arg_count, Value* args) {
     if (arg_count != 3 || args[0].type != VALUE_STRING || args[1].type != VALUE_NUMBER || args[2].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -116,7 +124,9 @@ Value kyl_date_sub(int arg_count, Value* args) {
 
 Value kyl_date_diff(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -127,7 +137,9 @@ Value kyl_date_diff(int arg_count, Value* args) {
     struct tm tm1 = {0}, tm2 = {0};
     if (sscanf(date1_str, "%d-%d-%d", &tm1.tm_year, &tm1.tm_mon, &tm1.tm_mday) != 3 ||
         sscanf(date2_str, "%d-%d-%d", &tm2.tm_year, &tm2.tm_mon, &tm2.tm_mday) != 3) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -171,7 +183,9 @@ Value kyl_date_unix(int arg_count, Value* args) {
             // Date only format
             tm_info.tm_year -= 1900; tm_info.tm_mon -= 1;
         } else {
-            Value result = {VALUE_NIL};
+            Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
             return result;
         }
         
@@ -183,13 +197,17 @@ Value kyl_date_unix(int arg_count, Value* args) {
         return result;
     }
     
-    Value result = {VALUE_NIL};
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
     return result;
 }
 
 Value kyl_date_from_unix(int arg_count, Value* args) {
     if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -227,7 +245,9 @@ Value kyl_date_iso(int arg_count, Value* args) {
 
 Value kyl_date_format(int arg_count, Value* args) {
     if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     
@@ -244,7 +264,9 @@ Value kyl_date_format(int arg_count, Value* args) {
     } else if (sscanf(date_str, "%d-%d-%d", &tm_info.tm_year, &tm_info.tm_mon, &tm_info.tm_mday) == 3) {
         tm_info.tm_year -= 1900; tm_info.tm_mon -= 1;
     } else {
-        Value result = {VALUE_NIL};
+        Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_NIL;
         return result;
     }
     

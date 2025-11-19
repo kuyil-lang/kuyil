@@ -1,5 +1,5 @@
 // Crypto Interface Demo
-import("../interfaces/interface_crypto.kyl")
+import("interfaces/interface_crypto.kyl")
 
 print("=== Crypto Demo ===")
 // Test basic hashing

@@ -361,7 +361,7 @@ static Token backtick_string(Lexer* lexer) {
 }
 
 // Helper function to parse string parts and interpolations
-static Token parse_string_part(Lexer* lexer) {
+static Token __attribute__((unused)) parse_string_part(Lexer* lexer) {
     // Parse until we hit ${ or `
     while (peek(lexer) != '`' && !is_at_end(lexer)) {
         if (peek(lexer) == '$' && peek_next(lexer) == '{') {
@@ -376,7 +376,7 @@ static Token parse_string_part(Lexer* lexer) {
     return make_token(lexer, TOKEN_STRING_PART);
 }
 
-static Token parse_interpolation_start(Lexer* lexer) {
+static Token __attribute__((unused)) parse_interpolation_start(Lexer* lexer) {
     // Skip the '${'
     advance(lexer); // skip $
     advance(lexer); // skip {

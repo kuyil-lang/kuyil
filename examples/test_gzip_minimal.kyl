@@ -1,6 +1,6 @@
 // Minimal transcoder test
-import("../interfaces/interface_str.kyl")
-import("../interfaces/interface_transcoder.kyl")
+import("interfaces/interface_str.kyl")
+import("interfaces/interface_transcoder.kyl")
 
 print("Testing gzip compress/decompress...")
 let input = "Hello World"

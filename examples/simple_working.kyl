@@ -1,7 +1,7 @@
 // Kuyil Simple Examples - Working Versions
-import("../interfaces/interface_str.kyl")
-import("../interfaces/interface_math.kyl")
-import("../interfaces/interface_datetime.kyl")
+import("interfaces/interface_str.kyl")
+import("interfaces/interface_math.kyl")
+import("interfaces/interface_datetime.kyl")
 // Using only confirmed working functions
 
 print("=== Working Kuyil Examples ===")
