@@ -1,0 +1,121 @@
+// Test image load/save functionality
+import "image"
+
+print("=== Image Load/Save Test ===\n\n")
+
+// Test 1: Create and save an image
+print("Test 1: Create and Save Image\n")
+print("------------------------------\n")
+
+let img = image_create(200, 200, 3)
+print("Created 200x200 RGB image\n")
+
+// Draw a simple pattern
+let i = 0
+let r = 0
+let g = 0
+let b = 0
+while i < 200 {
+    let j = 0
+    while j < 200 {
+        // Create a gradient pattern
+        r = (i * 255) / 200
+        g = (j * 255) / 200
+        b = 128
+        image_set_pixel(img, i, j, r, g, b, 255)
+        j = j + 1
+    }
+    i = i + 1
+}
+print("Drew gradient pattern\n")
+
+// Save as PNG
+let save_result = image_save(img, "test_output.png", "png")
+if save_result {
+    print("✓ Saved to test_output.png\n")
+} else {
+    print("✗ Failed to save image\n")
+}
+
+image_destroy(img)
+print("\n")
+
+// Test 2: Load the saved image
+print("Test 2: Load Saved Image\n")
+print("------------------------\n")
+
+let loaded = image_load("test_output.png")
+if loaded != nil {
+    print("✓ Loaded test_output.png\n")
+    print("  Width: ", image_width(loaded), "\n")
+    print("  Height: ", image_height(loaded), "\n")
+    print("  Channels: ", image_channels(loaded), "\n")
+    
+    // Process the loaded image
+    print("\nApplying brightness adjustment...\n")
+    let brightened = image_brightness(loaded, 1.3)
+    if brightened != nil {
+        print("✓ Brightness applied\n")
+        
+        // Save the processed image
+        let save_bright = image_save(brightened, "test_bright.png", "png")
+        if save_bright {
+            print("✓ Saved to test_bright.png\n")
+        }
+        image_destroy(brightened)
+    }
+    
+    // Convert to grayscale
+    print("\nConverting to grayscale...\n")
+    let gray = image_grayscale(loaded)
+    if gray != nil {
+        print("✓ Converted to grayscale\n")
+        
+        // Save grayscale version
+        let save_gray = image_save(gray, "test_gray.png", "png")
+        if save_gray {
+            print("✓ Saved to test_gray.png\n")
+        }
+        image_destroy(gray)
+    }
+    
+    image_destroy(loaded)
+} else {
+    print("✗ Failed to load test_output.png\n")
+}
+
+print("\n")
+
+// Test 3: Test different formats
+print("Test 3: Save Multiple Formats\n")
+print("-----------------------------\n")
+
+let multi = image_create(100, 100, 3)
+// Fill with solid color
+i = 0
+while i < 100 {
+    let j = 0
+    while j < 100 {
+        image_set_pixel(multi, i, j, 200, 100, 50, 255)
+        j = j + 1
+    }
+    i = i + 1
+}
+
+// Save in different formats
+let png_ok = image_save(multi, "test_multi.png", "png")
+let jpg_ok = image_save(multi, "test_multi.jpg", "jpg")
+let bmp_ok = image_save(multi, "test_multi.bmp", "bmp")
+
+print("PNG: ", png_ok, "\n")
+print("JPG: ", jpg_ok, "\n")
+print("BMP: ", bmp_ok, "\n")
+
+image_destroy(multi)
+
+print("\n=== All Tests Complete ===\n")
+print("Generated files:\n")
+print("  - test_output.png (gradient)\n")
+print("  - test_bright.png (brightened gradient)\n")
+print("  - test_gray.png (grayscale gradient)\n")
+print("  - test_multi.png/jpg/bmp (solid color)\n")

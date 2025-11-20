@@ -72,8 +72,10 @@ typedef enum {
     TOKEN_SEMICOLON,
     TOKEN_COMMA,
     TOKEN_DOT,
+    TOKEN_DOT_DOT,
     TOKEN_COLON,
     TOKEN_ARROW,
+    TOKEN_IN,
 
     // Special
     TOKEN_AT,

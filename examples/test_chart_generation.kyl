@@ -1,0 +1,413 @@
+// Chart Generation Examples
+// Demonstrates: Line, Bar, Pie, Scatter, Histogram charts
+
+import("interfaces/interface_chart.kyl")
+
+print("=== Chart Generation Library Demo ===\n")
+
+// ============================================
+// Demo 1: Line Chart - Time Series Data
+// ============================================
+
+print("Demo 1: Line Chart (Time Series)\n")
+print("---------------------------------")
+
+print("Creating line chart for temperature data...")
+print("")
+print("Code pattern:")
+print("  let chart = chart_create_line(800, 600)")
+print("  chart_set_title(chart, \"Temperature Over Time\")")
+print("  chart_set_xlabel(chart, \"Time (hours)\")")
+print("  chart_set_ylabel(chart, \"Temperature (°C)\")")
+print("  chart_set_grid(chart, true)")
+print("")
+print("  // Add data series")
+print("  let hours = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]")
+print("  let temps = [15, 14, 13, 14, 16, 19, 22, 24, 23, 21, 19, 17, 16]")
+print("  chart_add_series(chart, \"Temperature\", hours, temps, \"#FF6B6B\")")
+print("")
+print("  // Style the line")
+print("  chart_set_line_style(chart, \"Temperature\", \"solid\", 2.5)")
+print("  chart_set_marker_style(chart, \"Temperature\", \"circle\", 4.0)")
+print("")
+print("  // Save chart")
+print("  chart_render_png(chart, \"temperature_chart.png\")")
+print("  chart_destroy(chart)")
+print("")
+
+print("Line styles: solid, dashed, dotted, dash-dot")
+print("Marker styles: circle, square, triangle, diamond, none")
+print("✓ Line chart example shown\n")
+
+// ============================================
+// Demo 2: Bar Chart - Sales Data
+// ============================================
+
+print("Demo 2: Bar Chart (Sales by Category)\n")
+print("--------------------------------------")
+
+print("Creating bar chart for monthly sales...")
+print("")
+print("Code pattern:")
+print("  let chart = chart_create_bar(800, 600)")
+print("  chart_set_title(chart, \"Monthly Sales by Product\")")
+print("  chart_set_xlabel(chart, \"Month\")")
+print("  chart_set_ylabel(chart, \"Sales ($)\")")
+print("")
+print("  let months = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\"]")
+print("  let productA = [1200, 1500, 1800, 1600, 2000, 2200]")
+print("  let productB = [800, 900, 950, 1100, 1300, 1400]")
+print("")
+print("  chart_add_bar_series(chart, \"Product A\", months, productA, \"#4ECDC4\")")
+print("  chart_add_bar_series(chart, \"Product B\", months, productB, \"#FF6B6B\")")
+print("")
+print("  chart_set_bar_width(chart, 0.4)")
+print("  chart_set_bar_spacing(chart, 0.2)")
+print("  chart_set_legend(chart, true, \"top-right\")")
+print("")
+print("  chart_render_png(chart, \"sales_chart.png\")")
+print("")
+
+print("Bar chart types: grouped, stacked, horizontal")
+print("✓ Bar chart example shown\n")
+
+// ============================================
+// Demo 3: Pie Chart - Budget Distribution
+// ============================================
+
+print("Demo 3: Pie Chart (Budget Distribution)\n")
+print("----------------------------------------")
+
+print("Creating pie chart for budget allocation...")
+print("")
+print("Code pattern:")
+print("  let chart = chart_create_pie(600, 600)")
+print("  chart_set_title(chart, \"Budget Allocation 2025\")")
+print("")
+print("  chart_add_pie_slice(chart, \"Engineering\", 45.0, \"#4ECDC4\")")
+print("  chart_add_pie_slice(chart, \"Marketing\", 25.0, \"#FF6B6B\")")
+print("  chart_add_pie_slice(chart, \"Sales\", 20.0, \"#95E1D3\")")
+print("  chart_add_pie_slice(chart, \"Operations\", 10.0, \"#F38181\")")
+print("")
+print("  chart_set_legend(chart, true, \"right\")")
+print("  chart_render_png(chart, \"budget_pie.png\")")
+print("")
+
+print("Budget breakdown:")
+print("  Engineering: 45% ($450K)")
+print("  Marketing:   25% ($250K)")
+print("  Sales:       20% ($200K)")
+print("  Operations:  10% ($100K)")
+print("✓ Pie chart example shown\n")
+
+// ============================================
+// Demo 4: Scatter Plot - Correlation Analysis
+// ============================================
+
+print("Demo 4: Scatter Plot (Correlation)\n")
+print("-----------------------------------")
+
+print("Creating scatter plot for height vs weight...")
+print("")
+print("Code pattern:")
+print("  let chart = chart_create_scatter(800, 600)")
+print("  chart_set_title(chart, \"Height vs Weight Correlation\")")
+print("  chart_set_xlabel(chart, \"Height (cm)\")")
+print("  chart_set_ylabel(chart, \"Weight (kg)\")")
+print("  chart_set_grid(chart, true)")
+print("")
+print("  let heights = [160, 165, 170, 175, 180, 185, 190]")
+print("  let weights = [55, 60, 65, 70, 75, 80, 85]")
+print("")
+print("  chart_add_scatter_series(chart, \"Adults\", heights, weights, \"#4ECDC4\", 5.0)")
+print("")
+print("  // Add trend line annotation")
+print("  chart_add_line_annotation(chart, 160.0, 55.0, 190.0, 85.0, \"#FF6B6B\")")
+print("  chart_add_text(chart, 175.0, 90.0, \"Linear trend\", 12.0)")
+print("")
+print("  chart_render_png(chart, \"scatter_plot.png\")")
+print("")
+
+print("Scatter plot uses:")
+print("  - Correlation analysis")
+print("  - Outlier detection")
+print("  - Clustering visualization")
+print("  - Trend identification")
+print("✓ Scatter plot example shown\n")
+
+// ============================================
+// Demo 5: Histogram - Distribution Analysis
+// ============================================
+
+print("Demo 5: Histogram (Data Distribution)\n")
+print("--------------------------------------")
+
+print("Creating histogram for test scores...")
+print("")
+print("Code pattern:")
+print("  let chart = chart_create_histogram(800, 600, 10)")
+print("  chart_set_title(chart, \"Test Score Distribution\")")
+print("  chart_set_xlabel(chart, \"Score Range\")")
+print("  chart_set_ylabel(chart, \"Frequency\")")
+print("  chart_set_grid(chart, true)")
+print("")
+print("  // Histogram automatically bins data into 10 buckets")
+print("  let scores = [")
+print("      65, 70, 75, 80, 82, 85, 88, 90, 92, 95,")
+print("      70, 75, 78, 80, 85, 87, 90, 93, 95, 98")
+print("  ]")
+print("")
+print("  chart_render_png(chart, \"histogram.png\")")
+print("")
+
+print("Distribution analysis:")
+print("  - Mean score: ~83")
+print("  - Most common: 80-90 range")
+print("  - Few outliers below 70")
+print("✓ Histogram example shown\n")
+
+// ============================================
+// Demo 6: Multi-Series Line Chart
+// ============================================
+
+print("Demo 6: Multi-Series Line Chart\n")
+print("--------------------------------")
+
+print("Creating chart with multiple data series...")
+print("")
+print("Code pattern:")
+print("  let chart = chart_create_line(1000, 600)")
+print("  chart_set_title(chart, \"Server Metrics\")")
+print("  chart_set_xlabel(chart, \"Time (minutes)\")")
+print("  chart_set_ylabel(chart, \"Usage (%)\")")
+print("  chart_set_grid(chart, true)")
+print("")
+print("  let time = [0, 5, 10, 15, 20, 25, 30]")
+print("  let cpu = [45, 52, 48, 65, 70, 68, 55]")
+print("  let memory = [60, 62, 65, 68, 70, 72, 74]")
+print("  let disk = [30, 32, 31, 35, 38, 40, 42]")
+print("")
+print("  chart_add_series(chart, \"CPU\", time, cpu, \"#FF6B6B\")")
+print("  chart_add_series(chart, \"Memory\", time, memory, \"#4ECDC4\")")
+print("  chart_add_series(chart, \"Disk I/O\", time, disk, \"#95E1D3\")")
+print("")
+print("  chart_set_legend(chart, true, \"top-left\")")
+print("  chart_set_yaxis_range(chart, 0.0, 100.0)")
+print("")
+print("  chart_render_png(chart, \"metrics.png\")")
+print("")
+
+print("Legend positions: top-left, top-right, bottom-left, bottom-right")
+print("✓ Multi-series chart example shown\n")
+
+// ============================================
+// Demo 7: Chart Annotations
+// ============================================
+
+print("Demo 7: Chart Annotations\n")
+print("-------------------------")
+
+print("Adding annotations to highlight key points...")
+print("")
+print("Code pattern:")
+print("  // Add threshold line")
+print("  chart_add_line_annotation(chart, 0.0, 80.0, 30.0, 80.0, \"#FF0000\")")
+print("")
+print("  // Add text label")
+print("  chart_add_text(chart, 15.0, 82.0, \"Critical threshold\", 10.0)")
+print("")
+print("  // Highlight region")
+print("  chart_add_rectangle(chart, 10.0, 0.0, 10.0, 100.0, \"#FFCCCC\")")
+print("")
+
+print("Annotation types:")
+print("  - Lines: Thresholds, trend lines")
+print("  - Text: Labels, explanations")
+print("  - Rectangles: Highlight regions")
+print("  - Arrows: Point to features (future)")
+print("✓ Annotations example shown\n")
+
+// ============================================
+// Demo 8: Axis Scaling
+// ============================================
+
+print("Demo 8: Logarithmic and Custom Scales\n")
+print("--------------------------------------")
+
+print("Using logarithmic scale for exponential data...")
+print("")
+print("Code pattern:")
+print("  let chart = chart_create_line(800, 600)")
+print("  chart_set_title(chart, \"Exponential Growth\")")
+print("")
+print("  // Set Y-axis to logarithmic scale")
+print("  chart_set_yaxis_scale(chart, \"log\")")
+print("")
+print("  let years = [0, 1, 2, 3, 4, 5]")
+print("  let users = [100, 1000, 10000, 100000, 1000000, 10000000]")
+print("")
+print("  chart_add_series(chart, \"Users\", years, users, \"#4ECDC4\")")
+print("")
+
+print("Scale types:")
+print("  - linear: Standard scale (default)")
+print("  - log: Logarithmic (base 10)")
+print("  - log2: Binary logarithmic")
+print("  - symlog: Symmetric log (handles negatives)")
+print("✓ Scale options shown\n")
+
+// ============================================
+// Demo 9: Exporting Charts
+// ============================================
+
+print("Demo 9: Multiple Export Formats\n")
+print("--------------------------------")
+
+print("Exporting charts in different formats...")
+print("")
+print("Code pattern:")
+print("  // PNG: Web, presentations (raster)")
+print("  chart_render_png(chart, \"output.png\")")
+print("")
+print("  // SVG: Scalable, web (vector)")
+print("  chart_render_svg(chart, \"output.svg\")")
+print("")
+print("  // PDF: Print, documents (vector)")
+print("  chart_render_pdf(chart, \"output.pdf\")")
+print("")
+
+print("Format comparison:")
+print("  PNG:")
+print("    + Fast rendering")
+print("    + Wide compatibility")
+print("    - Fixed resolution")
+print("    - Larger file sizes")
+print("")
+print("  SVG:")
+print("    + Scalable to any size")
+print("    + Smaller file sizes")
+print("    + Editable in vector tools")
+print("    - Slower rendering for complex charts")
+print("")
+print("  PDF:")
+print("    + Best for print")
+print("    + Professional documents")
+print("    + Embedded fonts")
+print("    - Larger than SVG")
+print("")
+
+print("✓ Export formats explained\n")
+
+// ============================================
+// Demo 10: Real-World Example - Dashboard
+// ============================================
+
+print("Demo 10: Building a Dashboard\n")
+print("------------------------------")
+
+print("Complete dashboard with multiple chart types...")
+print("")
+print("Dashboard layout:")
+print("  1. Top row: Line chart (trends over time)")
+print("  2. Middle left: Bar chart (category comparison)")
+print("  3. Middle right: Pie chart (distribution)")
+print("  4. Bottom: Scatter plot (correlation)")
+print("")
+print("Code pattern:")
+print("  // Create 4 separate charts")
+print("  let chart1 = chart_create_line(800, 400)")
+print("  let chart2 = chart_create_bar(400, 400)")
+print("  let chart3 = chart_create_pie(400, 400)")
+print("  let chart4 = chart_create_scatter(800, 400)")
+print("")
+print("  // Configure and populate each chart")
+print("  // ... (add data and styling)")
+print("")
+print("  // Export all charts")
+print("  chart_render_png(chart1, \"dash_trends.png\")")
+print("  chart_render_png(chart2, \"dash_bars.png\")")
+print("  chart_render_png(chart3, \"dash_pie.png\")")
+print("  chart_render_png(chart4, \"dash_scatter.png\")")
+print("")
+print("  // Cleanup")
+print("  chart_destroy(chart1)")
+print("  chart_destroy(chart2)")
+print("  chart_destroy(chart3)")
+print("  chart_destroy(chart4)")
+print("")
+
+print("✓ Dashboard example shown\n")
+
+// ============================================
+// Best Practices
+// ============================================
+
+print("=== Best Practices for Chart Generation ===\n")
+
+print("1. Chart Selection:")
+print("   - Line: Time series, trends, continuous data")
+print("   - Bar: Comparisons, categories, discrete data")
+print("   - Pie: Proportions, percentages (limit to 5-7 slices)")
+print("   - Scatter: Correlations, distributions, relationships")
+print("   - Histogram: Frequency distributions, data spread\n")
+
+print("2. Color Guidelines:")
+print("   - Use color-blind friendly palettes")
+print("   - Limit to 3-5 colors per chart")
+print("   - Use contrast for readability")
+print("   - Consistent colors across dashboard")
+print("   - Hex colors: #RRGGBB format\n")
+
+print("3. Readability:")
+print("   - Clear, descriptive titles")
+print("   - Label axes with units")
+print("   - Add grid lines for precision")
+print("   - Use legends for multi-series")
+print("   - Font size: title 14-16, labels 10-12\n")
+
+print("4. Data Density:")
+print("   - Don't overcrowd charts (max 5-7 series)")
+print("   - Aggregate data when needed")
+print("   - Use drill-down for details")
+print("   - Split complex charts into multiple views\n")
+
+print("5. Chart Sizing:")
+print("   - Web: 800x600 or 1000x600 (standard)")
+print("   - Mobile: 400x300 (responsive)")
+print("   - Print: 1200x900 or higher (300 DPI)")
+print("   - Thumbnail: 200x150 (preview)\n")
+
+print("6. Performance:")
+print("   - Limit data points (downsample if needed)")
+print("   - Cache generated charts")
+print("   - Use appropriate format (PNG for web, PDF for print)")
+print("   - Generate charts asynchronously for dashboards\n")
+
+print("7. Accessibility:")
+print("   - Add alt text descriptions")
+print("   - Use patterns in addition to colors")
+print("   - Ensure sufficient contrast")
+print("   - Provide data table alternative\n")
+
+print("8. Common Mistakes to Avoid:")
+print("   - Don't use 3D effects (distorts data)")
+print("   - Don't truncate Y-axis (misleading)")
+print("   - Don't use too many pie slices (>7)")
+print("   - Don't mix incompatible scales")
+print("   - Don't use distracting animations\n")
+
+print("9. Chart Styling Tips:")
+print("   - Minimize chart junk (borders, backgrounds)")
+print("   - Use whitespace effectively")
+print("   - Align titles and labels")
+print("   - Consistent font family")
+print("   - Professional color palette\n")
+
+print("10. Integration Patterns:")
+print("    - Generate charts from database queries")
+print("    - Update charts with real-time data")
+print("    - Embed charts in reports (PDF)")
+print("    - Create interactive dashboards (SVG)")
+print("    - Export for presentations (PNG)\n")
+
+print("✓ Chart generation demo complete\n")

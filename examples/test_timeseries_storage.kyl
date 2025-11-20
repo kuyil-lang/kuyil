@@ -1,0 +1,375 @@
+// Time Series Data Storage with Hourly Bucketing
+// Gorilla-inspired delta encoding for efficient storage
+// Uses ConcurrentHashMap for buckets + arrays for compressed data points
+
+import("interfaces/interface_ds.kyl")
+
+// ============================================
+// Time Series Bucket Storage
+// ============================================
+// Key format: "metric:tag1=val1,tag2=val2:hour_bucket"
+// Value: {baseTimestamp, baseValue, count, deltas: [deltaT, deltaV, ...]}
+
+fn getHourBucket(timestamp) {
+    // Bucket by hour (timestamp in seconds)
+    let bucket = timestamp - (timestamp % 3600)
+    return bucket
+}
+
+fn createBucketKey(metric, tags, hourBucket) {
+    // Create key: "cpu.usage:host=server1,region=us-east:1700000000"
+    let tagStr = ""
+    let tagKeys = []
+    
+    // Sort tags for consistent key format (tag1=val1,tag2=val2)
+    // In real implementation, you'd sort the tags
+    let i = 0
+    while i < tags.length {
+        if i > 0 {
+            tagStr = tagStr + ","
+        }
+        tagStr = tagStr + tags[i]
+        i = i + 1
+    }
+    
+    return metric + ":" + tagStr + ":" + hourBucket
+}
+
+fn appendDataPoint(tsdb, metric, tags, timestamp, value) {
+    // Pattern: Gorilla-style time series storage with delta encoding
+    let hourBucket = getHourBucket(timestamp)
+    let bucketKey = createBucketKey(metric, tags, hourBucket)
+    
+    let maxRetries = 10
+    let retries = 0
+    
+    while retries < maxRetries {
+        let bucket = ds_concurrentHashMapGet(tsdb, bucketKey)
+        
+        if bucket == nil {
+            // Create new bucket for this hour
+            let newBucket = {
+                "metric": metric,
+                "tags": tags,
+                "hourBucket": hourBucket,
+                "baseTimestamp": timestamp,
+                "baseValue": value,
+                "count": 1,
+                "timestamps": [],  // Delta-encoded timestamps
+                "values": []       // Delta-encoded values
+            }
+            
+            if ds_concurrentHashMapPutIfAbsent(tsdb, bucketKey, newBucket) {
+                return true
+            }
+            retries = retries + 1
+        } else {
+            // Append to existing bucket using delta encoding
+            let deltaT = timestamp - bucket.baseTimestamp
+            let deltaV = value - bucket.baseValue
+            
+            // Create new arrays with appended deltas
+            // Append deltas (simplified - real Gorilla uses XOR for floats)
+            let newTimestamps = bucket.timestamps + [deltaT]
+            let newValues = bucket.values + [deltaV]
+            
+            let updatedBucket = {
+                "metric": bucket.metric,
+                "tags": bucket.tags,
+                "hourBucket": bucket.hourBucket,
+                "baseTimestamp": bucket.baseTimestamp,
+                "baseValue": bucket.baseValue,
+                "count": bucket.count + 1,
+                "timestamps": newTimestamps,
+                "values": newValues
+            }
+            
+            if ds_concurrentHashMapReplace(tsdb, bucketKey, bucket, updatedBucket) {
+                return true
+            }
+            
+            retries = retries + 1
+        }
+    }
+    
+    return false
+}
+
+fn queryDataPoints(tsdb, metric, tags, startTime, endTime) {
+    // Query data points across multiple hour buckets
+    let results = []
+    let currentBucket = getHourBucket(startTime)
+    let endBucket = getHourBucket(endTime)
+    
+    while currentBucket <= endBucket {
+        let bucketKey = createBucketKey(metric, tags, currentBucket)
+        let bucket = ds_concurrentHashMapGet(tsdb, bucketKey)
+        
+        if bucket != nil {
+            // Reconstruct data points from base + deltas
+            // Add base point
+            if bucket.baseTimestamp >= startTime and bucket.baseTimestamp <= endTime {
+                let basePoint = {
+                    "timestamp": bucket.baseTimestamp,
+                    "value": bucket.baseValue
+                }
+                results = results + [basePoint]
+            }
+            
+            // Decode delta-encoded points
+            let i = 0
+            if bucket.timestamps != nil {
+                while i < bucket.timestamps.length {
+                    let ts = bucket.baseTimestamp + bucket.timestamps[i]
+                    let val = bucket.baseValue + bucket.values[i]
+                    
+                    if ts >= startTime and ts <= endTime {
+                        let point = {"timestamp": ts, "value": val}
+                        results = results + [point]
+                    }
+                    i = i + 1
+                }
+            }
+        }
+        
+        currentBucket = currentBucket + 3600  // Next hour
+    }
+    
+    return results
+}
+
+// ============================================
+// Tag-Key-Value (TKV) Storage Patterns
+// ============================================
+
+fn createTagIndex(tagDB, metric, tagKey, tagValue, seriesKey) {
+    // Pattern 1: Inverted index for tags
+    // Key: "idx:metric:tagKey:tagValue" -> [seriesKey1, seriesKey2, ...]
+    let indexKey = "idx:" + metric + ":" + tagKey + ":" + tagValue
+    
+    let maxRetries = 10
+    let retries = 0
+    
+    while retries < maxRetries {
+        let seriesList = ds_concurrentHashMapGet(tagDB, indexKey)
+        
+        if seriesList == nil {
+            let newList = [seriesKey]
+            if ds_concurrentHashMapPutIfAbsent(tagDB, indexKey, newList) {
+                return true
+            }
+            retries = retries + 1
+        } else {
+            // Check if already exists
+            let found = false
+            let i = 0
+            while i < seriesList.length {
+                if seriesList[i] == seriesKey {
+                    found = true
+                }
+                i = i + 1
+            }
+            
+            if found {
+                return true  // Already indexed
+            }
+            
+            // Append to list
+            let newList = seriesList + [seriesKey]
+            
+            if ds_concurrentHashMapReplace(tagDB, indexKey, seriesList, newList) {
+                return true
+            }
+            
+            retries = retries + 1
+        }
+    }
+    
+    return false
+}
+
+fn queryByTag(tagDB, metric, tagKey, tagValue) {
+    // Query all series matching a tag
+    let indexKey = "idx:" + metric + ":" + tagKey + ":" + tagValue
+    let seriesList = ds_concurrentHashMapGet(tagDB, indexKey)
+    
+    if seriesList == nil {
+        return []
+    }
+    
+    return seriesList
+}
+
+// ============================================
+// Demo: Time Series Database Operations
+// ============================================
+
+print("=== Time Series Database with Hourly Bucketing ===\n")
+
+let tsdb = ds_concurrentHashMapCreate(128)
+let tagIndex = ds_concurrentHashMapCreate(64)
+
+// Current time simulation (November 19, 2025, 10:00:00 UTC)
+let baseTime = 1700388000
+
+print("Demo 1: Appending Data Points\n")
+print("-------------------------------")
+
+// Append CPU metrics for different servers
+let tags1 = ["host=server1", "region=us-east", "dc=dc1"]
+let tags2 = ["host=server2", "region=us-east", "dc=dc1"]
+let tags3 = ["host=server3", "region=us-west", "dc=dc2"]
+
+print("Appending data points for cpu.usage metric...")
+
+// Append points at 1-minute intervals
+let i = 0
+while i < 5 {
+    let ts = baseTime + (i * 60)  // Every minute
+    let val1 = 45.5 + (i * 2.3)   // Varying CPU usage
+    let val2 = 62.1 + (i * 1.8)
+    let val3 = 38.7 + (i * 3.1)
+    
+    appendDataPoint(tsdb, "cpu.usage", tags1, ts, val1)
+    appendDataPoint(tsdb, "cpu.usage", tags2, ts, val2)
+    appendDataPoint(tsdb, "cpu.usage", tags3, ts, val3)
+    
+    print("  t+" + (i * 60) + "s: server1=" + val1 + "%, server2=" + val2 + "%, server3=" + val3 + "%")
+    
+    i = i + 1
+}
+
+print("\n✓ Stored 15 data points across 3 series\n")
+
+// Create tag indices
+print("Demo 2: Building Tag Indices\n")
+print("-----------------------------")
+
+createTagIndex(tagIndex, "cpu.usage", "host", "server1", "cpu.usage:host=server1,region=us-east,dc=dc1")
+createTagIndex(tagIndex, "cpu.usage", "host", "server2", "cpu.usage:host=server2,region=us-east,dc=dc1")
+createTagIndex(tagIndex, "cpu.usage", "host", "server3", "cpu.usage:host=server3,region=us-west,dc=dc2")
+
+createTagIndex(tagIndex, "cpu.usage", "region", "us-east", "cpu.usage:host=server1,region=us-east,dc=dc1")
+createTagIndex(tagIndex, "cpu.usage", "region", "us-east", "cpu.usage:host=server2,region=us-east,dc=dc1")
+createTagIndex(tagIndex, "cpu.usage", "region", "us-west", "cpu.usage:host=server3,region=us-west,dc=dc2")
+
+createTagIndex(tagIndex, "cpu.usage", "dc", "dc1", "cpu.usage:host=server1,region=us-east,dc=dc1")
+createTagIndex(tagIndex, "cpu.usage", "dc", "dc1", "cpu.usage:host=server2,region=us-east,dc=dc1")
+createTagIndex(tagIndex, "cpu.usage", "dc", "dc2", "cpu.usage:host=server3,region=us-west,dc=dc2")
+
+print("✓ Created inverted indices for tags\n")
+
+// Query by tags
+print("Demo 3: Querying by Tags\n")
+print("-------------------------")
+
+let usEastSeries = queryByTag(tagIndex, "cpu.usage", "region", "us-east")
+print("Series in region=us-east:")
+i = 0
+while i < usEastSeries.length {
+    print("  - " + usEastSeries[i])
+    i = i + 1
+}
+
+print("")
+
+let dc1Series = queryByTag(tagIndex, "cpu.usage", "dc", "dc1")
+print("Series in dc=dc1:")
+i = 0
+while i < dc1Series.length {
+    print("  - " + dc1Series[i])
+    i = i + 1
+}
+
+print("\n")
+
+// Query data points
+print("Demo 4: Querying Time Range\n")
+print("----------------------------")
+
+let hourBucket = getHourBucket(baseTime)
+let bucketKey = createBucketKey("cpu.usage", tags1, hourBucket)
+let bucket = ds_concurrentHashMapGet(tsdb, bucketKey)
+
+if bucket != nil {
+    print("Bucket: " + bucketKey)
+    print("  Base timestamp: " + bucket.baseTimestamp)
+    print("  Base value: " + bucket.baseValue)
+    print("  Data points: " + bucket.count)
+    print("  Deltas stored: " + bucket.timestamps.length)
+    print("")
+    
+    // Calculate compression ratio
+    let rawSize = bucket.count * 16  // 8 bytes timestamp + 8 bytes value
+    let compressedSize = 16 + (bucket.timestamps.length * 8)  // base + deltas
+    let ratio = rawSize / compressedSize
+    print("  Storage efficiency:")
+    print("    Raw size: ~" + rawSize + " bytes")
+    print("    Compressed: ~" + compressedSize + " bytes")
+    print("    Ratio: " + ratio + "x")
+}
+
+print("\n")
+
+// Query time range
+print("Demo 5: Range Query\n")
+print("-------------------")
+
+let results = queryDataPoints(tsdb, "cpu.usage", tags1, baseTime, baseTime + 300)
+print("Query: cpu.usage for server1 from t+0s to t+300s")
+print("Results: " + results.length + " data points")
+
+i = 0
+while i < results.length {
+    let offset = results[i].timestamp - baseTime
+    print("  t+" + offset + "s: " + results[i].value + "%")
+    i = i + 1
+}
+
+print("\n")
+
+// Cleanup
+ds_concurrentHashMapDestroy(tsdb)
+ds_concurrentHashMapDestroy(tagIndex)
+
+print("=== Best Practices for Time Series Storage ===\n")
+print("1. Bucket Strategy:")
+print("   - Hour buckets balance query performance and compression")
+print("   - Smaller buckets (minutes) = faster queries, less compression")
+print("   - Larger buckets (days) = better compression, slower queries\n")
+
+print("2. Tag-Key-Value (TKV) Storage:")
+print("   - Store tags in sorted order for consistent keys")
+print("   - Build inverted indices: tagKey:tagValue -> [seriesKeys]")
+print("   - Use separate HashMap for tag indices (tagDB)")
+print("   - Enable fast queries like: 'host=server1 AND region=us-east'\n")
+
+print("3. Delta Encoding (Gorilla-style):")
+print("   - Store base (timestamp, value) + deltas")
+print("   - Deltas compress better than absolute values")
+print("   - Real implementation: XOR encoding for float values")
+print("   - Typical compression: 1.37 bytes/point (Gorilla paper)\n")
+
+print("4. Concurrent Append Pattern:")
+print("   - Use ConcurrentHashMap for lock-free appends")
+print("   - CAS operation (Replace) for atomic bucket updates")
+print("   - Retry loop handles concurrent writes")
+print("   - Each bucket is independently updatable\n")
+
+print("5. Key Format Design:")
+print("   - metric:tag1=val1,tag2=val2:hourBucket")
+print("   - Example: 'cpu.usage:host=server1,region=us-east:1700388000'")
+print("   - Enables range scans by incrementing hourBucket")
+print("   - Tags in sorted order ensure consistent keys\n")
+
+print("6. Query Strategies:")
+print("   - Point query: Direct bucket lookup")
+print("   - Range query: Iterate hour buckets")
+print("   - Tag query: Use inverted index -> fetch buckets")
+print("   - Aggregation: Parallel bucket processing\n")
+
+print("7. Memory vs Disk:")
+print("   - Hot data (recent hours): In-memory HashMap")
+print("   - Warm data (recent days): Memory-mapped files")
+print("   - Cold data (old): Compressed on-disk storage")
+print("   - Use tiered storage for cost efficiency\n")

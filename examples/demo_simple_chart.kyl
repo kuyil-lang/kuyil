@@ -1,0 +1,117 @@
+import "image"
+
+print("=== Simple Chart Demo using Canvas API ===\n\n")
+
+// Chart data
+let data = [10, 25, 15, 35, 30, 45, 40, 50]
+let labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"]
+
+// Chart dimensions
+let width = 800
+let height = 600
+let padding = 80
+let chart_width = width - (padding * 2)
+let chart_height = height - (padding * 2)
+
+// Create canvas
+let canvas = image_create(width, height, 3)
+canvas_clearRect(canvas, 0, 0, width, height)
+
+// Background
+canvas_fillRect(canvas, 0, 0, width, height, 245, 245, 250, 255)
+
+// Chart area background
+canvas_fillRect(canvas, padding, padding, chart_width, chart_height, 255, 255, 255, 255)
+
+// Title
+let title = "Monthly Sales Data"
+let title_width = canvas_measureText(title, 2)
+let title_x = (width - title_width) / 2
+canvas_fillTextScaled(canvas, title, title_x, 20, 0, 0, 0, 255, 2)
+
+// Find max value for scaling
+let max_val = 0.0
+let i = 0
+while i < 8 {
+    if data[i] > max_val {
+        max_val = data[i]
+    }
+    i = i + 1
+}
+
+// Add some headroom
+max_val = max_val * 1.1
+
+// Draw Y-axis grid lines and labels
+print("Drawing grid and axes...\n")
+let num_lines = 5
+let j = 0
+while j <= num_lines {
+    let y = padding + chart_height - (j * chart_height / num_lines)
+    
+    // Grid line
+    canvas_drawLine(canvas, padding, y, padding + chart_width, y, 220, 220, 220, 255)
+    
+    // Y-axis label
+    let value = (max_val * j) / num_lines
+    let value_int = value
+    let label = "" + value_int
+    canvas_fillText(canvas, label, padding - 40, y - 4, 80, 80, 80, 255)
+    
+    j = j + 1
+}
+
+// Draw bars
+print("Drawing bars...\n")
+let bar_width = chart_width / 8 * 0.7
+let bar_spacing = chart_width / 8
+i = 0
+
+while i < 8 {
+    let bar_height = (data[i] / max_val) * chart_height
+    let x = padding + (i * bar_spacing) + (bar_spacing - bar_width) / 2
+    let y = padding + chart_height - bar_height
+    
+    // Color gradient based on value
+    let intensity = (data[i] / max_val) * 255
+    let r = 50 + intensity * 0.5
+    let g = 100 + intensity * 0.3
+    let b = 200
+    
+    // Draw bar
+    canvas_fillRect(canvas, x, y, bar_width, bar_height, r, g, b, 255)
+    
+    // Draw bar outline
+    canvas_strokeRect(canvas, x, y, bar_width, bar_height, 40, 80, 160, 255)
+    
+    // Value label on top of bar
+    let val_label = "" + data[i]
+    let val_width = canvas_measureText(val_label, 1)
+    canvas_fillText(canvas, val_label, x + (bar_width - val_width) / 2, y - 12, 60, 60, 60, 255)
+    
+    i = i + 1
+}
+
+// Draw X-axis labels
+print("Adding labels...\n")
+i = 0
+while i < 8 {
+    let x = padding + (i * bar_spacing) + bar_spacing / 2
+    let label_width = canvas_measureText(labels[i], 1)
+    canvas_fillText(canvas, labels[i], x - label_width / 2, padding + chart_height + 15, 80, 80, 80, 255)
+    i = i + 1
+}
+
+// Axes
+canvas_drawLine(canvas, padding, padding, padding, padding + chart_height, 100, 100, 100, 255)
+canvas_drawLine(canvas, padding, padding + chart_height, padding + chart_width, padding + chart_height, 100, 100, 100, 255)
+
+// Axis labels
+canvas_fillTextScaled(canvas, "Month", width / 2 - 40, height - 25, 60, 60, 60, 255, 2)
+canvas_fillTextScaled(canvas, "Sales", 15, height / 2, 60, 60, 60, 255, 2)
+
+// Save
+image_save(canvas, "simple_chart.png", "png")
+image_destroy(canvas)
+
+print("✓ Chart saved to simple_chart.png\n")

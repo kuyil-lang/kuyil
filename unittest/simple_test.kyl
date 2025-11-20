@@ -1,5 +1,5 @@
-import("../interfaces/interface_str.kyl")
-import("../interfaces/interface_math.kyl")
+import("interfaces/interface_str.kyl")
+import("interfaces/interface_math.kyl")
 
 function test_basic_arithmetic() {
     print("Testing basic arithmetic...")
@@ -54,13 +54,13 @@ function test_string_operations() {
         print("FAIL: String concatenation")
     }
     
-    if (upper("hello") == "HELLO") {
+    if (str_upper("hello") == "HELLO") {
         print("PASS: String uppercase")
     } else {
         print("FAIL: String uppercase")
     }
     
-    if (lower("HELLO") == "hello") {
+    if (str_lower("HELLO") == "hello") {
         print("PASS: String lowercase")
     } else {
         print("FAIL: String lowercase")
@@ -70,19 +70,19 @@ function test_string_operations() {
 function test_math_functions() {
     print("Testing math functions...")
     
-    if (abs(-5) == 5) {
+    if (math_abs(-5) == 5) {
         print("PASS: Absolute value")
     } else {
         print("FAIL: Absolute value")
     }
     
-    if (sqrt(16) == 4) {
+    if (math_sqrt(16) == 4) {
         print("PASS: Square root")
     } else {
         print("FAIL: Square root")
     }
     
-    if (pow(2, 3) == 8) {
+    if (math_pow(2, 3) == 8) {
         print("PASS: Power function")
     } else {
         print("FAIL: Power function")

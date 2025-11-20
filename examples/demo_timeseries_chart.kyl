@@ -1,0 +1,220 @@
+import "image"
+
+print("=== Time Series Chart Demo ===\n\n")
+
+// Simulated time series data (e.g., stock prices, temperature, etc.)
+let dates = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed", 
+             "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+let values = [45.2, 46.8, 45.5, 47.3, 48.9, 49.2, 50.1, 48.7, 47.9, 49.5,
+              51.2, 52.8, 53.1, 52.5, 54.3, 55.7, 54.9, 56.2, 57.8, 58.5]
+
+// Chart dimensions
+let width = 1000.0
+let height = 600.0
+let padding_left = 70.0
+let padding_right = 30.0
+let padding_top = 80.0
+let padding_bottom = 60.0
+let chart_width = width - padding_left - padding_right
+let chart_height = height - padding_top - padding_bottom
+
+// Create canvas with RGBA (4 channels) for better transparency support
+let canvas = image_create(width, height, 4)
+
+// White background
+print("Creating background...\n")
+canvas_fillRect(canvas, 0, 0, width, height, 255, 255, 255, 255)
+
+// Chart area background (light gray)
+canvas_fillRect(canvas, padding_left, padding_top, chart_width, chart_height, 250, 250, 250, 255)
+
+// Title
+let title = "Daily Time Series - 20 Day Period"
+let title_width = canvas_measureText(title, 2)
+let title_x = (width - title_width) / 2
+canvas_fillTextScaled(canvas, title, title_x, 25, 20, 40, 80, 255, 2)
+
+// Find min and max for scaling
+print("Calculating data range...\n")
+let data_min = values[0]
+let data_max = values[0]
+let i = 1
+while i < 20 {
+    if values[i] < data_min {
+        data_min = values[i]
+    }
+    if values[i] > data_max {
+        data_max = values[i]
+    }
+    i = i + 1
+}
+
+// Add some padding to range for better visualization
+let data_range = data_max - data_min
+let min_val = data_min - data_range * 0.1
+let max_val = data_max + data_range * 0.1
+let range = max_val - min_val
+
+print("Data range: min=" + data_min + " max=" + data_max + " range=" + data_range + "\n")
+print("Scaled: min_val=" + min_val + " max_val=" + max_val + " range=" + range + "\n")
+
+// Draw Y-axis grid lines and labels
+print("Drawing grid...\n")
+let num_lines = 8
+let j = 0
+while j <= num_lines {
+    let y_pos = padding_top + chart_height - (j * chart_height / num_lines)
+    
+    // Grid line (dashed effect)
+    let x_grid = padding_left
+    while x_grid < padding_left + chart_width {
+        canvas_drawLine(canvas, x_grid, y_pos, x_grid + 5, y_pos, 220, 220, 220, 255)
+        x_grid = x_grid + 10
+    }
+    
+    // Y-axis label
+    let value = min_val + (range * j / num_lines)
+    let value_int = value * 10.0
+    value_int = value_int / 10.0  // One decimal
+    let label = "" + value_int
+    let label_width = canvas_measureText(label, 1)
+    canvas_fillText(canvas, label, padding_left - label_width - 10, y_pos - 4, 80, 80, 80, 255)
+    
+    j = j + 1
+}
+
+// Draw time series line with Path2D - use inline expressions
+print("Drawing time series line...\n")
+let path = path2d_create()
+
+i = 0
+while i < 20 {
+    // Use inline expressions to avoid variable scoping issues
+    if i == 0 {
+        path2d_moveTo(path, padding_left + (i * chart_width / 19.0), padding_top + chart_height - (((values[i] - min_val) / range) * chart_height))
+    } else {
+        path2d_lineTo(path, padding_left + (i * chart_width / 19.0), padding_top + chart_height - (((values[i] - min_val) / range) * chart_height))
+    }
+    
+    i = i + 1
+}
+
+// Stroke the line (blue, thick)
+path2d_stroke(canvas, path, 30, 100, 200, 255)
+path2d_stroke(canvas, path, 30, 100, 200, 255)  // Draw twice for thicker line
+
+// Draw data points as circles - use inline expressions
+print("Drawing data points...\n")
+i = 0
+while i < 20 {
+    // Outer circle (white)
+    canvas_fillCircle(canvas, padding_left + (i * chart_width / 19.0), padding_top + chart_height - (((values[i] - min_val) / range) * chart_height), 5, 255, 255, 255, 255)
+    // Inner circle (blue)
+    canvas_fillCircle(canvas, padding_left + (i * chart_width / 19.0), padding_top + chart_height - (((values[i] - min_val) / range) * chart_height), 3, 30, 100, 200, 255)
+    
+    i = i + 1
+}
+
+// Add area fill under the line (semi-transparent effect) - all inline
+print("Adding area fill...\n")
+i = 0
+while i < 19 {
+    // Draw semi-transparent blue fill from bottom to line - all calculations inline
+    canvas_fillRect(canvas, padding_left + (i * chart_width / 19.0), 
+                    padding_top + chart_height - ((((values[i] - min_val) / range) + ((values[i + 1] - min_val) / range)) / 2.0 * chart_height), 
+                    chart_width / 19.0, 
+                    ((((values[i] - min_val) / range) + ((values[i + 1] - min_val) / range)) / 2.0 * chart_height), 
+                    30, 100, 200, 60)
+    
+    i = i + 1
+}
+
+// Draw X-axis labels (show every 2nd date) - inline expressions
+print("Adding date labels...\n")
+i = 0
+while i < 20 {
+    if i % 2 == 0 {
+        canvas_fillText(canvas, dates[i], 
+                       (padding_left + (i * chart_width / 19.0)) - (canvas_measureText(dates[i], 1) / 2), 
+                       padding_top + chart_height + 20, 
+                       80, 80, 80, 255)
+    }
+    i = i + 1
+}
+
+// Axes (bold)
+canvas_drawLine(canvas, padding_left - 1, padding_top, padding_left - 1, padding_top + chart_height, 100, 100, 100, 255)
+canvas_drawLine(canvas, padding_left, padding_top, padding_left, padding_top + chart_height, 100, 100, 100, 255)
+canvas_drawLine(canvas, padding_left, padding_top + chart_height, padding_left + chart_width, padding_top + chart_height, 100, 100, 100, 255)
+canvas_drawLine(canvas, padding_left, padding_top + chart_height + 1, padding_left + chart_width, padding_top + chart_height + 1, 100, 100, 100, 255)
+
+// Axis labels
+canvas_fillTextScaled(canvas, "Date", width / 2 - 40, height - 20, 60, 60, 60, 255, 2)
+canvas_fillTextScaled(canvas, "Value", 15, height / 2 - 20, 60, 60, 60, 255, 2)
+
+// Add min/max annotations
+print("Adding annotations...\n")
+let max_index = 0
+let min_index = 0
+i = 1
+while i < 20 {
+    if values[i] > values[max_index] {
+        max_index = i
+    }
+    if values[i] < values[min_index] {
+        min_index = i
+    }
+    i = i + 1
+}
+
+// Max value annotation - fully inline
+canvas_fillTextScaled(canvas, "HIGH", (padding_left + (max_index * chart_width / 19.0)) - 25, (padding_top + chart_height - (((values[max_index] - min_val) / range) * chart_height)) - 25, 0, 150, 0, 255, 1)
+canvas_drawLine(canvas, padding_left + (max_index * chart_width / 19.0), padding_top + chart_height - (((values[max_index] - min_val) / range) * chart_height), padding_left + (max_index * chart_width / 19.0), (padding_top + chart_height - (((values[max_index] - min_val) / range) * chart_height)) - 15, 0, 150, 0, 255)
+
+// Min value annotation - fully inline
+canvas_fillTextScaled(canvas, "LOW", (padding_left + (min_index * chart_width / 19.0)) - 20, (padding_top + chart_height - (((values[min_index] - min_val) / range) * chart_height)) + 20, 200, 0, 0, 255, 1)
+canvas_drawLine(canvas, padding_left + (min_index * chart_width / 19.0), padding_top + chart_height - (((values[min_index] - min_val) / range) * chart_height), padding_left + (min_index * chart_width / 19.0), (padding_top + chart_height - (((values[min_index] - min_val) / range) * chart_height)) + 15, 200, 0, 0, 255)
+
+// Statistics box
+canvas_fillRect(canvas, width - 180, padding_top + 10, 160, 100, 250, 250, 255, 255)
+canvas_strokeRect(canvas, width - 180, padding_top + 10, 160, 100, 100, 100, 150, 255)
+canvas_fillText(canvas, "Statistics:", width - 170, padding_top + 25, 50, 50, 50, 255)
+
+let avg = 0.0
+i = 0
+while i < 20 {
+    avg = avg + values[i]
+    i = i + 1
+}
+avg = avg / 20.0
+
+// Color legend indicators
+canvas_fillRect(canvas, width - 170, padding_top + 37, 12, 12, 30, 100, 200, 255)
+canvas_fillText(canvas, "Min: " + data_min, width - 153, padding_top + 45, 80, 80, 80, 255)
+
+canvas_fillRect(canvas, width - 170, padding_top + 52, 12, 12, 30, 100, 200, 255)
+canvas_fillText(canvas, "Max: " + data_max, width - 153, padding_top + 60, 80, 80, 80, 255)
+
+canvas_fillRect(canvas, width - 170, padding_top + 67, 12, 12, 30, 100, 200, 255)
+canvas_fillText(canvas, "Avg: " + avg, width - 153, padding_top + 75, 80, 80, 80, 255)
+
+// Legend - Line color
+canvas_drawLine(canvas, width - 170, padding_top + 90, width - 140, padding_top + 90, 30, 100, 200, 255)
+canvas_fillCircle(canvas, width - 155, padding_top + 90, 3, 255, 255, 255, 255)
+canvas_strokeCircle(canvas, width - 155, padding_top + 90, 3, 30, 100, 200, 255)
+canvas_fillText(canvas, "Trend Line", width - 133, padding_top + 93, 80, 80, 80, 255)
+
+// Cleanup and save
+path2d_destroy(path)
+image_save(canvas, "timeseries_chart.png", "png")
+image_destroy(canvas)
+
+print("\n✓ Time series chart saved to timeseries_chart.png\n")
+print("\nFeatures demonstrated:\n")
+print("  - Smooth line chart with Path2D\n")
+print("  - Data points as circles\n")
+print("  - Area fill under curve\n")
+print("  - Dashed grid lines\n")
+print("  - Min/Max annotations\n")
+print("  - Statistics box\n")
+print("  - Auto-scaling based on data range\n")

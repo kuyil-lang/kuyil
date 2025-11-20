@@ -1,0 +1,263 @@
+// Image Processing Examples
+// Demonstrates: loading, manipulation, filters, composition
+
+import("interfaces/interface_image.kyl")
+
+print("=== Image Processing Library Demo ===\n")
+
+// ============================================
+// Demo 1: Image Loading and Information
+// ============================================
+
+print("Demo 1: Load and Inspect Image\n")
+print("-------------------------------")
+
+// Note: For actual implementation, you would load a real image file
+// This demo shows the API usage pattern
+
+print("Usage pattern:")
+print("  let img = image_load(\"photo.jpg\")")
+print("  let w = image_width(img)")
+print("  let h = image_height(img)")
+print("  let c = image_channels(img)")
+print("  print(\"Image: \" + w + \"x\" + h + \", \" + c + \" channels\")")
+print("")
+
+// Create a test image in memory
+print("Creating test image: 800x600 RGB...")
+let testImg = image_create(800, 600, 3)
+print("✓ Created 800x600 image with 3 channels (RGB)\n")
+
+// ============================================
+// Demo 2: Image Resizing
+// ============================================
+
+print("Demo 2: Image Resizing\n")
+print("----------------------")
+
+print("Resize operations:")
+print("  Bilinear interpolation: image_resize(img, 400, 300, \"bilinear\")")
+print("  Bicubic interpolation: image_resize(img, 400, 300, \"bicubic\")")
+print("  Nearest neighbor: image_resize(img, 400, 300, \"nearest\")")
+print("")
+
+print("Interpolation methods:")
+print("  - bilinear: Fast, good quality for downscaling")
+print("  - bicubic: Slower, best quality for photos")
+print("  - nearest: Fastest, good for pixel art")
+print("  - lanczos: High quality, slow\n")
+
+// ============================================
+// Demo 3: Image Cropping and Rotation
+// ============================================
+
+print("Demo 3: Crop and Rotate\n")
+print("-----------------------")
+
+print("Crop region (x=100, y=100, 400x300):")
+print("  let cropped = image_crop(img, 100, 100, 400, 300)")
+print("")
+
+print("Rotate operations:")
+print("  90 degrees: image_rotate(img, 90.0)")
+print("  45 degrees: image_rotate(img, 45.0)")
+print("  -30 degrees: image_rotate(img, -30.0)")
+print("")
+
+print("Flip operations:")
+print("  Horizontal flip: image_flip(img, true)")
+print("  Vertical flip: image_flip(img, false)\n")
+
+// ============================================
+// Demo 4: Color Filters
+// ============================================
+
+print("Demo 4: Image Filters\n")
+print("---------------------")
+
+print("Color adjustments:")
+print("  Grayscale: image_grayscale(img)")
+print("  Brightness +20%: image_brightness(img, 1.2)")
+print("  Brightness -20%: image_brightness(img, 0.8)")
+print("  Contrast +50%: image_contrast(img, 1.5)")
+print("  Threshold: image_threshold(img, 128)")
+print("")
+
+print("Blur and sharpen:")
+print("  Gaussian blur (5px): image_blur(img, 5.0)")
+print("  Sharpen (medium): image_sharpen(img, 1.5)")
+print("  Sharpen (strong): image_sharpen(img, 3.0)")
+print("")
+
+print("Edge detection:")
+print("  Sobel: image_edge_detect(img, \"sobel\")")
+print("  Canny: image_edge_detect(img, \"canny\")")
+print("  Prewitt: image_edge_detect(img, \"prewitt\")\n")
+
+// ============================================
+// Demo 5: Pixel Operations
+// ============================================
+
+print("Demo 5: Pixel-Level Operations\n")
+print("-------------------------------")
+
+print("Get pixel color at (100, 100):")
+print("  let pixel = image_get_pixel(img, 100, 100)")
+print("  // Returns: {r: 255, g: 128, b: 64, a: 255}")
+print("")
+
+print("Set pixel to red:")
+print("  image_set_pixel(img, 100, 100, 255, 0, 0, 255)")
+print("")
+
+print("Drawing patterns with pixel operations:")
+print("  // Draw a red line")
+print("  let x = 0")
+print("  while x < 100 {")
+print("      image_set_pixel(img, x, 50, 255, 0, 0, 255)")
+print("      x = x + 1")
+print("  }\n")
+
+// ============================================
+// Demo 6: Image Composition
+// ============================================
+
+print("Demo 6: Image Blending and Overlay\n")
+print("-----------------------------------")
+
+print("Alpha blending (50% opacity):")
+print("  let blended = image_blend(img1, img2, 0.5)")
+print("")
+
+print("Overlay image at position:")
+print("  let composite = image_overlay(background, logo, 10, 10)")
+print("")
+
+print("Use cases:")
+print("  - Watermarking: Overlay logo with transparency")
+print("  - Transitions: Blend images for smooth effects")
+print("  - Compositing: Combine multiple layers\n")
+
+// ============================================
+// Demo 7: Color Space Conversion
+// ============================================
+
+print("Demo 7: Color Space Conversion\n")
+print("------------------------------")
+
+print("RGB to HSV (Hue, Saturation, Value):")
+print("  let hsv = image_rgb_to_hsv(img)")
+print("  // Useful for color-based segmentation")
+print("")
+
+print("HSV to RGB:")
+print("  let rgb = image_hsv_to_rgb(hsv)")
+print("")
+
+print("HSV advantages:")
+print("  - Hue: Color tone (0-360 degrees)")
+print("  - Saturation: Color intensity (0-100%)")
+print("  - Value: Brightness (0-100%)")
+print("  - Better for color filtering than RGB\n")
+
+// ============================================
+// Demo 8: Complete Image Processing Pipeline
+// ============================================
+
+print("Demo 8: Image Processing Pipeline\n")
+print("----------------------------------")
+
+print("Example: Create thumbnail with effects")
+print("")
+print("Pipeline steps:")
+print("  1. Load image: img = image_load(\"photo.jpg\")")
+print("  2. Resize: thumb = image_resize(img, 200, 150, \"bicubic\")")
+print("  3. Enhance: thumb = image_brightness(thumb, 1.1)")
+print("  4. Sharpen: thumb = image_sharpen(thumb, 1.2)")
+print("  5. Save: image_save(thumb, \"thumbnail.jpg\", \"jpeg\")")
+print("")
+
+print("Photo enhancement pipeline:")
+print("  1. Load RAW/JPEG")
+print("  2. Auto-contrast: histogram equalization")
+print("  3. Reduce noise: bilateral filter")
+print("  4. Sharpen details: unsharp mask")
+print("  5. Color correction: white balance")
+print("  6. Save optimized output\n")
+
+// ============================================
+// Demo 9: Batch Processing Pattern
+// ============================================
+
+print("Demo 9: Batch Processing\n")
+print("------------------------")
+
+print("Process multiple images:")
+print("")
+print("  let files = [\"img1.jpg\", \"img2.jpg\", \"img3.jpg\"]")
+print("  let i = 0")
+print("  while i < files.length {")
+print("      let img = image_load(files[i])")
+print("      let resized = image_resize(img, 800, 600, \"bilinear\")")
+print("      let filtered = image_sharpen(resized, 1.5)")
+print("      image_save(filtered, \"output_\" + i + \".jpg\", \"jpeg\")")
+print("      image_destroy(img)")
+print("      image_destroy(resized)")
+print("      image_destroy(filtered)")
+print("      i = i + 1")
+print("  }")
+print("")
+
+// ============================================
+// Best Practices
+// ============================================
+
+print("=== Best Practices for Image Processing ===\n")
+
+print("1. Memory Management:")
+print("   - Always destroy images when done: image_destroy(img)")
+print("   - Process images in batches to limit memory usage")
+print("   - Use image_resize to reduce memory for large images\n")
+
+print("2. Format Selection:")
+print("   - JPEG: Photos, lossy compression, small file size")
+print("   - PNG: Graphics, lossless, transparency support")
+print("   - BMP: Uncompressed, largest size, fastest to decode")
+print("   - GIF: Animations, limited colors (256)\n")
+
+print("3. Quality vs Performance:")
+print("   - Bilinear resize: Good balance for web images")
+print("   - Bicubic resize: Best quality for print")
+print("   - Nearest neighbor: Pixel art, retro games")
+print("   - Lanczos: Professional photo editing\n")
+
+print("4. Filter Order Matters:")
+print("   - Resize before filters (saves computation)")
+print("   - Brightness/contrast before sharpening")
+print("   - Blur before edge detection")
+print("   - Color correction before saving\n")
+
+print("5. Common Use Cases:")
+print("   - Thumbnails: Resize + slight sharpen")
+print("   - Watermarks: Overlay with 50% opacity")
+print("   - Image analysis: Grayscale + edge detection")
+print("   - Photo enhancement: Brightness + contrast + sharpen")
+print("   - Batch conversion: Loop + resize + save\n")
+
+print("6. Performance Tips:")
+print("   - Load images at target resolution when possible")
+print("   - Use appropriate interpolation (bilinear for speed)")
+print("   - Process in chunks for very large images")
+print("   - Cache filtered results if used multiple times")
+print("   - Use threading for batch processing\n")
+
+print("7. Image Formats:")
+print("   - PNG: Web graphics, logos, screenshots")
+print("   - JPEG: Photos, web images (quality 85-95)")
+print("   - BMP: Windows screenshots, simple graphics")
+print("   - GIF: Animated memes, simple animations\n")
+
+// Cleanup
+image_destroy(testImg)
+
+print("✓ Image processing demo complete\n")

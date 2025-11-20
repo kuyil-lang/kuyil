@@ -1,0 +1,215 @@
+// Thread-Safe Field Value Updates in ConcurrentHashMap
+// Demonstrates atomic updates of object fields in concurrent environment
+
+import("interfaces/interface_ds.kyl")
+
+fn updateUserBalance(map, userId, amount) {
+    // Pattern 1: Read-Modify-Write with retry loop (optimistic locking)
+    let maxRetries = 10
+    let retries = 0
+    
+    while retries < maxRetries {
+        // Read current value
+        let currentUser = ds_concurrentHashMapGet(map, userId)
+        
+        if currentUser == nil {
+            print("User not found: " + userId)
+            return false
+        }
+        
+        // Modify (create new object with updated balance)
+        let newBalance = currentUser.balance + amount
+        let updatedUser = {
+            "name": currentUser.name,
+            "balance": newBalance,
+            "version": currentUser.version + 1
+        }
+        
+        // Atomically write only if value hasn't changed (CAS operation)
+        let success = ds_concurrentHashMapReplace(map, userId, currentUser, updatedUser)
+        
+        if success {
+            let msg = "✓ Updated " + currentUser.name + "'s balance: " + currentUser.balance + " -> " + newBalance
+            print(msg)
+            return true
+        }
+        
+        // Someone else modified it, retry
+        retries = retries + 1
+        print("  Retry #" + retries + " for user " + userId)
+    }
+    
+    print("✗ Failed to update after " + maxRetries + " retries")
+    return false
+}
+
+fn incrementCounter(map, key) {
+    // Pattern 2: Simple counter increment with retry
+    let maxRetries = 10
+    let retries = 0
+    
+    while retries < maxRetries {
+        let currentValue = ds_concurrentHashMapGet(map, key)
+        
+        if currentValue == nil {
+            // Key doesn't exist, try to initialize
+            if ds_concurrentHashMapPutIfAbsent(map, key, 1) {
+                print("✓ Initialized counter '" + key + "' to 1")
+                return 1
+            }
+            // Someone else initialized it, retry
+            retries = retries + 1
+        } else {
+            let newValue = currentValue + 1
+            
+            // Try atomic replace
+            if ds_concurrentHashMapReplace(map, key, currentValue, newValue) {
+                print("✓ Incremented '" + key + "': " + currentValue + " -> " + newValue)
+                return newValue
+            }
+            
+            retries = retries + 1
+        }
+    }
+    
+    print("✗ Failed to increment counter")
+    return -1
+}
+
+fn updateProductStock(map, productId, quantityChange) {
+    // Pattern 3: Update with validation
+    let maxRetries = 10
+    let retries = 0
+    
+    while retries < maxRetries {
+        let product = ds_concurrentHashMapGet(map, productId)
+        
+        if product == nil {
+            print("✗ Product not found: " + productId)
+            return false
+        }
+        
+        let newStock = product.stock + quantityChange
+        
+        // Validate: don't allow negative stock
+        if newStock < 0 {
+            let msg = "✗ Insufficient stock for " + product.name + " (current: " + product.stock + ", requested: " + quantityChange + ")"
+            print(msg)
+            return false
+        }
+        
+        let updatedProduct = {
+            "name": product.name,
+            "price": product.price,
+            "stock": newStock
+        }
+        
+        if ds_concurrentHashMapReplace(map, productId, product, updatedProduct) {
+            let msg = "✓ Updated " + product.name + " stock: " + product.stock + " -> " + newStock
+            print(msg)
+            return true
+        }
+        
+        retries = retries + 1
+    }
+    
+    print("✗ Failed to update product stock")
+    return false
+}
+
+// Demo 1: Bank account updates (concurrent balance changes)
+print("=== Demo 1: Thread-Safe Bank Account Updates ===\n")
+
+let accountMap = ds_concurrentHashMapCreate(16)
+
+// Initialize accounts
+// Note: Create objects first, then put them (inline object literals in Put calls may not work)
+let aliceData = {"name": "Alice", "balance": 1000.0, "version": 0}
+let bobData = {"name": "Bob", "balance": 500.0, "version": 0}
+
+ds_concurrentHashMapPut(accountMap, "user1", aliceData)
+ds_concurrentHashMapPut(accountMap, "user2", bobData)
+
+print("Initial balances:")
+let alice = ds_concurrentHashMapGet(accountMap, "user1")
+let bob = ds_concurrentHashMapGet(accountMap, "user2")
+print("  " + alice.name + ": $" + alice.balance)
+print("  " + bob.name + ": $" + bob.balance)
+print("")
+
+// Simulate concurrent updates
+print("Performing updates:")
+updateUserBalance(accountMap, "user1", 250.0)  // Alice deposits $250
+updateUserBalance(accountMap, "user2", -100.0) // Bob withdraws $100
+updateUserBalance(accountMap, "user1", -50.0)  // Alice withdraws $50
+
+print("\nFinal balances:")
+alice = ds_concurrentHashMapGet(accountMap, "user1")
+bob = ds_concurrentHashMapGet(accountMap, "user2")
+print("  " + alice.name + ": $" + alice.balance + " (version: " + alice.version + ")")
+print("  " + bob.name + ": $" + bob.balance + " (version: " + bob.version + ")")
+
+// Demo 2: Counter increments
+print("\n=== Demo 2: Thread-Safe Counter ===\n")
+
+let counterMap = ds_concurrentHashMapCreate(8)
+
+print("Incrementing 'pageViews' counter 5 times:")
+incrementCounter(counterMap, "pageViews")
+incrementCounter(counterMap, "pageViews")
+incrementCounter(counterMap, "pageViews")
+incrementCounter(counterMap, "pageViews")
+incrementCounter(counterMap, "pageViews")
+
+print("\nIncrementing 'loginAttempts' counter 3 times:")
+incrementCounter(counterMap, "loginAttempts")
+incrementCounter(counterMap, "loginAttempts")
+incrementCounter(counterMap, "loginAttempts")
+
+print("\nFinal counter values:")
+print("  pageViews: " + ds_concurrentHashMapGet(counterMap, "pageViews"))
+print("  loginAttempts: " + ds_concurrentHashMapGet(counterMap, "loginAttempts"))
+
+// Demo 3: Product inventory updates
+print("\n=== Demo 3: Thread-Safe Inventory Management ===\n")
+
+let inventoryMap = ds_concurrentHashMapCreate(16)
+
+// Initialize products
+let laptopData = {"name": "Laptop", "price": 999.99, "stock": 10}
+let mouseData = {"name": "Mouse", "price": 29.99, "stock": 50}
+
+ds_concurrentHashMapPut(inventoryMap, "prod1", laptopData)
+ds_concurrentHashMapPut(inventoryMap, "prod2", mouseData)
+
+print("Initial inventory:")
+let laptop = ds_concurrentHashMapGet(inventoryMap, "prod1")
+let mouse = ds_concurrentHashMapGet(inventoryMap, "prod2")
+print("  " + laptop.name + ": " + laptop.stock + " units ($" + laptop.price + ")")
+print("  " + mouse.name + ": " + mouse.stock + " units ($" + mouse.price + ")")
+print("")
+
+// Simulate concurrent inventory changes
+print("Processing orders:")
+updateProductStock(inventoryMap, "prod1", -3)  // Sell 3 laptops
+updateProductStock(inventoryMap, "prod2", -10) // Sell 10 mice
+updateProductStock(inventoryMap, "prod1", 5)   // Restock 5 laptops
+updateProductStock(inventoryMap, "prod1", -20) // Try to sell 20 laptops (should fail)
+
+print("\nFinal inventory:")
+laptop = ds_concurrentHashMapGet(inventoryMap, "prod1")
+mouse = ds_concurrentHashMapGet(inventoryMap, "prod2")
+print("  " + laptop.name + ": " + laptop.stock + " units")
+print("  " + mouse.name + ": " + mouse.stock + " units")
+
+// Cleanup
+ds_concurrentHashMapDestroy(accountMap)
+ds_concurrentHashMapDestroy(counterMap)
+ds_concurrentHashMapDestroy(inventoryMap)
+
+print("\n=== Key Patterns for Thread-Safe Updates ===")
+print("1. Read-Modify-Write: Use ds_concurrentHashMapReplace() for CAS")
+print("2. Retry Loop: Implement optimistic locking with retry logic")
+print("3. Validation: Check business rules before committing updates")
+print("4. Immutability: Create new objects instead of modifying existing ones")
+print("5. PutIfAbsent: Use for initialization to avoid race conditions")

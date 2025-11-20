@@ -10,8 +10,8 @@ typedef struct AvatarRuntime AvatarRuntime;
 typedef struct AsyncHttpClient AsyncHttpClient;
 typedef struct AsyncRequestQueue AsyncRequestQueue;
 
-#define STACK_MAX 256
-#define GLOBALS_MAX 256
+#define STACK_MAX 2048
+#define GLOBALS_MAX 2048
 
 typedef struct {
     Function* function;

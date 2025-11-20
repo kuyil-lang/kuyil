@@ -1,0 +1,213 @@
+// HTML5 Canvas API Demo - Complete Feature Showcase
+import "image"
+
+print("=== HTML5 Canvas API Demo ===\n\n")
+
+// Create canvas (image)
+let canvas = image_create(800, 600, 3)
+print("✓ Created 800x600 canvas\n\n")
+
+// Clear to white
+canvas_clearRect(canvas, 0, 0, 800, 600)
+
+// ===== Basic Shapes =====
+print("1. Drawing Basic Shapes\n")
+print("-----------------------\n")
+
+// Filled rectangle
+canvas_fillRect(canvas, 50, 50, 100, 80, 200, 50, 50, 255)
+print("  ✓ Filled rectangle (red)\n")
+
+// Stroked rectangle
+canvas_strokeRect(canvas, 200, 50, 100, 80, 50, 50, 200, 255)
+print("  ✓ Stroked rectangle (blue)\n")
+
+// Filled circle
+canvas_fillCircle(canvas, 100, 200, 40, 50, 200, 50, 255)
+print("  ✓ Filled circle (green)\n")
+
+// Stroked circle
+canvas_strokeCircle(canvas, 250, 200, 40, 200, 100, 50, 255)
+print("  ✓ Stroked circle (orange)\n\n")
+
+// ===== Lines =====
+print("2. Drawing Lines\n")
+print("----------------\n")
+
+canvas_drawLine(canvas, 400, 50, 500, 150, 100, 100, 100, 255)
+canvas_drawLine(canvas, 500, 50, 600, 150, 150, 50, 150, 255)
+canvas_drawLine(canvas, 600, 50, 700, 150, 50, 150, 150, 255)
+print("  ✓ Three diagonal lines\n\n")
+
+// ===== Path2D with Curves =====
+print("3. Path2D with Curves\n")
+print("---------------------\n")
+
+let path = path2d_create()
+print("  ✓ Created Path2D\n")
+
+// Draw a smooth curve
+path2d_moveTo(path, 50, 300)
+path2d_quadraticCurveTo(path, 150, 250, 250, 300)
+print("  ✓ Added quadratic curve\n")
+
+path2d_lineTo(path, 300, 350)
+print("  ✓ Added line segment\n")
+
+path2d_bezierCurveTo(path, 320, 380, 380, 320, 400, 350)
+print("  ✓ Added Bezier curve\n")
+
+path2d_stroke(canvas, path, 50, 100, 200, 255)
+print("  ✓ Stroked path (blue)\n")
+
+path2d_destroy(path)
+print("  ✓ Destroyed path\n\n")
+
+// ===== Complex Path =====
+print("4. Complex Path Drawing\n")
+print("-----------------------\n")
+
+let heart = path2d_create()
+path2d_moveTo(heart, 500, 350)
+path2d_bezierCurveTo(heart, 500, 330, 480, 320, 460, 330)
+path2d_bezierCurveTo(heart, 450, 340, 450, 350, 460, 365)
+path2d_lineTo(heart, 500, 400)
+path2d_lineTo(heart, 540, 365)
+path2d_bezierCurveTo(heart, 550, 350, 550, 340, 540, 330)
+path2d_bezierCurveTo(heart, 520, 320, 500, 330, 500, 350)
+path2d_stroke(canvas, heart, 200, 50, 100, 255)
+print("  ✓ Drew heart shape with Bezier curves\n")
+path2d_destroy(heart)
+
+// ===== Text Rendering =====
+print("\n5. Text Rendering\n")
+print("-----------------\n")
+
+// Regular size (1x)
+canvas_fillText(canvas, "HELLO", 50, 450, 0, 0, 0, 255)
+print("  ✓ Filled text 'HELLO' 1x (horizontal)\n")
+
+canvas_strokeText(canvas, "CANVAS", 150, 450, 100, 50, 150, 255)
+print("  ✓ Stroked text 'CANVAS' 1x\n")
+
+// Large text (2x scale)
+canvas_fillTextScaled(canvas, "BIG TEXT", 50, 480, 255, 0, 0, 255, 2)
+print("  ✓ Large text 'BIG TEXT' 2x scale\n")
+
+// Extra large text (3x scale)
+canvas_fillTextScaled(canvas, "HUGE", 300, 500, 0, 150, 0, 255, 3)
+print("  ✓ Extra large text 'HUGE' 3x scale\n")
+
+// Vertical text using character-by-character rotation
+// Simpler approach: draw each character vertically stacked
+print("  ✓ Drawing vertical text character-by-character\n")
+let vert_x = 650
+let vert_y = 100
+canvas_fillText(canvas, "V", vert_x, vert_y, 200, 0, 100, 255)
+canvas_fillText(canvas, "E", vert_x, vert_y + 10, 200, 0, 100, 255)
+canvas_fillText(canvas, "R", vert_x, vert_y + 20, 200, 0, 100, 255)
+canvas_fillText(canvas, "T", vert_x, vert_y + 30, 200, 0, 100, 255)
+canvas_fillText(canvas, "I", vert_x, vert_y + 40, 200, 0, 100, 255)
+canvas_fillText(canvas, "C", vert_x, vert_y + 50, 200, 0, 100, 255)
+canvas_fillText(canvas, "A", vert_x, vert_y + 60, 200, 0, 100, 255)
+canvas_fillText(canvas, "L", vert_x, vert_y + 70, 200, 0, 100, 255)
+print("  ✓ Vertical text 'VERTICAL' rendered\n")
+
+// Alternative: Create rotated text and composite onto main canvas
+// First create text on white background
+let text_canvas = image_create(80, 80, 3)
+canvas_clearRect(text_canvas, 0, 0, 80, 80)
+// Center text in canvas: "TURN" is roughly 24px wide (4*6), height 7px
+canvas_fillText(text_canvas, "TURN", 28, 36, 0, 100, 200, 255)
+
+// Rotate around center with correct pivot point
+let text_transform = transform_create()
+transform_translate(text_transform, 40, 40)  // Move to center
+transform_rotate(text_transform, 0.785398)   // 45 degrees
+transform_translate(text_transform, 0 - 40, 0 - 40)  // Move back
+let rotated_text = canvas_applyTransform(text_canvas, text_transform)
+if rotated_text != nil {
+    // Draw rotated text onto main canvas at position (550, 450)
+    canvas_drawImage(canvas, rotated_text, 550, 450)
+    print("  ✓ Drew 45° rotated text onto main canvas\n")
+    
+    // Also save standalone rotated text
+    image_save(rotated_text, "rotated_text.png", "png")
+    print("  ✓ Saved 45° rotated text to rotated_text.png\n")
+    image_destroy(rotated_text)
+}
+transform_destroy(text_transform)
+image_destroy(text_canvas)
+print("\n")
+
+// ===== Transforms =====
+print("6. Transform Operations\n")
+print("-----------------------\n")
+
+// Create a small test image
+let test_img = image_create(100, 100, 3)
+canvas_fillRect(test_img, 0, 0, 100, 100, 255, 255, 255, 255)
+canvas_fillRect(test_img, 20, 20, 60, 60, 100, 150, 200, 255)
+canvas_fillCircle(test_img, 50, 50, 20, 255, 100, 100, 255)
+print("  ✓ Created test image (100x100)\n")
+
+// Apply rotation
+let transform = transform_create()
+print("  ✓ Created transform\n")
+
+transform_translate(transform, 50, 50)
+print("  ✓ Translated (50, 50)\n")
+
+transform_rotate(transform, 0.785398) // 45 degrees in radians
+print("  ✓ Rotated 45 degrees\n")
+
+transform_scale(transform, 1.2, 1.2)
+print("  ✓ Scaled 1.2x\n")
+
+let transformed = canvas_applyTransform(test_img, transform)
+if transformed != nil {
+    print("  ✓ Applied transform\n")
+    image_destroy(transformed)
+}
+
+transform_destroy(transform)
+print("  ✓ Destroyed transform\n")
+image_destroy(test_img)
+
+// ===== Save Canvas =====
+print("\n7. Saving Canvas\n")
+print("----------------\n")
+
+let saved = image_save(canvas, "canvas_demo.png", "png")
+if saved {
+    print("  ✓ Saved canvas to canvas_demo.png\n")
+} else {
+    print("  ✗ Failed to save canvas\n")
+}
+
+image_destroy(canvas)
+print("  ✓ Destroyed canvas\n")
+
+print("\n=== Complete Feature Set ===\n")
+print("✓ fillRect() - filled rectangles\n")
+print("✓ strokeRect() - rectangle outlines\n")
+print("✓ clearRect() - clear areas\n")
+print("✓ fillCircle() - filled circles\n")
+print("✓ strokeCircle() - circle outlines\n")
+print("✓ drawLine() - Bresenham lines\n")
+print("✓ fillText() - text rendering\n")
+print("✓ strokeText() - outlined text\n")
+print("✓ Path2D() - path creation\n")
+print("✓ moveTo() - move path cursor\n")
+print("✓ lineTo() - line segments in path\n")
+print("✓ quadraticCurveTo() - smooth curves\n")
+print("✓ bezierCurveTo() - complex curves\n")
+print("✓ stroke() - render path\n")
+print("✓ Transform2D() - transformation matrix\n")
+print("✓ translate() - position offset\n")
+print("✓ rotate() - rotation transform\n")
+print("✓ scale() - scaling transform\n")
+print("✓ applyTransform() - apply to image\n")
+print("✓ save() - export to PNG/JPG/BMP\n\n")
+
+print("Demo complete! Check canvas_demo.png\n")

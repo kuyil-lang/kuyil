@@ -1,9 +1,15 @@
 // Working Example: Asyncio with Headers & Timeouts
 // Uses the interface file which registers function signatures
 
+// NOTE: This example requires internet connectivity and may timeout in automated tests
+// To run this example manually: ./kuyil examples/asyncio_working_example.kyl
+
 print("═══════════════════════════════════════")
 print("  Asyncio with Headers & Timeouts")
 print("═══════════════════════════════════════\n")
+print("⚠️  WARNING: This example makes real HTTP requests")
+print("    and may take 30+ seconds to complete.")
+print("    Press Ctrl+C to cancel if needed.\n")
 
 // Load asyncio interface with generic import
 import "asyncio"

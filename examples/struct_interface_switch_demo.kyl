@@ -1,5 +1,7 @@
 // Struct, Interface, and Switch-Case Examples for Kuyil
 
+import("interfaces/interface_str.kyl")
+
 // =============================================================================
 // 1. STRUCT DEFINITION AND USAGE
 // =============================================================================
@@ -18,14 +20,14 @@ fn (Person) greet() {
 
 fn (Person) birthday() {
     this.age = this.age + 1
-    print(this.name, ` is now `, this.age, ` years old`)
+    print(this.name + ` is now ` + str_toString(this.age) + ` years old`)
 }
 
 // Serialize method - convert struct to JSON string
 fn (Person) toJSON() {
     let json = `{`
     json = json + `"name": "` + this.name + `", `
-    json = json + `"age": ` + toString(this.age) + `, `
+    json = json + `"age": ` + str_toString(this.age) + `, `
     json = json + `"email": "` + this.email + `"`
     json = json + `}`
     return json
@@ -57,29 +59,29 @@ fn (Employee) getFullInfo() {
 fn (Employee) toJSON() {
     let json = `{`
     json = json + `"person": ` + this.person.toJSON() + `, `
-    json = json + `"employeeId": ` + toString(this.employeeId) + `, `
+    json = json + `"employeeId": ` + str_toString(this.employeeId) + `, `
     json = json + `"department": "` + this.department + `", `
-    json = json + `"salary": ` + toString(this.salary)
+    json = json + `"salary": ` + str_toString(this.salary)
     json = json + `}`
     return json
 }
 
 // =============================================================================
-// 3. INTERFACE DEFINITION
+// 3. INTERFACE DEFINITION (Conceptual - Not FFI)
 // =============================================================================
 
-// Define an interface for serializable objects
-interface Serializable {
-    toJSON()
-    fromJSON()
-}
+// NOTE: In Kuyil, 'interface' is used for FFI bindings to C libraries.
+// These are conceptual interfaces showing methods that structs can implement.
+// In a real implementation, you'd use duck typing or runtime checks.
 
-// Define an interface for drawable objects
-interface Drawable {
-    draw()
-    getColor()
-    setColor()
-}
+// Conceptual interface for serializable objects:
+//   - toJSON() -> converts to JSON string
+//   - fromJSON(json) -> creates object from JSON string
+
+// Conceptual interface for drawable objects:
+//   - draw() -> renders the object
+//   - getColor() -> returns the color
+//   - setColor(color) -> sets the color
 
 // =============================================================================
 // 4. SWITCH-CASE STATEMENT (Go-style)
@@ -199,14 +201,14 @@ let i = 0
 while (i < array_length(commands)) {
     let cmd = commands[i]
     let result = processCommand(cmd)
-    print(`Command '`, cmd, `' result: `, result)
+    print(`Command '` + cmd + `' result: ` + result)
     i = i + 1
 }
 
 print(`\nDay names:`)
 let day = 1
 while (day <= 7) {
-    print(`Day `, day, `: `, getDayName(day))
+    print(`Day ` + toString(day) + `: ` + getDayName(day))
     day = day + 1
 }
 
@@ -215,7 +217,7 @@ let scores = [95, 85, 75, 65, 55]
 i = 0
 while (i < array_length(scores)) {
     let score = scores[i]
-    print(`Score `, score, `: Grade `, getGrade(score))
+    print(`Score ` + toString(score) + `: Grade ` + getGrade(score))
     i = i + 1
 }
 

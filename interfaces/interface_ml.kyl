@@ -8,43 +8,43 @@
 interface KMeans from "libs/libkylml.so" {
     // Create K-Means model
     // Args: n_clusters, max_iterations, tolerance
-    fn ml_kmeansCreate(n_clusters, max_iterations, tolerance)
+    number ml_kmeansCreate(n_clusters, max_iterations, tolerance)
     
     // Fit model to data
     // Args: model, dataset (array of vectors), n_samples
     // Returns: converged (boolean)
-    fn ml_kmeansFit(model, dataset)
+    bool ml_kmeansFit(model, dataset)
     
     // Predict cluster labels for new data
     // Args: model, dataset
     // Returns: array of cluster labels (integers)
-    fn ml_kmeansPredict(model, dataset)
+    array ml_kmeansPredict(model, dataset)
     
     // Fit and predict in one step
-    fn ml_kmeansFitPredict(model, dataset)
+    array ml_kmeansFitPredict(model, dataset)
     
     // Get cluster centers
     // Returns: array of center vectors
-    fn ml_kmeansGetCenters(model)
+    array ml_kmeansGetCenters(model)
     
     // Get inertia (sum of squared distances to centers)
-    fn ml_kmeansGetInertia(model)
+    number ml_kmeansGetInertia(model)
     
     // Get number of iterations performed
-    fn ml_kmeansGetIterations(model)
+    number ml_kmeansGetIterations(model)
     
     // Save model to file
     // Args: model, filename (string)
     // Returns: success (boolean)
-    fn ml_kmeansSave(model, filename)
+    bool ml_kmeansSave(model, filename)
     
     // Load model from file
     // Args: filename (string)
     // Returns: model handle
-    fn ml_kmeansLoad(filename)
+    number ml_kmeansLoad(filename)
     
     // Destroy model
-    fn ml_kmeansDestroy(model)
+    bool ml_kmeansDestroy(model)
 }
 
 // ============================================
@@ -53,37 +53,37 @@ interface KMeans from "libs/libkylml.so" {
 interface LinearRegression from "libs/libkylml.so" {
     // Create linear regression model
     // Args: fit_intercept (boolean), method ("normal" or "gradient_descent")
-    fn ml_linearRegressionCreate(fit_intercept, method)
+    number ml_linearRegressionCreate(fit_intercept, method)
     
     // Fit model to training data
     // Args: model, X (features), y (targets)
-    fn ml_linearRegressionFit(model, X, y)
+    bool ml_linearRegressionFit(model, X, y)
     
     // Predict targets for new data
     // Args: model, X (features)
     // Returns: array of predicted values
-    fn ml_linearRegressionPredict(model, X)
+    array ml_linearRegressionPredict(model, X)
     
     // Get coefficients (weights)
-    fn ml_linearRegressionGetCoefficients(model)
+    array ml_linearRegressionGetCoefficients(model)
     
     // Get intercept (bias)
-    fn ml_linearRegressionGetIntercept(model)
+    number ml_linearRegressionGetIntercept(model)
     
     // Calculate R² score
-    fn ml_linearRegressionScore(model, X, y)
+    number ml_linearRegressionScore(model, X, y)
     
     // Save model to file
     // Args: model, filename (string)
     // Returns: success (boolean)
-    fn ml_linearRegressionSave(model, filename)
+    bool ml_linearRegressionSave(model, filename)
     
     // Load model from file
     // Args: filename (string)
     // Returns: model handle
-    fn ml_linearRegressionLoad(filename)
+    number ml_linearRegressionLoad(filename)
     
-    fn ml_linearRegressionDestroy(model)
+    bool ml_linearRegressionDestroy(model)
 }
 
 // ============================================
@@ -91,17 +91,17 @@ interface LinearRegression from "libs/libkylml.so" {
 // ============================================
 interface MLMetrics from "libs/libkylml.so" {
     // Classification Metrics
-    fn ml_accuracyScore(y_true, y_pred)
-    fn ml_precisionScore(y_true, y_pred)
-    fn ml_recallScore(y_true, y_pred)
-    fn ml_f1Score(y_true, y_pred)
-    fn ml_confusionMatrix(y_true, y_pred)
+    number ml_accuracyScore(y_true, y_pred)
+    number ml_precisionScore(y_true, y_pred)
+    number ml_recallScore(y_true, y_pred)
+    number ml_f1Score(y_true, y_pred)
+    array ml_confusionMatrix(y_true, y_pred)
     
     // Regression Metrics
-    fn ml_meanSquaredError(y_true, y_pred)
-    fn ml_rootMeanSquaredError(y_true, y_pred)
-    fn ml_meanAbsoluteError(y_true, y_pred)
-    fn ml_r2Score(y_true, y_pred)
+    number ml_meanSquaredError(y_true, y_pred)
+    number ml_rootMeanSquaredError(y_true, y_pred)
+    number ml_meanAbsoluteError(y_true, y_pred)
+    number ml_r2Score(y_true, y_pred)
     
 }
 

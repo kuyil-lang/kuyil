@@ -3,9 +3,15 @@
 
 import "http"
 
+// NOTE: This example has known memory issues and requires Ollama running
+// TODO: Fix double-free memory corruption in avatar/await with HTTP calls
+
 print("╔═══════════════════════════════════════════════════════╗")
 print("║  KUYIL AI IDE - GREEN THREAD OLLAMA INTEGRATION      ║")
+print("║  ⚠️  WARNING: Known memory issues - Use with caution  ║")
 print("╚═══════════════════════════════════════════════════════╝\n")
+print("⚠️  This example requires Ollama running on localhost:11434")
+print("    and may crash due to memory issues.\n")
 
 // ============================================================================
 // OLLAMA REQUEST FUNCTION

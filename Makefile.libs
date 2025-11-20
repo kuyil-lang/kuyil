@@ -1,6 +1,6 @@
-SUBDIRS = math str http datetime fileio eventloop system asyncio
+SUBDIRS = math str http datetime fileio eventloop system asyncio ds ml image chart
 # Windows builds skip http library (requires curl/libcurl setup)
-SUBDIRS_WINDOWS = math str datetime fileio eventloop system asyncio
+SUBDIRS_WINDOWS = math str datetime fileio eventloop system asyncio ds ml image chart
 
 # Optionally include additional_libs if directory exists
 ifneq ($(wildcard additional_libs/.),)

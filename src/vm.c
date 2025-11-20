@@ -677,6 +677,37 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             }
         }
         
+        // Built-in __range function for for..in loops
+        if (strcmp(callee.as.string, "__range") == 0) {
+            if (arg_count != 2) {
+                runtime_error(vm, "__range expects 2 arguments (start, end).");
+                return false;
+            }
+            Value* args = vm->stack_top - arg_count - 1;
+            if (args[0].type != VALUE_NUMBER || args[1].type != VALUE_NUMBER) {
+                runtime_error(vm, "__range arguments must be numbers.");
+                return false;
+            }
+            
+            int start = (int)args[0].as.number;
+            int end = (int)args[1].as.number;
+            
+            // Create array [start, start+1, ..., end-1]
+            Value result;
+            result.type = VALUE_ARRAY;
+            result.as.array.count = (end > start) ? (end - start) : 0;
+            result.as.array.values = malloc(sizeof(Value) * result.as.array.count);
+            
+            for (int i = 0; i < result.as.array.count; i++) {
+                result.as.array.values[i].type = VALUE_NUMBER;
+                result.as.array.values[i].as.number = start + i;
+            }
+            
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
         // Test assertions (enabled in test mode)
         if (vm->test_mode) {
             if (strcmp(callee.as.string, "assert_true") == 0) {
@@ -3217,6 +3248,10 @@ void vm_init(VM* vm) {
     define_global(vm, "mock_clear", mock_clear_val);
     define_global(vm, "mock_calls", mock_calls_val);
     
+    // Register __range as a built-in (will be handled specially in OP_CALL)
+    Value range_val = {VALUE_STRING, {.string = strdup("__range")}};
+    define_global(vm, "__range", range_val);
+    
     // Register development helper functions
     Value dev_watch_file_val = {VALUE_STRING, {.string = strdup("dev_watch_file")}};
     Value dev_watch_dir_val = {VALUE_STRING, {.string = strdup("dev_watch_dir")}};
@@ -3535,10 +3570,20 @@ InterpretResult vm_interpret(VM* vm, const char* source) {
         vm->frame_count++;
     } else {
         // For top-level scripts, use frame 0
+        // Properly allocate space for local variables
         vm->frames[0].function = function;
         vm->frames[0].ip = function->chunk.code;
         vm->frames[0].slots = vm->stack;
         vm->frame_count = 1;
+        
+        // Allocate and initialize local variable slots
+        vm->stack_top = vm->stack;
+        int local_count = function->local_count;
+        for (int i = 0; i < local_count; i++) {
+            Value nil_val = {VALUE_NIL};
+            *vm->stack_top = nil_val;
+            vm->stack_top++;
+        }
     }
     
     InterpretResult result = vm_run(vm);

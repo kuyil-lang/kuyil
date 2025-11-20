@@ -1,0 +1,75 @@
+import "image"
+
+print("=== Image Composition Demo ===\n\n")
+
+// Create a canvas
+let canvas = image_create(800, 600, 3)
+canvas_clearRect(canvas, 0, 0, 800, 600)
+
+// Add gradient background using rectangles
+print("1. Creating gradient background...\n")
+let y = 0
+while y < 600 {
+    let intensity = (y * 255) / 600
+    canvas_fillRect(canvas, 0, y, 800, 1, intensity / 3, intensity / 2, intensity, 255)
+    y = y + 1
+}
+
+// Load an existing image (if you have one)
+// For demo, create a sample "logo" image
+print("2. Creating sample logo image...\n")
+let logo = image_create(100, 100, 3)
+canvas_clearRect(logo, 0, 0, 100, 100)
+canvas_fillCircle(logo, 50, 50, 40, 255, 100, 50, 255)
+canvas_fillTextScaled(logo, "LOGO", 28, 42, 255, 255, 255, 255, 2)
+
+// Draw the logo onto canvas at different positions
+print("3. Compositing logo onto canvas...\n")
+canvas_drawImage(canvas, logo, 50, 50)      // Top-left
+canvas_drawImage(canvas, logo, 650, 50)     // Top-right
+canvas_drawImage(canvas, logo, 50, 450)     // Bottom-left
+canvas_drawImage(canvas, logo, 650, 450)    // Bottom-right
+
+// Scale the logo and draw it in center
+print("4. Drawing scaled logo in center...\n")
+canvas_drawImageScaled(canvas, logo, 300, 200, 200, 200)  // 2x size
+
+// Add some text overlay
+print("5. Adding text overlay...\n")
+canvas_fillTextScaled(canvas, "IMAGE COMPOSITION", 200, 100, 255, 255, 255, 255, 3)
+canvas_fillTextScaled(canvas, "Load Draw Scale", 250, 140, 200, 200, 255, 255, 2)
+
+// You can also load external images:
+// let photo = image_load("photo.jpg")
+// if photo != nil {
+//     canvas_drawImage(canvas, photo, x, y)
+//     canvas_drawImageScaled(canvas, photo, x, y, width, height)
+//     image_destroy(photo)
+// }
+
+// Create a rotated version of the logo
+print("6. Adding rotated logo...\n")
+let transform = transform_create()
+transform_translate(transform, 50, 50)
+transform_rotate(transform, 0.785398)  // 45 degrees
+transform_translate(transform, 0 - 50, 0 - 50)
+let rotated_logo = canvas_applyTransform(logo, transform)
+if rotated_logo != nil {
+    canvas_drawImage(canvas, rotated_logo, 350, 450)
+    image_destroy(rotated_logo)
+}
+transform_destroy(transform)
+
+// Save final composition
+print("7. Saving composition...\n")
+image_save(canvas, "image_composition.png", "png")
+
+// Cleanup
+image_destroy(logo)
+image_destroy(canvas)
+
+print("\n✓ Complete! Check image_composition.png\n")
+print("\nYou can load images with:\n")
+print("  let img = image_load(\"photo.jpg\")\n")
+print("  canvas_drawImage(canvas, img, x, y)\n")
+print("  canvas_drawImageScaled(canvas, img, x, y, width, height)\n")

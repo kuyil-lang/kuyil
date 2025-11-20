@@ -988,13 +988,41 @@ static ASTNode* term(Parser* parser) {
     return expr;
 }
 
-static ASTNode* comparison(Parser* parser) {
+static ASTNode* range(Parser* parser) {
     ASTNode* expr = term(parser);
+    
+    if (parser_match(parser, TOKEN_DOT_DOT)) {
+        Token* operator = previous_token(parser);
+        ASTNode* right = term(parser);
+        
+        // Create a function call to a built-in range function
+        // range(start, end) returns an array [start, start+1, ..., end-1]
+        ASTNode* call_node = ast_node_new(AST_CALL);
+        set_node_location(call_node, operator);
+        
+        ASTNode* range_fn = ast_node_new(AST_IDENTIFIER);
+        set_node_location(range_fn, operator);
+        range_fn->as.identifier = strdup("__range");
+        
+        call_node->as.call.function = range_fn;
+        call_node->as.call.args = malloc(sizeof(ASTNode*) * 2);
+        call_node->as.call.args[0] = expr;
+        call_node->as.call.args[1] = right;
+        call_node->as.call.arg_count = 2;
+        
+        return call_node;
+    }
+    
+    return expr;
+}
+
+static ASTNode* comparison(Parser* parser) {
+    ASTNode* expr = range(parser);
     
     while (parser_match(parser, TOKEN_GREATER) || parser_match(parser, TOKEN_GREATER_EQUAL) ||
            parser_match(parser, TOKEN_LESS) || parser_match(parser, TOKEN_LESS_EQUAL)) {
         Token* operator = previous_token(parser);
-        ASTNode* right = term(parser);
+        ASTNode* right = range(parser);
         ASTNode* binary_node = ast_node_new(AST_BINARY_OP);
         set_node_location(binary_node, operator);
         binary_node->as.binary.left = expr;
@@ -1125,23 +1153,16 @@ static ASTNode* block_statement(Parser* parser) {
 static ASTNode* if_statement(Parser* parser) {
     ASTNode* if_node = ast_node_new(AST_IF_STMT);
     set_node_location(if_node, previous_token(parser)); // 'if'
-    // Support optional parentheses around condition
-    bool has_paren = parser_match(parser, TOKEN_LEFT_PAREN);
     
-    // If no parentheses, suppress struct literal parsing to avoid { being interpreted as struct literal
+    // Suppress struct literal parsing to avoid { being interpreted as struct literal
+    // Let the expression parser handle any parentheses - don't try to match them here
     bool old_suppress = parser->suppress_struct_literal;
-    if (!has_paren) {
-        parser->suppress_struct_literal = true;
-    }
+    parser->suppress_struct_literal = true;
     
     if_node->as.if_stmt.condition = expression(parser);
     
     // Restore struct literal parsing
     parser->suppress_struct_literal = old_suppress;
-    
-    if (has_paren) {
-        consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after if condition.");
-    }
     
     if_node->as.if_stmt.then_branch = statement(parser);
     if_node->as.if_stmt.else_branch = NULL;
@@ -1184,7 +1205,144 @@ static ASTNode* var_declaration(Parser* parser);
 
 static ASTNode* for_statement(Parser* parser) {
     Token* for_token = previous_token(parser); // 'for'
-    // Support optional parentheses around classic for clauses
+    
+    // Check if this is a for..in loop: `for variable in iterable {`
+    // Peek ahead to see if we have: IDENTIFIER IN
+    if (check(parser, TOKEN_IDENTIFIER)) {
+        Token* var_token = parser_advance(parser);
+        if (parser_match(parser, TOKEN_IN)) {
+            // This is a for..in loop - desugar it to a while loop
+            // for i in iterable { body }
+            // becomes:
+            // let __iter = iterable
+            // let __index = 0
+            // while __index < __iter.length {
+            //     let i = __iter[__index]
+            //     body
+            //     __index = __index + 1
+            // }
+            
+            // Parse the iterable expression
+            ASTNode* iterable = expression(parser);
+            
+            // Parse the body
+            ASTNode* body = statement(parser);
+            
+            // Generate unique names for iterator variables
+            static int iter_counter = 0;
+            char iter_name[64], index_name[64];
+            snprintf(iter_name, sizeof(iter_name), "__iter%d", iter_counter);
+            snprintf(index_name, sizeof(index_name), "__index%d", iter_counter);
+            iter_counter++;
+            
+            // Create: let __iter = iterable
+            ASTNode* iter_decl = ast_node_new(AST_VAR_DECL);
+            set_node_location(iter_decl, var_token);
+            iter_decl->as.var_decl.name = strdup(iter_name);
+            iter_decl->as.var_decl.value = iterable;
+            
+            // Create: let __index = 0
+            ASTNode* index_decl = ast_node_new(AST_VAR_DECL);
+            set_node_location(index_decl, var_token);
+            index_decl->as.var_decl.name = strdup(index_name);
+            ASTNode* zero = ast_node_new(AST_LITERAL);
+            set_node_location(zero, var_token);
+            zero->as.literal.type = VALUE_NUMBER;
+            zero->as.literal.as.number = 0;
+            index_decl->as.var_decl.value = zero;
+            
+            // Create: __iter.length
+            ASTNode* iter_id = ast_node_new(AST_IDENTIFIER);
+            set_node_location(iter_id, var_token);
+            iter_id->as.identifier = strdup(iter_name);
+            ASTNode* length_access = ast_node_new(AST_MEMBER_ACCESS);
+            set_node_location(length_access, var_token);
+            length_access->as.member.object = iter_id;
+            length_access->as.member.property = strdup("length");
+            
+            // Create: __index < __iter.length
+            ASTNode* index_id1 = ast_node_new(AST_IDENTIFIER);
+            set_node_location(index_id1, var_token);
+            index_id1->as.identifier = strdup(index_name);
+            ASTNode* condition = ast_node_new(AST_BINARY_OP);
+            set_node_location(condition, var_token);
+            condition->as.binary.left = index_id1;
+            condition->as.binary.operator = TOKEN_LESS;
+            condition->as.binary.right = length_access;
+            
+            // Create: let i = __iter[__index]
+            ASTNode* iter_id2 = ast_node_new(AST_IDENTIFIER);
+            set_node_location(iter_id2, var_token);
+            iter_id2->as.identifier = strdup(iter_name);
+            ASTNode* index_id2 = ast_node_new(AST_IDENTIFIER);
+            set_node_location(index_id2, var_token);
+            index_id2->as.identifier = strdup(index_name);
+            ASTNode* index_access = ast_node_new(AST_ARRAY_ACCESS);
+            set_node_location(index_access, var_token);
+            index_access->as.array_access.array = iter_id2;
+            index_access->as.array_access.index = index_id2;
+            
+            ASTNode* loop_var_decl = ast_node_new(AST_VAR_DECL);
+            set_node_location(loop_var_decl, var_token);
+            loop_var_decl->as.var_decl.name = strndup(var_token->start, var_token->length);
+            loop_var_decl->as.var_decl.value = index_access;
+            
+            // Create: __index = __index + 1
+            ASTNode* index_id3 = ast_node_new(AST_IDENTIFIER);
+            set_node_location(index_id3, var_token);
+            index_id3->as.identifier = strdup(index_name);
+            ASTNode* index_id4 = ast_node_new(AST_IDENTIFIER);
+            set_node_location(index_id4, var_token);
+            index_id4->as.identifier = strdup(index_name);
+            ASTNode* one = ast_node_new(AST_LITERAL);
+            set_node_location(one, var_token);
+            one->as.literal.type = VALUE_NUMBER;
+            one->as.literal.as.number = 1;
+            ASTNode* increment = ast_node_new(AST_BINARY_OP);
+            set_node_location(increment, var_token);
+            increment->as.binary.left = index_id4;
+            increment->as.binary.operator = TOKEN_PLUS;
+            increment->as.binary.right = one;
+            ASTNode* index_update = ast_node_new(AST_ASSIGNMENT);
+            set_node_location(index_update, var_token);
+            ASTNode* index_id5 = ast_node_new(AST_IDENTIFIER);
+            set_node_location(index_id5, var_token);
+            index_id5->as.identifier = strdup(index_name);
+            index_update->as.assignment.target = index_id5;
+            index_update->as.assignment.value = increment;
+            index_update->as.assignment.operator = TOKEN_ASSIGN;
+            
+            // Wrap the body in a block that includes the loop variable declaration
+            ASTNode* block = ast_node_new(AST_BLOCK);
+            set_node_location(block, var_token);
+            block->as.block.statements = malloc(sizeof(ASTNode*) * 3);
+            block->as.block.count = 3;
+            block->as.block.statements[0] = loop_var_decl;
+            block->as.block.statements[1] = body;
+            block->as.block.statements[2] = index_update;
+            
+            // Create the while loop
+            ASTNode* while_node = ast_node_new(AST_WHILE_STMT);
+            set_node_location(while_node, for_token);
+            while_node->as.while_stmt.condition = condition;
+            while_node->as.while_stmt.body = block;
+            
+            // Wrap everything in an outer block
+            ASTNode* outer_block = ast_node_new(AST_BLOCK);
+            set_node_location(outer_block, for_token);
+            outer_block->as.block.statements = malloc(sizeof(ASTNode*) * 3);
+            outer_block->as.block.count = 3;
+            outer_block->as.block.statements[0] = iter_decl;
+            outer_block->as.block.statements[1] = index_decl;
+            outer_block->as.block.statements[2] = while_node;
+            
+            return outer_block;
+        }
+        // Not a for..in loop, backtrack
+        parser->current--;
+    }
+    
+    // Classic C-style for loop: for (init; condition; update) { body }
     bool has_paren = parser_match(parser, TOKEN_LEFT_PAREN);
     
     ASTNode* for_node = ast_node_new(AST_FOR_STMT);

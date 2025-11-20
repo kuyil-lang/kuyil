@@ -1,0 +1,51 @@
+// Combined Image and Chart Library Demo
+import "image"
+
+print("=== Combined Image & Chart Library Demo ===\n\n")
+
+// Part 1: Image Processing Demo
+print("PART 1: IMAGE PROCESSING\n")
+print("========================\n\n")
+
+// Create a simple visualization image
+let viz = image_create(300, 200, 3)
+print("Created 300x200 visualization canvas\n")
+
+// Draw a gradient background
+let i = 0
+let r = 0
+let g = 0
+let b = 0
+while i < 300 {
+    let j = 0
+    while j < 200 {
+        r = (i * 200) / 300
+        g = (j * 255) / 200
+        b = 150
+        image_set_pixel(viz, i, j, r, g, b, 255)
+        j = j + 1
+    }
+    i = i + 1
+}
+print("✓ Drew gradient background\n")
+
+// Save the visualization
+let saved = image_save(viz, "combined_demo.png", "png")
+if saved {
+    print("✓ Saved to combined_demo.png\n")
+}
+
+// Process the image
+let brightened = image_brightness(viz, 1.2)
+if brightened != nil {
+    print("✓ Applied brightness adjustment\n")
+    let saved_bright = image_save(brightened, "combined_demo_bright.png", "png")
+    if saved_bright {
+        print("✓ Saved brightened version\n")
+    }
+    image_destroy(brightened)
+}
+
+image_destroy(viz)
+
+print("=== Demo Complete ===\n")

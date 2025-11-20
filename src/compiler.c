@@ -1491,8 +1491,18 @@ static void compile_while_stmt(ASTNode* node) {
     // Pop the condition result since we're entering the body
     emit_byte(OP_POP);
     
+    // Only add scope if body is NOT a block (blocks add their own scope)
+    bool is_block = (node->as.while_stmt.body->type == AST_BLOCK);
+    if (!is_block) {
+        begin_scope();
+    }
+    
     // Compile body
     compile_statement(node->as.while_stmt.body);
+    
+    if (!is_block) {
+        end_scope();
+    }
     
     // Jump back to start of loop (before condition evaluation)
     emit_loop(loop_start);
@@ -1504,6 +1514,9 @@ static void compile_while_stmt(ASTNode* node) {
 }
 
 static void compile_for_stmt(ASTNode* node) {
+    // Begin scope for the entire for loop (includes initializer)
+    begin_scope();
+    
     // Compile initializer (if present)
     if (node->as.for_stmt.init) {
         if (node->as.for_stmt.init->type == AST_VAR_DECL) {
@@ -1524,8 +1537,18 @@ static void compile_for_stmt(ASTNode* node) {
         emit_byte(OP_POP);
     }
     
+    // Only add scope if body is NOT a block
+    bool is_block = (node->as.for_stmt.body->type == AST_BLOCK);
+    if (!is_block) {
+        begin_scope();
+    }
+    
     // Compile body
     compile_statement(node->as.for_stmt.body);
+    
+    if (!is_block) {
+        end_scope();
+    }
     
     // Compile update (if present)  
     if (node->as.for_stmt.update) {
@@ -1541,6 +1564,9 @@ static void compile_for_stmt(ASTNode* node) {
         patch_jump(exit_jump);
         emit_byte(OP_POP);
     }
+    
+    // End scope for the entire for loop
+    end_scope();
 }
 
 static void compile_return_stmt(ASTNode* node) {
@@ -1656,22 +1682,15 @@ static void compile_statement(ASTNode* node) {
 }
 
 static void compile_block(ASTNode* node) {
-    // At script level (scope_depth == 0), blocks don't create new scopes
-    // This ensures while loops and blocks at script level work correctly
-    // Inside functions (scope_depth > 0), blocks create proper local scopes
-    bool is_script_level = (current->scope_depth == 0);
-    
-    if (!is_script_level) {
-        begin_scope();
-    }
+    // Blocks always create a new scope
+    // This is correct behavior for all block statements
+    begin_scope();
     
     for (int i = 0; i < node->as.block.count; i++) {
         compile_statement(node->as.block.statements[i]);
     }
     
-    if (!is_script_level) {
-        end_scope();
-    }
+    end_scope();
 }
 
 

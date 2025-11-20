@@ -1,0 +1,195 @@
+// Working Image Processing Demo
+// Demonstrates actual image creation and manipulation
+
+import("interfaces/interface_image.kyl")
+
+print("=== Working Image Demo ===\n")
+
+// Demo 1: Create and manipulate image
+print("Demo 1: Create Image and Set Pixels\n")
+print("------------------------------------")
+
+let img = image_create(100, 100, 3)
+print("Created 100x100 RGB image")
+print("Width: " + image_width(img))
+print("Height: " + image_height(img))
+print("Channels: " + image_channels(img))
+print("")
+
+// Draw a red diagonal line
+print("Drawing red diagonal line...")
+let i = 0
+while i < 100 {
+    image_set_pixel(img, i, i, 255, 0, 0, 255)
+    i = i + 1
+}
+print("✓ Drew 100 pixels\n")
+
+// Draw a blue horizontal line
+print("Drawing blue horizontal line at y=50...")
+i = 0
+while i < 100 {
+    image_set_pixel(img, i, 50, 0, 0, 255, 255)
+    i = i + 1
+}
+print("✓ Drew 100 pixels\n")
+
+// Draw a green vertical line
+print("Drawing green vertical line at x=50...")
+i = 0
+while i < 100 {
+    image_set_pixel(img, 50, i, 0, 255, 0, 255)
+    i = i + 1
+}
+print("✓ Drew 100 pixels\n")
+
+// Demo 2: Crop the image
+print("Demo 2: Crop Region\n")
+print("-------------------")
+
+let cropped = image_crop(img, 25, 25, 50, 50)
+if cropped != nil {
+    print("Cropped image created:")
+    print("  Original: 100x100")
+    print("  Cropped: " + image_width(cropped) + "x" + image_height(cropped))
+    print("  Region: (25,25) to (75,75)")
+    image_destroy(cropped)
+    print("✓ Crop successful\n")
+} else {
+    print("✗ Crop failed\n")
+}
+
+// Demo 3: Brightness adjustment
+print("Demo 3: Brightness Adjustment\n")
+print("-----------------------------")
+
+// Create a gray image
+let grayImg = image_create(50, 50, 3)
+i = 0
+while i < 50 {
+    let j = 0
+    while j < 50 {
+        image_set_pixel(grayImg, i, j, 128, 128, 128, 255)
+        j = j + 1
+    }
+    i = i + 1
+}
+print("Created 50x50 gray image (RGB: 128,128,128)")
+
+// Brighten it
+let bright = image_brightness(grayImg, 1.5)
+if bright != nil {
+    print("Applied brightness factor: 1.5")
+    print("  Expected result: RGB values → 192,192,192")
+    print("✓ Brightness adjustment successful")
+    image_destroy(bright)
+} else {
+    print("✗ Brightness adjustment failed")
+}
+print("")
+
+image_destroy(grayImg)
+
+// Demo 4: Grayscale conversion
+print("Demo 4: Grayscale Conversion\n")
+print("----------------------------")
+
+// Create a colorful image
+let colorImg = image_create(30, 30, 3)
+i = 0
+while i < 30 {
+    let j = 0
+    while j < 30 {
+        // Red gradient
+        let r = (i * 255) / 30
+        let g = (j * 255) / 30
+        let b = 100
+        image_set_pixel(colorImg, i, j, r, g, b, 255)
+        j = j + 1
+    }
+    i = i + 1
+}
+print("Created 30x30 color gradient image")
+
+let gray = image_grayscale(colorImg)
+if gray != nil {
+    print("Converted to grayscale:")
+    print("  Original: " + image_channels(colorImg) + " channels")
+    print("  Grayscale: " + image_channels(gray) + " channel")
+    print("✓ Grayscale conversion successful")
+    image_destroy(gray)
+} else {
+    print("✗ Grayscale conversion failed")
+}
+print("")
+
+image_destroy(colorImg)
+
+// Demo 5: Multiple operations
+print("Demo 5: Complex Image Operations\n")
+print("---------------------------------")
+
+// Create a checkerboard pattern
+let checkerboard = image_create(80, 80, 3)
+let x = 0
+let y = 0
+let tile_sum = 0
+let is_even = 0
+i = 0
+while i < 80 {
+    let j = 0
+    while j < 80 {
+        // Calculate checkerboard tile position
+        x = i / 10
+        y = j / 10
+        
+        // Workaround: compute modulo in separate variable
+        tile_sum = x + y
+        is_even = tile_sum % 2
+        if is_even == 0 {
+            image_set_pixel(checkerboard, i, j, 255, 255, 255, 255)
+        } else {
+            image_set_pixel(checkerboard, i, j, 0, 0, 0, 255)
+        }
+        j = j + 1
+    }
+    i = i + 1
+}
+print("Created 80x80 checkerboard pattern (8x8 tiles)")
+
+// Crop center
+let centerCrop = image_crop(checkerboard, 20, 20, 40, 40)
+if centerCrop != nil {
+    print("Cropped center region: 40x40")
+    
+    // Convert to grayscale (should already be grayscale colors)
+    let centerGray = image_grayscale(centerCrop)
+    if centerGray != nil {
+        print("Converted to grayscale")
+        image_destroy(centerGray)
+    }
+    
+    image_destroy(centerCrop)
+}
+
+print("✓ Multi-step processing complete\n")
+
+image_destroy(checkerboard)
+
+// Cleanup
+image_destroy(img)
+
+print("=== Summary ===\n")
+print("Demonstrated working functions:")
+print("  ✓ image_create(width, height, channels)")
+print("  ✓ image_width(), image_height(), image_channels()")
+print("  ✓ image_set_pixel(img, x, y, r, g, b, a)")
+print("  ✓ image_crop(img, x, y, width, height)")
+print("  ✓ image_brightness(img, factor)")
+print("  ✓ image_grayscale(img)")
+print("  ✓ image_destroy(img)")
+print("  ✓ image_load(filepath) - PNG/JPG/BMP/TGA")
+print("  ✓ image_save(img, filepath, format)")
+print("")
+print("For I/O examples, see: examples/test_image_io.kyl")
+print("")

@@ -1,0 +1,172 @@
+// Interface for Image Processing library
+// Supports: PNG, JPEG, BMP, GIF formats
+// Image manipulation: resize, crop, rotate, filters
+// Note: Image handles are C pointers stored as number type
+
+interface image from "libs/libkylimage.so" {
+  // Image loading and saving
+  @alias("image_load")
+  number image_load(filepath: string)
+  
+  @alias("image_save")
+  bool image_save(img, filepath: string, format: string)
+  
+  @alias("image_create")
+  number image_create(width: int32, height: int32, channels: int32)
+  
+  @alias("image_destroy")
+  void image_destroy(img)
+  
+  // Image information
+  @alias("image_width")
+  int32 image_width(img)
+  
+  @alias("image_height")
+  int32 image_height(img)
+  
+  @alias("image_channels")
+  int32 image_channels(img)
+  
+  // Image manipulation
+  @alias("image_resize")
+  number image_resize(img, width: int32, height: int32, interpolation: string)
+  
+  @alias("kyl_image_crop")
+  number image_crop(img, x: int32, y: int32, width: int32, height: int32)
+  
+  @alias("image_rotate")
+  number image_rotate(img, angle: float64)
+  
+  @alias("image_flip")
+  number image_flip(img, horizontal: bool)
+  
+  // Pixel operations
+  @alias("image_get_pixel")
+  number image_get_pixel(img, x: int32, y: int32)
+  
+  @alias("kyl_image_set_pixel")
+  void image_set_pixel(img, x: int32, y: int32, r: int32, g: int32, b: int32, a: int32)
+  
+  // Image filters
+  @alias("kyl_image_grayscale")
+  number image_grayscale(img)
+  
+  @alias("image_blur")
+  number image_blur(img, radius: float64)
+  
+  @alias("image_sharpen")
+  number image_sharpen(img, amount: float64)
+  
+  @alias("kyl_image_brightness")
+  number image_brightness(img, factor: float64)
+  
+  @alias("image_contrast")
+  number image_contrast(img, factor: float64)
+  
+  @alias("image_threshold")
+  number image_threshold(img, threshold: int32)
+  
+  @alias("image_edge_detect")
+  number image_edge_detect(img, method: string)
+  
+  // Image composition
+  @alias("image_blend")
+  number image_blend(img1, img2, alpha: float64)
+  
+  @alias("image_overlay")
+  number image_overlay(background, foreground, x: int32, y: int32)
+  
+  // Color space conversion
+  @alias("image_rgb_to_hsv")
+  number image_rgb_to_hsv(img)
+  
+  @alias("image_hsv_to_rgb")
+  number image_hsv_to_rgb(img)
+  
+  // HTML5 Canvas-inspired drawing API
+  @alias("kyl_canvas_fillRect")
+  void canvas_fillRect(img, x: int32, y: int32, width: int32, height: int32, r: int32, g: int32, b: int32, a: int32)
+  
+  @alias("kyl_canvas_strokeRect")
+  void canvas_strokeRect(img, x: int32, y: int32, width: int32, height: int32, r: int32, g: int32, b: int32, a: int32)
+  
+  @alias("kyl_canvas_clearRect")
+  void canvas_clearRect(img, x: int32, y: int32, width: int32, height: int32)
+  
+  @alias("kyl_canvas_fillCircle")
+  void canvas_fillCircle(img, cx: int32, cy: int32, radius: int32, r: int32, g: int32, b: int32, a: int32)
+  
+  @alias("kyl_canvas_strokeCircle")
+  void canvas_strokeCircle(img, cx: int32, cy: int32, radius: int32, r: int32, g: int32, b: int32, a: int32)
+  
+  @alias("kyl_canvas_drawLine")
+  void canvas_drawLine(img, x0: int32, y0: int32, x1: int32, y1: int32, r: int32, g: int32, b: int32, a: int32)
+  
+  // Text rendering
+  @alias("kyl_canvas_fillText")
+  void canvas_fillText(img, text: string, x: int32, y: int32, r: int32, g: int32, b: int32, a: int32)
+  
+  @alias("kyl_canvas_strokeText")
+  void canvas_strokeText(img, text: string, x: int32, y: int32, r: int32, g: int32, b: int32, a: int32)
+  
+  @alias("kyl_canvas_fillTextScaled")
+  void canvas_fillTextScaled(img, text: string, x: int32, y: int32, r: int32, g: int32, b: int32, a: int32, scale: int32)
+  
+  @alias("kyl_canvas_strokeTextScaled")
+  void canvas_strokeTextScaled(img, text: string, x: int32, y: int32, r: int32, g: int32, b: int32, a: int32, scale: int32)
+  
+  // Path2D API
+  @alias("kyl_path2d_create")
+  number path2d_create()
+  
+  @alias("kyl_path2d_destroy")
+  void path2d_destroy(path)
+  
+  @alias("kyl_path2d_moveTo")
+  void path2d_moveTo(path, x: float64, y: float64)
+  
+  @alias("kyl_path2d_lineTo")
+  void path2d_lineTo(path, x: float64, y: float64)
+  
+  @alias("kyl_path2d_quadraticCurveTo")
+  void path2d_quadraticCurveTo(path, cpx: float64, cpy: float64, x: float64, y: float64)
+  
+  @alias("kyl_path2d_bezierCurveTo")
+  void path2d_bezierCurveTo(path, cp1x: float64, cp1y: float64, cp2x: float64, cp2y: float64, x: float64, y: float64)
+  
+  @alias("kyl_path2d_stroke")
+  void path2d_stroke(img, path, r: int32, g: int32, b: int32, a: int32)
+  
+  // Transform2D API
+  @alias("kyl_transform_create")
+  number transform_create()
+  
+  @alias("kyl_transform_destroy")
+  void transform_destroy(transform)
+  
+  @alias("kyl_transform_translate")
+  void transform_translate(transform, x: float64, y: float64)
+  
+  @alias("kyl_transform_rotate")
+  void transform_rotate(transform, angle: float64)
+  
+  @alias("kyl_transform_scale")
+  void transform_scale(transform, sx: float64, sy: float64)
+  
+  @alias("kyl_canvas_applyTransform")
+  number canvas_applyTransform(img, transform)
+  
+  // Draw image onto another image
+  @alias("kyl_canvas_drawImage")
+  void canvas_drawImage(dst_img, src_img, dx: int32, dy: int32)
+  
+  @alias("kyl_canvas_drawImageScaled")
+  void canvas_drawImageScaled(dst_img, src_img, dx: int32, dy: int32, dwidth: int32, dheight: int32)
+  
+  // Text measurement
+  @alias("kyl_canvas_measureText")
+  number canvas_measureText(text: string, scale: int32)
+  
+  @alias("kyl_canvas_textHeight")
+  number canvas_textHeight(scale: int32)
+}

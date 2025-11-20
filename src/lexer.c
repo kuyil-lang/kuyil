@@ -215,7 +215,11 @@ static KuyilTokenType identifier_type(Lexer* lexer) {
             if (lexer->current - lexer->start > 1) {
                 switch (lexer->start[1]) {
                     case 'f': return check_keyword(0, 2, "if", TOKEN_IF, lexer);
-                    case 'n': return check_keyword(1, 8, "nterface", TOKEN_INTERFACE, lexer);
+                    case 'n':
+                        if (lexer->current - lexer->start == 2) {
+                            return check_keyword(0, 2, "in", TOKEN_IN, lexer);
+                        }
+                        return check_keyword(1, 8, "nterface", TOKEN_INTERFACE, lexer);
                 }
             }
             return check_keyword(1, 1, "f", TOKEN_IF, lexer);
@@ -410,7 +414,9 @@ Token lexer_scan_token(Lexer* lexer) {
         case ']': return make_token(lexer, TOKEN_RIGHT_BRACKET);
         case ';': return make_token(lexer, TOKEN_SEMICOLON);
         case ',': return make_token(lexer, TOKEN_COMMA);
-        case '.': return make_token(lexer, TOKEN_DOT);
+        case '.':
+            if (match(lexer, '.')) return make_token(lexer, TOKEN_DOT_DOT);
+            return make_token(lexer, TOKEN_DOT);
         case ':': return make_token(lexer, TOKEN_COLON);
         case '"': return string(lexer);
         case '\'': return single_quote_string(lexer);
@@ -508,8 +514,10 @@ const char* token_type_string(KuyilTokenType type) {
         case TOKEN_SEMICOLON: return "SEMICOLON";
         case TOKEN_COMMA: return "COMMA";
         case TOKEN_DOT: return "DOT";
+        case TOKEN_DOT_DOT: return "DOT_DOT";
         case TOKEN_COLON: return "COLON";
         case TOKEN_ARROW: return "ARROW";
+        case TOKEN_IN: return "IN";
         case TOKEN_AT: return "AT";
         case TOKEN_NEWLINE: return "NEWLINE";
         case TOKEN_EOF: return "EOF";

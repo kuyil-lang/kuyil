@@ -1,0 +1,82 @@
+// Test ConcurrentHashMap basic operations
+import("interfaces/interface_ds.kyl")
+
+print("=== Testing ConcurrentHashMap Basic Operations ===\n")
+
+// Test 1: Simple number values
+print("Test 1: Number values")
+let map1 = ds_concurrentHashMapCreate(16)
+print("Created map: " + map1)
+
+let put1 = ds_concurrentHashMapPut(map1, "key1", 100)
+print("Put number result: " + put1)
+
+let get1 = ds_concurrentHashMapGet(map1, "key1")
+print("Get number result: " + get1)
+print("")
+
+// Test 2: String values
+print("Test 2: String values")
+let map2 = ds_concurrentHashMapCreate(16)
+let put2 = ds_concurrentHashMapPut(map2, "name", "Alice")
+print("Put string result: " + put2)
+
+let get2 = ds_concurrentHashMapGet(map2, "name")
+print("Get string result: " + get2)
+print("")
+
+// Test 3: Object values
+print("Test 3: Object values")
+let map3 = ds_concurrentHashMapCreate(16)
+let obj = {"name": "Bob", "age": 30}
+print("Object to put: " + obj)
+
+let put3 = ds_concurrentHashMapPut(map3, "user", obj)
+print("Put object result: " + put3)
+
+let get3 = ds_concurrentHashMapGet(map3, "user")
+print("Get object result: " + get3)
+
+if get3 != nil {
+    print("Object name: " + get3.name)
+    print("Object age: " + get3.age)
+}
+print("")
+
+// Test 4: PutIfAbsent
+print("Test 4: PutIfAbsent")
+let map4 = ds_concurrentHashMapCreate(16)
+
+let absent1 = ds_concurrentHashMapPutIfAbsent(map4, "counter", 1)
+print("PutIfAbsent (first): " + absent1)
+
+let absent2 = ds_concurrentHashMapPutIfAbsent(map4, "counter", 2)
+print("PutIfAbsent (second): " + absent2)
+
+let val = ds_concurrentHashMapGet(map4, "counter")
+print("Counter value: " + val)
+print("")
+
+// Test 5: Replace
+print("Test 5: Replace operation")
+let map5 = ds_concurrentHashMapCreate(16)
+ds_concurrentHashMapPut(map5, "balance", 100)
+
+let oldVal = ds_concurrentHashMapGet(map5, "balance")
+print("Old balance: " + oldVal)
+
+let replaced = ds_concurrentHashMapReplace(map5, "balance", 100, 200)
+print("Replace result: " + replaced)
+
+let newVal = ds_concurrentHashMapGet(map5, "balance")
+print("New balance: " + newVal)
+print("")
+
+// Cleanup
+ds_concurrentHashMapDestroy(map1)
+ds_concurrentHashMapDestroy(map2)
+ds_concurrentHashMapDestroy(map3)
+ds_concurrentHashMapDestroy(map4)
+ds_concurrentHashMapDestroy(map5)
+
+print("=== All tests completed ===")

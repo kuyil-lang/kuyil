@@ -1,0 +1,420 @@
+// Combined Image and Chart Processing
+// Real-world examples: Data visualization with image manipulation
+
+import("interfaces/interface_image.kyl")
+import("interfaces/interface_chart.kyl")
+
+print("=== Image & Chart Integration Examples ===\n")
+
+// ============================================
+// Use Case 1: Report Generation
+// ============================================
+
+print("Use Case 1: Automated Report Generation\n")
+print("----------------------------------------")
+
+print("Scenario: Generate monthly sales report with charts and logo\n")
+
+print("Step 1: Generate sales chart")
+print("  let salesChart = chart_create_bar(800, 400)")
+print("  chart_set_title(salesChart, \"Q4 2025 Sales\")")
+print("  // ... add data ...")
+print("  chart_render_png(salesChart, \"sales.png\")")
+print("")
+
+print("Step 2: Load company logo")
+print("  let logo = image_load(\"company_logo.png\")")
+print("  let logoSmall = image_resize(logo, 150, 50, \"bicubic\")")
+print("")
+
+print("Step 3: Create report background")
+print("  let report = image_create(850, 1100, 3)  // A4 size at 100 DPI")
+print("")
+
+print("Step 4: Composite elements")
+print("  // Add logo at top")
+print("  report = image_overlay(report, logoSmall, 25, 25)")
+print("")
+print("  // Load and add chart")
+print("  let chartImg = image_load(\"sales.png\")")
+print("  report = image_overlay(report, chartImg, 25, 100)")
+print("")
+
+print("Step 5: Add watermark")
+print("  let watermark = image_load(\"confidential.png\")")
+print("  report = image_blend(report, watermark, 0.3)")
+print("")
+
+print("Step 6: Save final report")
+print("  image_save(report, \"monthly_report.png\", \"png\")")
+print("")
+
+print("✓ Report generation workflow shown\n")
+
+// ============================================
+// Use Case 2: Chart Style Customization
+// ============================================
+
+print("Use Case 2: Custom Chart Styling\n")
+print("---------------------------------")
+
+print("Scenario: Apply company branding to charts\n")
+
+print("Step 1: Generate base chart")
+print("  let chart = chart_create_line(800, 600)")
+print("  chart_set_title(chart, \"Performance Metrics\")")
+print("  // ... add data ...")
+print("  chart_render_png(chart, \"chart_base.png\")")
+print("")
+
+print("Step 2: Load chart as image")
+print("  let chartImg = image_load(\"chart_base.png\")")
+print("")
+
+print("Step 3: Apply filters for brand style")
+print("  // Adjust colors")
+print("  chartImg = image_brightness(chartImg, 1.1)")
+print("  chartImg = image_contrast(chartImg, 1.2)")
+print("")
+
+print("Step 4: Add border effect")
+print("  // In practice, you'd draw a border using pixel operations")
+print("  let i = 0")
+print("  while i < 800 {")
+print("      // Top border (5px thick)")
+print("      let j = 0")
+print("      while j < 5 {")
+print("          image_set_pixel(chartImg, i, j, 41, 128, 185, 255)")
+print("          j = j + 1")
+print("      }")
+print("      i = i + 1")
+print("  }")
+print("")
+
+print("Step 5: Save styled chart")
+print("  image_save(chartImg, \"chart_branded.png\", \"png\")")
+print("")
+
+print("✓ Chart customization workflow shown\n")
+
+// ============================================
+// Use Case 3: Dashboard Screenshot Processing
+// ============================================
+
+print("Use Case 3: Dashboard Screenshot Processing\n")
+print("--------------------------------------------")
+
+print("Scenario: Create thumbnails for dashboard gallery\n")
+
+print("Step 1: Generate dashboard charts")
+print("  let chart1 = chart_create_line(1200, 800)")
+print("  let chart2 = chart_create_bar(1200, 800)")
+print("  let chart3 = chart_create_pie(1200, 800)")
+print("")
+print("  chart_render_png(chart1, \"dash1.png\")")
+print("  chart_render_png(chart2, \"dash2.png\")")
+print("  chart_render_png(chart3, \"dash3.png\")")
+print("")
+
+print("Step 2: Create thumbnails")
+print("  let dashboards = [\"dash1.png\", \"dash2.png\", \"dash3.png\"]")
+print("  let i = 0")
+print("  while i < dashboards.length {")
+print("      let img = image_load(dashboards[i])")
+print("      ")
+print("      // Resize to thumbnail")
+print("      let thumb = image_resize(img, 300, 200, \"bicubic\")")
+print("      ")
+print("      // Add slight sharpening")
+print("      thumb = image_sharpen(thumb, 1.2)")
+print("      ")
+print("      // Save thumbnail")
+print("      image_save(thumb, \"thumb_\" + i + \".png\", \"png\")")
+print("      ")
+print("      image_destroy(img)")
+print("      image_destroy(thumb)")
+print("      i = i + 1")
+print("  }")
+print("")
+
+print("✓ Dashboard thumbnail generation shown\n")
+
+// ============================================
+// Use Case 4: Data Visualization Pipeline
+// ============================================
+
+print("Use Case 4: Data → Chart → Processed Image\n")
+print("-------------------------------------------")
+
+print("Scenario: Time series anomaly detection visualization\n")
+
+print("Step 1: Prepare data arrays")
+print("  let timestamps = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]")
+print("  let values = [100, 105, 110, 108, 300, 112, 115, 118, 120, 122, 125]")
+print("  let anomalies = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]  // Spike at t=4")
+print("")
+
+print("Step 2: Create base chart")
+print("  let chart = chart_create_line(1000, 600)")
+print("  chart_set_title(chart, \"Anomaly Detection\")")
+print("  chart_set_xlabel(chart, \"Time\")")
+print("  chart_set_ylabel(chart, \"Value\")")
+print("  chart_add_series(chart, \"Metric\", timestamps, values, \"#4ECDC4\")")
+print("")
+
+print("Step 3: Highlight anomaly region")
+print("  chart_add_rectangle(chart, 3.5, 0.0, 1.0, 350.0, \"#FFCCCC\")")
+print("  chart_add_text(chart, 4.0, 320.0, \"Anomaly\", 14.0)")
+print("")
+
+print("Step 4: Render and process")
+print("  chart_render_png(chart, \"anomaly_chart.png\")")
+print("  ")
+print("  let chartImg = image_load(\"anomaly_chart.png\")")
+print("  ")
+print("  // Add warning border")
+print("  let processed = chartImg")
+print("  // ... add red border using pixel operations ...")
+print("  ")
+print("  image_save(processed, \"anomaly_alert.png\", \"png\")")
+print("")
+
+print("✓ Anomaly visualization pipeline shown\n")
+
+// ============================================
+// Use Case 5: Chart Comparison Grid
+// ============================================
+
+print("Use Case 5: Multi-Chart Comparison Grid\n")
+print("----------------------------------------")
+
+print("Scenario: Create 2x2 grid comparing different metrics\n")
+
+print("Step 1: Generate individual charts")
+print("  let cpu = chart_create_line(400, 300)")
+print("  let mem = chart_create_line(400, 300)")
+print("  let disk = chart_create_line(400, 300)")
+print("  let net = chart_create_line(400, 300)")
+print("")
+print("  // ... configure and populate each chart ...")
+print("")
+print("  chart_render_png(cpu, \"cpu.png\")")
+print("  chart_render_png(mem, \"mem.png\")")
+print("  chart_render_png(disk, \"disk.png\")")
+print("  chart_render_png(net, \"net.png\")")
+print("")
+
+print("Step 2: Create grid canvas")
+print("  let grid = image_create(850, 650, 3)  // 2x2 with padding")
+print("")
+
+print("Step 3: Load and position charts")
+print("  let cpuImg = image_load(\"cpu.png\")")
+print("  let memImg = image_load(\"mem.png\")")
+print("  let diskImg = image_load(\"disk.png\")")
+print("  let netImg = image_load(\"net.png\")")
+print("")
+print("  // Position in 2x2 grid")
+print("  grid = image_overlay(grid, cpuImg, 25, 25)      // Top-left")
+print("  grid = image_overlay(grid, memImg, 425, 25)     // Top-right")
+print("  grid = image_overlay(grid, diskImg, 25, 325)    // Bottom-left")
+print("  grid = image_overlay(grid, netImg, 425, 325)    // Bottom-right")
+print("")
+
+print("Step 4: Save comparison grid")
+print("  image_save(grid, \"metrics_grid.png\", \"png\")")
+print("")
+
+print("✓ Chart grid composition shown\n")
+
+// ============================================
+// Use Case 6: Animated Chart Frames
+// ============================================
+
+print("Use Case 6: Generate Chart Animation Frames\n")
+print("--------------------------------------------")
+
+print("Scenario: Create frame sequence for animated chart\n")
+
+print("Frame generation loop:")
+print("  let frames = 30")
+print("  let i = 0")
+print("  while i < frames {")
+print("      // Generate chart with data up to frame i")
+print("      let chart = chart_create_line(600, 400)")
+print("      ")
+print("      // Simulate growing data")
+print("      let dataPoints = (i + 1) * 2")
+print("      // ... add dataPoints to chart ...")
+print("      ")
+print("      let filename = \"frame_\" + i + \".png\"")
+print("      chart_render_png(chart, filename)")
+print("      ")
+print("      // Process frame (optional)")
+print("      let frameImg = image_load(filename)")
+print("      frameImg = image_brightness(frameImg, 1.1)")
+print("      image_save(frameImg, \"processed_\" + filename, \"png\")")
+print("      ")
+print("      chart_destroy(chart)")
+print("      image_destroy(frameImg)")
+print("      i = i + 1")
+print("  }")
+print("")
+
+print("Convert frames to GIF:")
+print("  // Use external tool: ffmpeg or ImageMagick")
+print("  // ffmpeg -i frame_%d.png -vf palettegen palette.png")
+print("  // ffmpeg -i frame_%d.png -i palette.png output.gif")
+print("")
+
+print("✓ Animation frame generation shown\n")
+
+// ============================================
+// Use Case 7: Chart Quality Enhancement
+// ============================================
+
+print("Use Case 7: Enhance Chart for Presentation\n")
+print("-------------------------------------------")
+
+print("Scenario: Prepare chart for high-quality presentation\n")
+
+print("Step 1: Generate high-resolution chart")
+print("  let chart = chart_create_line(2400, 1800)  // 3x size")
+print("  chart_set_title(chart, \"Annual Revenue Growth\")")
+print("  // ... add data ...")
+print("  chart_render_png(chart, \"revenue_hires.png\")")
+print("")
+
+print("Step 2: Load and enhance")
+print("  let chartImg = image_load(\"revenue_hires.png\")")
+print("  ")
+print("  // Enhance clarity")
+print("  chartImg = image_sharpen(chartImg, 1.3)")
+print("  chartImg = image_contrast(chartImg, 1.1)")
+print("")
+
+print("Step 3: Add presentation styling")
+print("  // Add subtle shadow effect (simulation)")
+print("  let shadow = image_create(2400, 1800, 3)")
+print("  shadow = image_blur(shadow, 10.0)")
+print("  let final = image_blend(shadow, chartImg, 0.95)")
+print("")
+
+print("Step 4: Save for print")
+print("  image_save(final, \"revenue_presentation.png\", \"png\")")
+print("  // For print: use 300 DPI → 8\" x 6\" physical size")
+print("")
+
+print("✓ Chart enhancement workflow shown\n")
+
+// ============================================
+// Use Case 8: Chart Data Extraction
+// ============================================
+
+print("Use Case 8: Extract Chart Colors for Analysis\n")
+print("----------------------------------------------")
+
+print("Scenario: Analyze color distribution in chart\n")
+
+print("Analysis pattern:")
+print("  let chartImg = image_load(\"chart.png\")")
+print("  let w = image_width(chartImg)")
+print("  let h = image_height(chartImg)")
+print("")
+print("  // Sample colors from chart regions")
+print("  let colorCounts = {}")
+print("  ")
+print("  let y = 0")
+print("  while y < h {")
+print("      let x = 0")
+print("      while x < w {")
+print("          let pixel = image_get_pixel(chartImg, x, y)")
+print("          // Classify pixel color")
+print("          // ... count color frequencies ...")
+print("          x = x + 10  // Sample every 10 pixels")
+print("      }")
+print("      y = y + 10")
+print("  }")
+print("")
+print("  // Use color stats for accessibility checks")
+print("  // Verify sufficient contrast ratios")
+print("")
+
+print("✓ Color analysis pattern shown\n")
+
+// ============================================
+// Best Practices
+// ============================================
+
+print("=== Best Practices for Integration ===\n")
+
+print("1. Workflow Order:")
+print("   - Generate charts first (data → visualization)")
+print("   - Process charts as images second (enhancement)")
+print("   - Compose final output third (layout)")
+print("   - Optimize and export last (format conversion)\n")
+
+print("2. File Format Strategy:")
+print("   - Generate: PNG (lossless intermediate)")
+print("   - Process: PNG (preserve quality)")
+print("   - Web output: PNG (small) or JPEG (photos)")
+print("   - Print output: PDF or high-res PNG")
+print("   - Archive: Original SVG + processed PNG\n")
+
+print("3. Memory Management:")
+print("   - Destroy images after use: image_destroy(img)")
+print("   - Process charts in batches to limit memory")
+print("   - Delete intermediate files after composition")
+print("   - Use streaming for large batch operations\n")
+
+print("4. Quality Settings:")
+print("   - Charts: Generate at 2-3x target size, downscale")
+print("   - Thumbnails: Use bicubic interpolation")
+print("   - Print: 300 DPI minimum (e.g., 2400x1800 for 8x6\")")
+print("   - Web: 72-96 DPI sufficient (800x600 typical)\n")
+
+print("5. Accessibility:")
+print("   - Ensure chart text remains readable after processing")
+print("   - Maintain sufficient contrast after blending")
+print("   - Avoid over-sharpening (creates artifacts)")
+print("   - Test color-blind accessibility before filtering\n")
+
+print("6. Performance Optimization:")
+print("   - Cache generated charts")
+print("   - Use appropriate image sizes (don't over-generate)")
+print("   - Batch process similar operations")
+print("   - Use async/parallel for multiple charts")
+print("   - Profile memory usage for large reports\n")
+
+print("7. Common Patterns:")
+print("   - Report: Chart → Resize → Overlay logo → Save PDF")
+print("   - Dashboard: Multiple charts → Grid layout → Web PNG")
+print("   - Alert: Chart → Highlight region → Add border → Email")
+print("   - Archive: Chart → Watermark → Thumbnail → Storage")
+print("   - Presentation: Chart → Enhance → High-res → Print\n")
+
+print("8. Error Handling:")
+print("   - Check image_load() returns before processing")
+print("   - Validate dimensions before overlay operations")
+print("   - Verify chart_render_*() success")
+print("   - Handle missing files gracefully")
+print("   - Provide fallback for unsupported formats\n")
+
+print("9. Automation Tips:")
+print("   - Template-based chart generation")
+print("   - Batch processing with loops")
+print("   - Scheduled report generation (cron)")
+print("   - Event-triggered visualizations")
+print("   - Data pipeline integration\n")
+
+print("10. Real-World Use Cases:")
+print("    - Business reports: Charts + company branding")
+print("    - Monitoring dashboards: Real-time metric visualization")
+print("    - Email alerts: Inline chart images")
+print("    - Social media: Infographic generation")
+print("    - Scientific papers: Publication-quality figures")
+print("    - Web analytics: Automated insight images")
+print("    - Mobile apps: Thumbnail generation")
+print("    - E-commerce: Product chart comparisons\n")
+
+print("✓ Image and chart integration examples complete\n")

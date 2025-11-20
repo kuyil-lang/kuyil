@@ -1,0 +1,405 @@
+// Time Series Chart Demo with Real Rendering
+import "image"
+
+print("=== Time Series Chart Demo ===\n\n")
+
+// ===== Chart Rendering Functions =====
+
+// Helper: Draw a line using Bresenham's algorithm
+fn draw_line(img, x0, y0, x1, y1, r, g, b) {
+    let dx = x1 - x0
+    if dx < 0 {
+        dx = 0 - dx
+    }
+    
+    let dy = y1 - y0
+    if dy < 0 {
+        dy = 0 - dy
+    }
+    
+    let sx = 1
+    if x0 > x1 {
+        sx = 0 - 1
+    }
+    
+    let sy = 1
+    if y0 > y1 {
+        sy = 0 - 1
+    }
+    
+    let err = dx - dy
+    let x = x0
+    let y = y0
+    
+    let max_steps = dx + dy + 10
+    let steps = 0
+    
+    while steps < max_steps {
+        image_set_pixel(img, x, y, r, g, b, 255)
+        
+        if x == x1 {
+            if y == y1 {
+                steps = max_steps
+            }
+        }
+        
+        let e2 = 2 * err
+        if e2 > (0 - dy) {
+            err = err - dy
+            x = x + sx
+        }
+        if e2 < dx {
+            err = err + dx
+            y = y + sy
+        }
+        
+        steps = steps + 1
+    }
+}
+
+// Helper: Fill rectangle
+fn fill_rect(img, x, y, w, h, r, g, b) {
+    let i = 0
+    while i < w {
+        let j = 0
+        while j < h {
+            let px = x + i
+            let py = y + j
+            image_set_pixel(img, px, py, r, g, b, 255)
+            j = j + 1
+        }
+        i = i + 1
+    }
+}
+
+// Create line chart from time series data
+fn create_line_chart(width, height, data, data_len, title) {
+    // Create image with white background
+    let img = image_create(width, height, 3)
+    
+    // Fill white background
+    let i = 0
+    while i < width {
+        let j = 0
+        while j < height {
+            image_set_pixel(img, i, j, 255, 255, 255, 255)
+            j = j + 1
+        }
+        i = i + 1
+    }
+    
+    // Chart margins
+    let margin_left = 60
+    let margin_right = 20
+    let margin_top = 40
+    let margin_bottom = 40
+    
+    let chart_width = width - margin_left - margin_right
+    let chart_height = height - margin_top - margin_bottom
+    
+    // Draw axes
+    let axis_x0 = margin_left
+    let axis_y0 = height - margin_bottom
+    let axis_x1 = width - margin_right
+    let axis_y1 = margin_top
+    
+    // Y-axis
+    draw_line(img, axis_x0, axis_y0, axis_x0, axis_y1, 0, 0, 0)
+    // X-axis
+    draw_line(img, axis_x0, axis_y0, axis_x1, axis_y0, 0, 0, 0)
+    
+    // Find data min/max
+    let min_val = data[0]
+    let max_val = data[0]
+    i = 1
+    while i < data_len {
+        if data[i] < min_val {
+            min_val = data[i]
+        }
+        if data[i] > max_val {
+            max_val = data[i]
+        }
+        i = i + 1
+    }
+    
+    // Add some padding to range
+    let range_val = max_val - min_val
+    if range_val < 0.001 {
+        range_val = 1.0
+    }
+    min_val = min_val - (range_val * 0.1)
+    max_val = max_val + (range_val * 0.1)
+    range_val = max_val - min_val
+    
+    // Draw data points and lines
+    i = 0
+    while i < (data_len - 1) {
+        // Calculate pixel positions
+        let x0 = margin_left + ((i * chart_width) / (data_len - 1))
+        let norm0 = (data[i] - min_val) / range_val
+        let y0 = axis_y0 - (norm0 * chart_height)
+        
+        let x1 = margin_left + (((i + 1) * chart_width) / (data_len - 1))
+        let norm1 = (data[i + 1] - min_val) / range_val
+        let y1 = axis_y0 - (norm1 * chart_height)
+        
+        // Draw line segment (blue)
+        draw_line(img, x0, y0, x1, y1, 0, 100, 200)
+        
+        // Draw point marker (darker blue)
+        fill_rect(img, x0 - 2, y0 - 2, 4, 4, 0, 50, 150)
+        
+        i = i + 1
+    }
+    
+    // Draw last point
+    let x_last = margin_left + (((data_len - 1) * chart_width) / (data_len - 1))
+    let norm_last = (data[data_len - 1] - min_val) / range_val
+    let y_last = axis_y0 - (norm_last * chart_height)
+    fill_rect(img, x_last - 2, y_last - 2, 4, 4, 0, 50, 150)
+    
+    return img
+}
+
+// Create bar chart
+fn create_bar_chart(width, height, data, data_len, title) {
+    let img = image_create(width, height, 3)
+    
+    // White background
+    let i = 0
+    while i < width {
+        let j = 0
+        while j < height {
+            image_set_pixel(img, i, j, 255, 255, 255, 255)
+            j = j + 1
+        }
+        i = i + 1
+    }
+    
+    // Margins
+    let margin_left = 60
+    let margin_right = 20
+    let margin_top = 40
+    let margin_bottom = 40
+    
+    let chart_width = width - margin_left - margin_right
+    let chart_height = height - margin_top - margin_bottom
+    
+    // Draw axes
+    let axis_x0 = margin_left
+    let axis_y0 = height - margin_bottom
+    let axis_x1 = width - margin_right
+    let axis_y1 = margin_top
+    
+    draw_line(img, axis_x0, axis_y0, axis_x0, axis_y1, 0, 0, 0)
+    draw_line(img, axis_x0, axis_y0, axis_x1, axis_y0, 0, 0, 0)
+    
+    // Find max value
+    let max_val = data[0]
+    i = 1
+    while i < data_len {
+        if data[i] > max_val {
+            max_val = data[i]
+        }
+        i = i + 1
+    }
+    
+    if max_val < 0.001 {
+        max_val = 1.0
+    }
+    
+    // Draw bars
+    let bar_width = chart_width / data_len
+    let bar_spacing = bar_width / 5
+    let actual_bar_width = bar_width - bar_spacing
+    
+    i = 0
+    while i < data_len {
+        let bar_height = (data[i] / max_val) * chart_height
+        let bar_x = margin_left + (i * bar_width) + (bar_spacing / 2)
+        let bar_y = axis_y0 - bar_height
+        
+        // Alternate colors for bars
+        let bar_r = 70
+        let bar_g = 130
+        let bar_b = 180
+        
+        let remainder = i % 3
+        if remainder == 1 {
+            bar_r = 200
+            bar_g = 100
+            bar_b = 80
+        }
+        if remainder == 2 {
+            bar_r = 100
+            bar_g = 180
+            bar_b = 100
+        }
+        
+        fill_rect(img, bar_x, bar_y, actual_bar_width, bar_height, bar_r, bar_g, bar_b)
+        
+        i = i + 1
+    }
+    
+    return img
+}
+
+// ===== Demo Start =====
+
+// Demo 1: Simple sine wave time series
+print("Demo 1: Sine Wave Time Series\n")
+print("------------------------------\n")
+
+// Generate sine wave data
+let data1 = [0.0, 0.5, 0.87, 1.0, 0.87, 0.5, 0.0, -0.5, -0.87, -1.0, -0.87, -0.5, 0.0, 0.5, 0.87, 1.0]
+let len1 = 16
+
+print("Generated ", len1, " data points (sine wave)\n")
+
+let chart1 = create_line_chart(800, 400, data1, len1, "Sine Wave")
+if chart1 != nil {
+    print("✓ Created line chart\n")
+    let saved1 = image_save(chart1, "timeseries_sine.png", "png")
+    if saved1 {
+        print("✓ Saved to timeseries_sine.png\n")
+    }
+    image_destroy(chart1)
+}
+
+print("\n")
+
+// Demo 2: Stock price simulation
+print("Demo 2: Stock Price Simulation\n")
+print("-------------------------------\n")
+
+// Generate random walk stock prices
+let data2 = [100.0, 102.0, 105.0, 103.0, 107.0, 110.0, 108.0, 112.0, 115.0, 113.0, 
+             118.0, 120.0, 117.0, 122.0, 125.0, 123.0, 128.0, 130.0, 127.0, 132.0]
+let len2 = 20
+
+print("Generated ", len2, " stock prices\n")
+print("Starting price: 100.0\n")
+print("Ending price: 132.0\n")
+print("Change: +32.0 (+32%)\n")
+
+let chart2 = create_line_chart(800, 400, data2, len2, "Stock Price")
+if chart2 != nil {
+    print("✓ Created stock price chart\n")
+    let saved2 = image_save(chart2, "timeseries_stock.png", "png")
+    if saved2 {
+        print("✓ Saved to timeseries_stock.png\n")
+    }
+    image_destroy(chart2)
+}
+
+print("\n")
+
+// Demo 3: Temperature data
+print("Demo 3: Daily Temperature\n")
+print("-------------------------\n")
+
+let temps = [12.0, 15.0, 18.0, 22.0, 25.0, 28.0, 30.0, 32.0, 30.0, 28.0, 25.0, 20.0]
+let temp_len = 12
+
+print("12-month temperature data (°C)\n")
+print("Min: 12°C (January)\n")
+print("Max: 32°C (August)\n")
+
+let chart3 = create_line_chart(800, 400, temps, temp_len, "Annual Temperature")
+if chart3 != nil {
+    print("✓ Created temperature chart\n")
+    let saved3 = image_save(chart3, "timeseries_temp.png", "png")
+    if saved3 {
+        print("✓ Saved to timeseries_temp.png\n")
+    }
+    image_destroy(chart3)
+}
+
+print("\n")
+
+// Demo 4: Bar chart - Monthly sales
+print("Demo 4: Monthly Sales Bar Chart\n")
+print("--------------------------------\n")
+
+let sales = [45.0, 52.0, 48.0, 61.0, 55.0, 67.0, 72.0, 68.0, 63.0, 58.0, 65.0, 80.0]
+let sales_len = 12
+
+print("12-month sales data (thousands)\n")
+print("Total sales: 734K\n")
+print("Best month: December (80K)\n")
+
+let chart4 = create_bar_chart(800, 400, sales, sales_len, "Monthly Sales")
+if chart4 != nil {
+    print("✓ Created sales bar chart\n")
+    let saved4 = image_save(chart4, "timeseries_sales.png", "png")
+    if saved4 {
+        print("✓ Saved to timeseries_sales.png\n")
+    }
+    image_destroy(chart4)
+}
+
+print("\n")
+
+// Demo 5: Server metrics
+print("Demo 5: Server CPU Usage\n")
+print("------------------------\n")
+
+let cpu = [25.0, 30.0, 28.0, 45.0, 60.0, 75.0, 85.0, 90.0, 88.0, 82.0, 70.0, 55.0, 
+           48.0, 40.0, 35.0, 32.0, 30.0, 28.0, 26.0, 25.0]
+let cpu_len = 20
+
+print("20 data points of CPU usage (%)\n")
+print("Peak usage: 90% (load spike)\n")
+print("Average: ~50%\n")
+
+let chart5 = create_line_chart(800, 400, cpu, cpu_len, "Server CPU Usage")
+if chart5 != nil {
+    print("✓ Created CPU usage chart\n")
+    let saved5 = image_save(chart5, "timeseries_cpu.png", "png")
+    if saved5 {
+        print("✓ Saved to timeseries_cpu.png\n")
+    }
+    image_destroy(chart5)
+}
+
+print("\n")
+
+// Demo 6: Multiple trend comparison (bar chart)
+print("Demo 6: Quarterly Revenue Comparison\n")
+print("-------------------------------------\n")
+
+let quarters = [150.0, 175.0, 190.0, 210.0, 225.0, 245.0, 260.0, 280.0]
+let q_len = 8
+
+print("8 quarters of revenue (millions)\n")
+print("Growth: 150M → 280M (+87%)\n")
+
+let chart6 = create_bar_chart(800, 400, quarters, q_len, "Quarterly Revenue")
+if chart6 != nil {
+    print("✓ Created revenue comparison\n")
+    let saved6 = image_save(chart6, "timeseries_revenue.png", "png")
+    if saved6 {
+        print("✓ Saved to timeseries_revenue.png\n")
+    }
+    image_destroy(chart6)
+}
+
+print("\n")
+
+print("=== Summary ===\n")
+print("Generated 6 time series visualizations:\n")
+print("  1. timeseries_sine.png     - Mathematical function\n")
+print("  2. timeseries_stock.png    - Financial data\n")
+print("  3. timeseries_temp.png     - Climate data\n")
+print("  4. timeseries_sales.png    - Business metrics (bar)\n")
+print("  5. timeseries_cpu.png      - System monitoring\n")
+print("  6. timeseries_revenue.png  - Growth analysis (bar)\n")
+print("\n")
+print("Chart Features:\n")
+print("  ✓ Line charts with data points\n")
+print("  ✓ Bar charts with color coding\n")
+print("  ✓ Automatic axis scaling\n")
+print("  ✓ PNG output for real visualization\n")
+print("  ✓ No external dependencies (uses image library)\n")
+print("\n")
+print("All charts saved as PNG files!\n")
