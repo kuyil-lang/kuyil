@@ -202,12 +202,12 @@ fn workerWithCallback(reqId, worker, args) {
     // Pass as string, JavaScript will JSON.parse it
     let js = "try { window.handleKuyilResponse('" + reqId + "', '" + escaped + "'); } catch(e) { console.error('[Kuyil] Response error:', e.message, e); }"
     print("[Avatar] Pushing to JS")
-    print("[Avatar] JS code length: " + str_toString(str_length(js)))
+    print("[Avatar] JS code length: " + str_length(js))
     print("[Avatar] JS preview: " + str_substring(js, 0, 200))
     
     // Try to eval and catch any errors
     let evalResult = eval(g_app_window, js)
-    print("[Avatar] Eval result: " + str_toString(evalResult))
+    print("[Avatar] Eval result: " + evalResult)
     print("[Avatar] Eval completed")
     
     return "ok"

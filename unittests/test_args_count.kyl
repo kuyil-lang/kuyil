@@ -6,11 +6,11 @@ import "interfaces/interface_str.kyl"
 fn main() {
     print("Test 1: file_writeText (should work)")
     let wrote = file_writeText("/tmp/testarg.txt", "content")
-    print("Result: " + str_toString(wrote))
+    print("Result: " + wrote)
     
     print("\nTest 2: file_exists (should work)")  
     let exists = file_exists("/tmp/testarg.txt")
-    print("Result: " + str_toString(exists))
+    print("Result: " + exists)
     
     print("\nTest 3: file.readText (BUG HERE)")
     let content = file.readText("/tmp/testarg.txt")

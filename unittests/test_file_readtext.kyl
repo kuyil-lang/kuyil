@@ -29,7 +29,7 @@ fn testReadTextDirect() {
     }
     
     print("Content read: '" + content + "'")
-    print("Length: " + str_toString(str_length(content)))
+    print("Length: " + str_length(content))
     
     if content == testContent {
         print("✓ Test 1 PASSED: Content matches")
@@ -52,7 +52,7 @@ fn testSystemCaptureDirect() {
     }
     
     print("Output: '" + output + "'")
-    print("Length: " + str_toString(str_length(output)))
+    print("Length: " + str_length(output))
     
     if str_length(output) > 0 {
         print("✓ Test 2 PASSED: Got output")
@@ -73,7 +73,7 @@ fn workerReadText(path) {
         return "ERROR: nil content"
     }
     
-    print("[Worker] Content length: " + str_toString(str_length(content)))
+    print("[Worker] Content length: " + str_length(content))
     return content
 }
 
@@ -87,7 +87,7 @@ fn workerSystemCapture(cmd) {
         return "ERROR: nil output"
     }
     
-    print("[Worker] Output length: " + str_toString(str_length(output)))
+    print("[Worker] Output length: " + str_length(output))
     return output
 }
 
@@ -194,7 +194,7 @@ fn main() {
     }
     
     print("\n╔════════════════════════════════════════════════════╗")
-    print("║  Test Results: " + str_toString(passed) + "/" + str_toString(total) + " passed")
+    print("║  Test Results: " + passed + "/" + total + " passed")
     print("╚════════════════════════════════════════════════════╝")
     
     if passed == total {

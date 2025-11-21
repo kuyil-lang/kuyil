@@ -135,6 +135,19 @@ void compiler_free(Compiler* compiler);
 
 // Export tracking functions
 void compiler_clear_exports(void);
+
+// Decorator metadata collection
+typedef struct {
+    char* entity_name;
+    DecoratorList decorators;
+    DecoratorList param_decorators;
+} DecoratorMetadata;
+
+void compiler_collect_decorator_metadata(const char* entity_name, DecoratorList* decorators, DecoratorList* param_decorators);
+void compiler_register_all_decorators(void* vm);
+void compiler_clear_decorator_metadata(void);
+int compiler_get_all_decorated_entities(const char*** out_names);
+int compiler_find_entities_by_decorator(const char* decorator_name, const char*** out_names);
 const char** compiler_get_exports(int* count);
 
 // Disassembly for debugging

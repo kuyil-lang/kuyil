@@ -20,14 +20,14 @@ fn (Person) greet() {
 
 fn (Person) birthday() {
     this.age = this.age + 1
-    print(this.name + ` is now ` + str_toString(this.age) + ` years old`)
+    print(this.name + ` is now ` + this.age + ` years old`)
 }
 
 // Serialize method - convert struct to JSON string
 fn (Person) toJSON() {
     let json = `{`
     json = json + `"name": "` + this.name + `", `
-    json = json + `"age": ` + str_toString(this.age) + `, `
+    json = json + `"age": ` + this.age + `, `
     json = json + `"email": "` + this.email + `"`
     json = json + `}`
     return json
@@ -59,9 +59,9 @@ fn (Employee) getFullInfo() {
 fn (Employee) toJSON() {
     let json = `{`
     json = json + `"person": ` + this.person.toJSON() + `, `
-    json = json + `"employeeId": ` + str_toString(this.employeeId) + `, `
+    json = json + `"employeeId": ` + this.employeeId + `, `
     json = json + `"department": "` + this.department + `", `
-    json = json + `"salary": ` + str_toString(this.salary)
+    json = json + `"salary": ` + this.salary
     json = json + `}`
     return json
 }

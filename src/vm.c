@@ -343,6 +343,97 @@ void vm_copy_global(VM* dest_vm, VM* src_vm, const char* name) {
     }
 }
 
+// Register decorator metadata for runtime introspection
+void vm_register_decorators(VM* vm, const char* entity_name, Value decorators, Value param_decorators) {
+    if (vm->decorator_registry_count >= 256) {
+        return; // Registry full
+    }
+    
+    // Check if entity already exists, update if so
+    for (int i = 0; i < vm->decorator_registry_count; i++) {
+        if (strcmp(vm->decorator_registry[i].entity_name, entity_name) == 0) {
+            vm->decorator_registry[i].decorators = decorators;
+            vm->decorator_registry[i].param_decorators = param_decorators;
+            return;
+        }
+    }
+    
+    // Add new entry
+    vm->decorator_registry[vm->decorator_registry_count].entity_name = strdup(entity_name);
+    vm->decorator_registry[vm->decorator_registry_count].decorators = decorators;
+    vm->decorator_registry[vm->decorator_registry_count].param_decorators = param_decorators;
+    vm->decorator_registry_count++;
+}
+
+// Helper: Find decorator by name in decorator array
+static Value* find_decorator(Value decorators_array, const char* name) {
+    if (decorators_array.type != VALUE_ARRAY) return NULL;
+    
+    for (int i = 0; i < decorators_array.as.array.count; i++) {
+        Value dec = decorators_array.as.array.values[i];
+        if (dec.type == VALUE_OBJECT) {
+            // Find "name" property
+            for (int j = 0; j < dec.as.object.count; j++) {
+                if (strcmp(dec.as.object.keys[j], "name") == 0) {
+                    if (dec.as.object.values[j].type == VALUE_STRING &&
+                        strcmp(dec.as.object.values[j].as.string, name) == 0) {
+                        return &decorators_array.as.array.values[i];
+                    }
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+// Helper: Get decorator property value
+static Value get_decorator_property(Value decorator, const char* prop_name) {
+    Value nil_val = {VALUE_NIL};
+    if (decorator.type != VALUE_OBJECT) return nil_val;
+    
+    for (int i = 0; i < decorator.as.object.count; i++) {
+        if (strcmp(decorator.as.object.keys[i], prop_name) == 0) {
+            return decorator.as.object.values[i];
+        }
+    }
+    return nil_val;
+}
+
+// Dependency injection registry (simple key-value store)
+static struct {
+    char* keys[256];
+    Value values[256];
+    int count;
+} di_registry = {.count = 0};
+
+// Register a dependency for injection
+void vm_register_dependency(const char* name, Value value) {
+    // Check if exists, update
+    for (int i = 0; i < di_registry.count; i++) {
+        if (strcmp(di_registry.keys[i], name) == 0) {
+            di_registry.values[i] = value;
+            return;
+        }
+    }
+    // Add new
+    if (di_registry.count < 256) {
+        di_registry.keys[di_registry.count] = strdup(name);
+        di_registry.values[di_registry.count] = value;
+        di_registry.count++;
+    }
+}
+
+// Get dependency for injection
+static bool vm_get_dependency(const char* name, Value* out) {
+    for (int i = 0; i < di_registry.count; i++) {
+        if (strcmp(di_registry.keys[i], name) == 0) {
+            *out = di_registry.values[i];
+            return true;
+        }
+    }
+    return false;
+}
+
 // Built-in functions
 static void print_value(Value value) {
     switch (value.type) {
@@ -598,6 +689,80 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
     if (callee.type == VALUE_FUNCTION) {
         // Function call
         Function* function = callee.as.function.function;
+        
+        // Check for @wrap() decorator - intercepts function calls
+        // Skip wrapping if this is the unwrapped function being called from within a handler
+        bool skip_wrap = (vm->unwrapped_function_name && function->name && 
+                         strcmp(vm->unwrapped_function_name, function->name) == 0);
+        
+        if (function->name && !skip_wrap) {
+            for (int i = 0; i < vm->decorator_registry_count; i++) {
+                if (strcmp(vm->decorator_registry[i].entity_name, function->name) == 0) {
+                    Value decorators = vm->decorator_registry[i].decorators;
+                    
+                    // Skip if no decorators
+                    if (decorators.type != VALUE_ARRAY || decorators.as.array.count == 0) {
+                        break;
+                    }
+                    
+                    Value* wrap_decorator = find_decorator(decorators, "wrap");
+                    
+                    if (wrap_decorator) {
+                        // Get handler function from decorator
+                        Value handler_prop = get_decorator_property(*wrap_decorator, "handler");
+                        Value handler_func;
+                        
+                        // If handler is a string, look it up as a global function
+                        if (handler_prop.type == VALUE_STRING) {
+                            if (!get_global(vm, handler_prop.as.string, &handler_func)) {
+                                runtime_error(vm, "@wrap handler '%s' not found", handler_prop.as.string);
+                                return false;
+                            }
+                        } else {
+                            handler_func = handler_prop;
+                        }
+                        
+                        if (handler_func.type == VALUE_FUNCTION) {
+                            // Call handler(originalFunc, args)
+                            // Stack: [arg0, arg1, ..., callee] -> [originalFunc, argsArray, handler]
+                            
+                            // Collect arguments into array
+                            // Stack: [..., arg0, arg1, ..., callee]
+                            // vm->stack_top points one past callee
+                            Value args_array;
+                            args_array.type = VALUE_ARRAY;
+                            args_array.as.array.count = arg_count;
+                            args_array.as.array.values = malloc(sizeof(Value) * arg_count);
+                            for (int j = 0; j < arg_count; j++) {
+                                // args[j] = stack[top - arg_count - 1 + j]
+                                args_array.as.array.values[j] = *(vm->stack_top - arg_count - 1 + j);
+                            }
+                            
+                            // Pop args and callee
+                            vm->stack_top -= (arg_count + 1);
+                            
+                            // Mark function as unwrapped BEFORE pushing it
+                            // This prevents recursion when handler calls originalFunc
+                            vm->unwrapped_function_name = function->name;
+                            vm->decorator_handler_depth++;
+                            
+                            // Push: originalFunc, argsArray, handler
+                            vm_push(vm, callee);
+                            vm_push(vm, args_array);
+                            vm_push(vm, handler_func);
+                            
+                            // Call handler - it will execute asynchronously via vm_run
+                            bool result = call_value(vm, handler_func, 2);
+                            
+                            // DON'T restore yet - handler hasn't executed
+                            // Restoration happens when frame returns (see below)
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+        
         if (arg_count != function->arity) {
             runtime_error(vm, "Expected %d arguments but got %d.", function->arity, arg_count);
             return false;
@@ -702,6 +867,125 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
                 result.as.array.values[i].type = VALUE_NUMBER;
                 result.as.array.values[i].as.number = start + i;
             }
+            
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Dependency injection registration: register_dependency(name, value)
+        if (strcmp(callee.as.string, "register_dependency") == 0) {
+            if (arg_count != 2) {
+                runtime_error(vm, "register_dependency expects 2 arguments: register_dependency(name, value)");
+                return false;
+            }
+            Value* args = vm->stack_top - arg_count - 1;
+            if (args[0].type != VALUE_STRING) {
+                runtime_error(vm, "register_dependency first argument must be a string (dependency name)");
+                return false;
+            }
+            
+            vm_register_dependency(args[0].as.string, args[1]);
+            
+            vm->stack_top -= arg_count + 1;
+            Value result = {VALUE_BOOL, .as.boolean = true};
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Decorator introspection: @get(funcName) or @get(funcName, "params")
+        if (strcmp(callee.as.string, "@get") == 0 || strcmp(callee.as.string, "decoratorGet") == 0) {
+            if (arg_count < 1 || arg_count > 2) {
+                runtime_error(vm, "@get expects 1 or 2 arguments: @get(name) or @get(name, \"params\")");
+                return false;
+            }
+            Value* args = vm->stack_top - arg_count - 1;
+            if (args[0].type != VALUE_STRING) {
+                runtime_error(vm, "@get first argument must be a string (entity name)");
+                return false;
+            }
+            
+            const char* entity_name = args[0].as.string;
+            const char* query_type = arg_count == 2 && args[1].type == VALUE_STRING ? args[1].as.string : "decorators";
+            
+            // Search decorator registry
+            Value result;
+            result.type = VALUE_ARRAY;
+            result.as.array.count = 0;
+            result.as.array.values = NULL;
+            
+            for (int i = 0; i < vm->decorator_registry_count; i++) {
+                if (strcmp(vm->decorator_registry[i].entity_name, entity_name) == 0) {
+                    if (strcmp(query_type, "params") == 0) {
+                        result = vm->decorator_registry[i].param_decorators;
+                    } else {
+                        result = vm->decorator_registry[i].decorators;
+                    }
+                    break;
+                }
+            }
+            
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Get all registered entities (functions, structs, etc.)
+        if (strcmp(callee.as.string, "@getAllEntities") == 0 || strcmp(callee.as.string, "decoratorGetAllEntities") == 0) {
+            if (arg_count != 0) {
+                runtime_error(vm, "@getAllEntities expects no arguments");
+                return false;
+            }
+            
+            const char** names = NULL;
+            int count = compiler_get_all_decorated_entities(&names);
+            
+            Value result;
+            result.type = VALUE_ARRAY;
+            result.as.array.count = count;
+            result.as.array.values = malloc(sizeof(Value) * count);
+            
+            for (int i = 0; i < count; i++) {
+                Value name_val = {VALUE_STRING};
+                name_val.as.string = strdup(names[i]);
+                result.as.array.values[i] = name_val;
+            }
+            
+            if (names) free(names);
+            
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Find all entities with a specific decorator
+        if (strcmp(callee.as.string, "@findByDecorator") == 0 || strcmp(callee.as.string, "decoratorFindByDecorator") == 0) {
+            if (arg_count != 1) {
+                runtime_error(vm, "@findByDecorator expects 1 argument: decorator name");
+                return false;
+            }
+            Value* args = vm->stack_top - arg_count - 1;
+            if (args[0].type != VALUE_STRING) {
+                runtime_error(vm, "@findByDecorator argument must be a string (decorator name)");
+                return false;
+            }
+            
+            const char* decorator_name = args[0].as.string;
+            const char** names = NULL;
+            int count = compiler_find_entities_by_decorator(decorator_name, &names);
+            
+            Value result;
+            result.type = VALUE_ARRAY;
+            result.as.array.count = count;
+            result.as.array.values = malloc(sizeof(Value) * count);
+            
+            for (int i = 0; i < count; i++) {
+                Value name_val = {VALUE_STRING};
+                name_val.as.string = strdup(names[i]);
+                result.as.array.values[i] = name_val;
+            }
+            
+            if (names) free(names);
             
             vm->stack_top -= arg_count + 1;
             vm_push(vm, result);
@@ -2988,6 +3272,18 @@ static void vm_init_limited(VM* vm, LibraryFlags allowed_libraries) {
         // Core utility: array_length
         Value array_length_val = (Value){VALUE_STRING, {.string = strdup("array_length")}};
         define_global(vm, "array_length", array_length_val);
+        // Decorator introspection: @get
+        Value decorator_get_val = (Value){VALUE_STRING, {.string = strdup("@get")}};
+        define_global(vm, "@get", decorator_get_val);
+        // Decorator query: @getAllEntities
+        Value get_all_entities_val = (Value){VALUE_STRING, {.string = strdup("@getAllEntities")}};
+        define_global(vm, "@getAllEntities", get_all_entities_val);
+        // Decorator query: @findByDecorator
+        Value find_by_decorator_val = (Value){VALUE_STRING, {.string = strdup("@findByDecorator")}};
+        define_global(vm, "@findByDecorator", find_by_decorator_val);
+        // Dependency injection: register_dependency
+        Value register_dep_val = (Value){VALUE_STRING, {.string = strdup("register_dependency")}};
+        define_global(vm, "register_dependency", register_dep_val);
     }
     // Legacy hardcoded library functions removed - now handled by modular library system
     
@@ -3149,6 +3445,11 @@ void vm_init(VM* vm) {
     vm->coverage.count = 0;
     vm->current_source_path = NULL;
     
+    // Initialize decorator registry
+    vm->decorator_registry_count = 0;
+    vm->decorator_handler_depth = 0;
+    vm->unwrapped_function_name = NULL;
+    
     // Set global VM instance
     g_current_vm = vm;
     
@@ -3251,6 +3552,20 @@ void vm_init(VM* vm) {
     // Register __range as a built-in (will be handled specially in OP_CALL)
     Value range_val = {VALUE_STRING, {.string = strdup("__range")}};
     define_global(vm, "__range", range_val);
+    
+    // Register decorator introspection function
+    Value decorator_get_val = {VALUE_STRING, {.string = strdup("@get")}};
+    define_global(vm, "@get", decorator_get_val);
+    
+    // Register decorator query functions
+    Value get_all_entities_val = {VALUE_STRING, {.string = strdup("@getAllEntities")}};
+    define_global(vm, "@getAllEntities", get_all_entities_val);
+    Value find_by_decorator_val = {VALUE_STRING, {.string = strdup("@findByDecorator")}};
+    define_global(vm, "@findByDecorator", find_by_decorator_val);
+    
+    // Register dependency injection function
+    Value register_dep_val = {VALUE_STRING, {.string = strdup("register_dependency")}};
+    define_global(vm, "register_dependency", register_dep_val);
     
     // Register development helper functions
     Value dev_watch_file_val = {VALUE_STRING, {.string = strdup("dev_watch_file")}};
@@ -3541,6 +3856,9 @@ InterpretResult vm_interpret(VM* vm, const char* source) {
     free(tokens);
     
     if (function == NULL) return INTERPRET_COMPILE_ERROR;
+    
+    // Register all decorator metadata collected during compilation
+    compiler_register_all_decorators(vm);
     
     // Wire source path into compiled function for stack traces
     function->source_path = vm->current_source_path;

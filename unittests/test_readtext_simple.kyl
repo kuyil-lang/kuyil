@@ -15,7 +15,7 @@ fn workerReadFile(path) {
         return "ERROR: nil content"
     }
     
-    print("[AVATAR Worker] SUCCESS: Read " + str_toString(str_length(content)) + " chars")
+    print("[AVATAR Worker] SUCCESS: Read " + str_length(content) + " chars")
     return content
 }
 
@@ -29,7 +29,7 @@ fn workerCapture(cmd) {
         return "ERROR: nil output"
     }
     
-    print("[AVATAR Worker] SUCCESS: Got " + str_toString(str_length(output)) + " chars")
+    print("[AVATAR Worker] SUCCESS: Got " + str_length(output) + " chars")
     return output
 }
 

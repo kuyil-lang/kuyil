@@ -59,11 +59,11 @@ fn fetchBridgeWorker(params) {
     let response = http_clientPostEx(url, cleanParams, {})
     
     print("[fetchBridge Worker] Response received")
-    print("[fetchBridge Worker] Status: " + str_toString(response.status))
+    print("[fetchBridge Worker] Status: " + response.status)
     
     if response.status != 200 {
-        print("[fetchBridge Worker] ERROR: HTTP " + str_toString(response.status))
-        return jsonError("HTTP error " + str_toString(response.status))
+        print("[fetchBridge Worker] ERROR: HTTP " + response.status)
+        return jsonError("HTTP error " + response.status)
     }
     
     if response.body == nil {
@@ -107,7 +107,7 @@ fn kuyilReadFileWorker(pathParam) {
         let content = file_readText(fullPath)
         if content != nil {
             let contentLen = str_length(content)
-            print("[kuyilReadFile Worker] Successfully read file, length: " + str_toString(contentLen))
+            print("[kuyilReadFile Worker] Successfully read file, length: " + contentLen)
             
             // Base64 encode to avoid ALL escaping issues with framework
             let encoded = crypto_base64Encode(content)
@@ -138,7 +138,7 @@ fn readDocumentationWorker(docNameParam) {
     
     let content = file_readText(docPath)
     if content != nil {
-        print("[readDocumentation Worker] Success! Length: " + str_toString(str_length(content)))
+        print("[readDocumentation Worker] Success! Length: " + str_length(content))
         
         // Base64 encode to avoid ALL escaping issues
         let encoded = crypto_base64Encode(content)
@@ -255,7 +255,7 @@ fn createFolderWorker(argsJson) {
 
 fn createFileWorker(argsJson) {
     print("[createFile Worker] Creating file")
-    print("[createFile Worker] Args length: " + str_toString(str_length(argsJson)))
+    print("[createFile Worker] Args length: " + str_length(argsJson))
     
     // Use processParam to clean the input
     let cleanJson = processParam(argsJson)
@@ -291,20 +291,20 @@ fn createFileWorker(argsJson) {
     content = kyl_system_unescape(content)
     
     print("[createFile Worker] Content preview: " + str_substring(content, 0, 100))
-    print("[createFile Worker] Content length: " + str_toString(str_length(content)))
+    print("[createFile Worker] Content length: " + str_length(content))
     
     // Write file
     print("[createFile Worker] Writing file...")
     let success = file_writeText(fullPath, content)
     
-    print("[createFile Worker] Write result: " + str_toString(success))
+    print("[createFile Worker] Write result: " + success)
     
     if success {
         print("[createFile Worker] SUCCESS: Created " + fullPath)
         
         // Refresh file list cache
         g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
-        print("[createFile Worker] Cache refreshed, files: " + str_toString(str_length(g_cached_file_list)))
+        print("[createFile Worker] Cache refreshed, files: " + str_length(g_cached_file_list))
         
         return jsonSuccess("\"path\":\"" + fullPath + "\"")
     } else {
@@ -347,7 +347,7 @@ fn writeFileWorker(argsJson) {
     // Use system unescape to convert them properly
     content = kyl_system_unescape(content)
     
-    print("[writeFile Worker] Content length: " + str_toString(str_length(content)))
+    print("[writeFile Worker] Content length: " + str_length(content))
     
     // Write file
     let success = file_writeText(fullPath, content)
@@ -357,7 +357,7 @@ fn writeFileWorker(argsJson) {
         
         // Refresh file list cache
         g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
-        print("[writeFile Worker] Cache refreshed, files: " + str_toString(str_length(g_cached_file_list)))
+        print("[writeFile Worker] Cache refreshed, files: " + str_length(g_cached_file_list))
         
         return jsonSuccess("\"path\":\"" + fullPath + "\"")
     } else {
@@ -416,8 +416,8 @@ fn deleteFileWorker(pathParam) {
 fn refreshCacheWorker(args) {
     print("[refreshCache Worker] Refreshing file list cache...")
     g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
-    print("[refreshCache Worker] Cache refreshed, length: " + str_toString(str_length(g_cached_file_list)))
-    return jsonSuccess("\"cached_files\":" + str_toString(str_length(g_cached_file_list)))
+    print("[refreshCache Worker] Cache refreshed, length: " + str_length(g_cached_file_list))
+    return jsonSuccess("\"cached_files\":" + str_length(g_cached_file_list))
 }
 
 fn runFileWorker(pathParam) {
@@ -481,7 +481,7 @@ fn runFileWorker(pathParam) {
         output = ""
     }
     
-    print("[runFile Worker] Output length: " + str_toString(str_length(output)))
+    print("[runFile Worker] Output length: " + str_length(output))
     
     // Escape quotes and newlines for JSON
     output = str_replace(output, "\\", "\\\\")
@@ -507,7 +507,7 @@ fn listWorkspaceFilesWorker(args) {
         return `{"success":true,"files":[]}`
     }
     
-    print("[listWorkspaceFiles Worker] Cache length: " + str_toString(str_length(result)))
+    print("[listWorkspaceFiles Worker] Cache length: " + str_length(result))
     
     // Split by newlines to get file paths
     let lines = str_split(result, "\n")
@@ -517,7 +517,7 @@ fn listWorkspaceFilesWorker(args) {
     let added = 0
     let numLines = array_length(lines)
     
-    print("[listWorkspaceFiles Worker] Processing " + str_toString(numLines) + " lines")
+    print("[listWorkspaceFiles Worker] Processing " + numLines + " lines")
     
     let i = 0
     while i < numLines and i < 50 {
@@ -546,7 +546,7 @@ fn listWorkspaceFilesWorker(args) {
     
     json = json + "]"
     
-    print("[listWorkspaceFiles Worker] SUCCESS: Returning " + str_toString(added) + " files")
+    print("[listWorkspaceFiles Worker] SUCCESS: Returning " + added + " files")
     
     return `{"success":true,"files":` + json + `}`
 }

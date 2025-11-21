@@ -107,3 +107,8 @@ yarn.lock
 Pipfile.lock
 example.db
 test.txt
+test_*.kyl
+*.bmp
+*.jpg
+*.png
+*.md

@@ -1,0 +1,240 @@
+// Comprehensive Decorator Example
+// Shows decorator syntax and future capabilities
+
+import("interfaces/interface_str.kyl")
+
+print("╔═══════════════════════════════════════════════════════╗")
+print("║        KUYIL DECORATOR SYSTEM DEMONSTRATION           ║")
+print("╚═══════════════════════════════════════════════════════╝\n")
+
+// ============================================================================
+// PART 1: FUNCTION DECORATORS
+// ============================================================================
+
+print("─────────────────────────────────────────────────────────")
+print("PART 1: FUNCTION DECORATORS")
+print("─────────────────────────────────────────────────────────\n")
+
+// Simple decorators
+@log
+@performance
+fn calculateSum(a, b) {
+    return a + b
+}
+
+print("✓ Function 'calculateSum' decorated with @log, @performance")
+
+// Decorators with parameters
+@cache(ttl=300, maxSize=1000)
+@rateLimit(requests=100, window=60)
+fn apiCall(endpoint) {
+    return "Calling: " + endpoint
+}
+
+print("✓ Function 'apiCall' with parameterized decorators")
+
+// ============================================================================
+// PART 2: PARAMETER DECORATORS
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("PART 2: PARAMETER DECORATORS & DEPENDENCY INJECTION")
+print("─────────────────────────────────────────────────────────\n")
+
+@route("/api/users")
+@auth("admin")
+fn createUser(@inject db, @inject logger, @validate name, @validate email) {
+    print("  Creating user with injected dependencies")
+    print("  Name: " + name + ", Email: " + email)
+    return "User created"
+}
+
+print("✓ Function 'createUser' with @inject decorators on parameters")
+let result = createUser("database", "logger", "John", "john@example.com")
+print("  Result: " + result)
+
+// ============================================================================
+// PART 3: STRUCT DECORATORS
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("PART 3: STRUCT & FIELD DECORATORS")
+print("─────────────────────────────────────────────────────────\n")
+
+@entity
+@table("users")
+@index("email")
+struct User {
+    @primary
+    @autoIncrement
+    id
+    
+    @required
+    @maxLength(100)
+    @index
+    name
+    
+    @email
+    @unique
+    @required
+    emailAddress
+    
+    @min(0)
+    @max(150)
+    age
+    
+    @timestamp
+    @defaultValue("NOW()")
+    createdAt
+}
+
+print("✓ Struct 'User' with entity decorators")
+print("  - Table mapping: @table(\"users\")")
+print("  - Primary key: @primary @autoIncrement id")
+print("  - Validation: @required, @maxLength, @email")
+print("  - Indexes: @index on email and name")
+
+// ============================================================================
+// PART 4: METHOD DECORATORS
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("PART 4: METHOD DECORATORS")
+print("─────────────────────────────────────────────────────────\n")
+
+struct Calculator {
+    value
+}
+
+@memoize
+@log
+fn (Calculator) square() {
+    return this.value * this.value
+}
+
+@deprecated(message="Use newCalculate instead", since="v2.0")
+@async
+fn (Calculator) oldCalculate() {
+    print("  [DEPRECATED] This method will be removed")
+    return this.value * 2
+}
+
+print("✓ Struct 'Calculator' with decorated methods")
+print("  - @memoize caches results")
+print("  - @deprecated warns users")
+
+// ============================================================================
+// PART 5: DECORATOR INTROSPECTION WITH @get()
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("PART 5: DECORATOR INTROSPECTION")
+print("─────────────────────────────────────────────────────────\n")
+
+// Get function decorators
+let calcDecorators = @get("calculateSum")
+print("Decorators on 'calculateSum': " + array_length(calcDecorators))
+
+// Get parameter decorators
+let userParamDecorators = @get("createUser", "params")
+print("Parameter decorators on 'createUser': " + array_length(userParamDecorators))
+
+print("\n✓ Decorator introspection via @get() function")
+
+// ============================================================================
+// PART 6: DECORATOR HANDLER WITH @wrap()
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("PART 6: CUSTOM DECORATOR HANDLERS")
+print("─────────────────────────────────────────────────────────\n")
+
+fn timingDecorator(targetFunc, args) {
+    print("  [TIMING] Function started")
+    let result = targetFunc(args)
+    print("  [TIMING] Function completed")
+    return result
+}
+
+@wrap(handler=timingDecorator)
+fn slowOperation(data) {
+    print("  Processing: " + data)
+    return "Processed: " + data
+}
+
+print("✓ Custom decorator handler with @wrap()")
+print("  Executes custom logic before/after function")
+
+// ============================================================================
+// PART 7: PRACTICAL USE CASES
+// ============================================================================
+
+print("\n─────────────────────────────────────────────────────────")
+print("PART 7: PRACTICAL DECORATOR USE CASES")
+print("─────────────────────────────────────────────────────────\n")
+
+// REST API endpoint
+@route("/api/products/:id")
+@method("GET")
+@auth("user")
+@cache(ttl=60)
+@rateLimit(requests=1000, window=3600)
+fn getProduct(@param id) {
+    return "Product: " + id
+}
+
+// Database transaction
+@transaction
+@retry(attempts=3, delay=1000)
+@timeout(seconds=30)
+fn updateInventory(@inject db, productId, quantity) {
+    print("  Updating inventory: " + productId)
+    return "Updated"
+}
+
+// Validation
+@validate("schema.json")
+@sanitize
+fn processUserInput(@trim @lowercase email, @trim name) {
+    print("  Processing: " + email + ", " + name)
+    return "Processed"
+}
+
+print("✓ REST API: @route, @method, @auth, @cache, @rateLimit")
+print("✓ Database: @transaction, @retry, @timeout")
+print("✓ Validation: @validate, @sanitize, @trim, @lowercase")
+
+// ============================================================================
+// SUMMARY
+// ============================================================================
+
+print("\n╔═══════════════════════════════════════════════════════╗")
+print("║                    SUMMARY                            ║")
+print("╚═══════════════════════════════════════════════════════╝\n")
+
+print("Decorator Features Demonstrated:")
+print("  ✓ Function decorators: @log, @cache, @rateLimit")
+print("  ✓ Parameter decorators: @inject, @validate")
+print("  ✓ Struct decorators: @entity, @table, @index")
+print("  ✓ Field decorators: @required, @primary, @unique")
+print("  ✓ Method decorators: @memoize, @deprecated, @async")
+print("  ✓ Decorator with arguments: @cache(ttl=300)")
+print("  ✓ Named arguments: @wrap(func=handler)")
+print("  ✓ Introspection: @get(name) and @get(name, \"params\")")
+print("  ✓ Custom handlers: @wrap(func=customHandler)")
+
+print("\nDecorator Syntax:")
+print("  - Single: @decoratorName")
+print("  - With args: @decorator(arg1, arg2)")
+print("  - Named args: @decorator(key=value)")
+print("  - Multiple: Stack decorators vertically")
+print("  - On params: fn create(@inject db, name) { }")
+print("  - On fields: struct User { @required name }")
+
+print("\nNext Steps:")
+print("  → Decorators parse correctly ✓")
+print("  → Runtime introspection ready ✓")
+print("  → Metadata storage in progress")
+print("  → Handler execution coming soon")
+
+print("\n🎉 Kuyil Decorator System Ready!")

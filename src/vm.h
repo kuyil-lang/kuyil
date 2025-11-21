@@ -71,6 +71,18 @@ typedef struct {
     // Program arguments (sys.args)
     char** program_args;
     int program_args_count;
+    
+    // Decorator execution state (prevent recursive wrapping)
+    int decorator_handler_depth;
+    const char* unwrapped_function_name;  // Function currently being called unwrapped
+    
+    // Decorator metadata registry
+    struct {
+        char* entity_name;          // Function/struct name
+        Value decorators;           // Array of decorator objects
+        Value param_decorators;     // Array of arrays (per-parameter decorators)
+    } decorator_registry[256];
+    int decorator_registry_count;
 } VM;
 
 typedef enum {
@@ -95,6 +107,9 @@ Value vm_peek(VM* vm, int distance);
 void define_global(VM* vm, const char* name, Value value);
 bool vm_get_global_value(VM* vm, const char* name, Value* out_value);
 void vm_copy_global(VM* dest_vm, VM* src_vm, const char* name);
+
+// Decorator registry
+void vm_register_decorators(VM* vm, const char* entity_name, Value decorators, Value param_decorators);
 
 // Dynamic function system (from modular library system)
 bool is_dynamic_function(const char* name);

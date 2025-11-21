@@ -8,17 +8,17 @@ fn helper() {
 fn testFunctionCall(arg1) {
     print("[TEST4] Local from function call")
     let result = helper()
-    print("result = " + str_toString(result))
+    print("result = " + result)
     return result
 }
 
 fn main() {
     let result = await avatar testFunctionCall(5)
-    print("Result: " + str_toString(result))
+    print("Result: " + result)
     if result == 999 {
         print("✓ TEST4 PASSED")
     } else {
-        print("✗ TEST4 FAILED: got " + str_toString(result))
+        print("✗ TEST4 FAILED: got " + result)
     }
 }
 

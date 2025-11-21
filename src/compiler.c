@@ -2,6 +2,7 @@
 #include "bytecode.h"
 #include "logging.h"
 #include "vm_library_integration.h" // for get_current_source_path()
+#include "vm.h" // for VM type and vm_register_decorators
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -114,6 +115,11 @@ static int g_exported_function_capacity = 0;
 static char** g_interface_namespaces = NULL;
 static int g_interface_namespace_count = 0;
 static int g_interface_namespace_capacity = 0;
+
+// Track decorator metadata during compilation
+static DecoratorMetadata* g_decorator_metadata = NULL;
+static int g_decorator_metadata_count = 0;
+static int g_decorator_metadata_capacity = 0;
 
 static void add_interface_namespace(const char* name) {
     // Check if already registered
@@ -965,6 +971,14 @@ static void compile_function_decl(ASTNode* node) {
         emit_byte(name_constant & 0xff);
     }
     
+    // Collect decorator metadata if present
+    if (node->as.function_decl.decorators.count > 0 || 
+        (node->as.function_decl.param_decorators && node->as.function_decl.param_decorators->count > 0)) {
+        compiler_collect_decorator_metadata(node->as.function_decl.name,
+                                           &node->as.function_decl.decorators,
+                                           node->as.function_decl.param_decorators);
+    }
+    
     // Pop context when function exits
     emit_byte(OP_LOG_POP_CTX);
 }
@@ -1323,7 +1337,13 @@ static void compile_struct_decl(ASTNode* node) {
         node->as.struct_decl.field_count
     );
     
-    // TODO: Store struct definition in type registry for runtime reflection
+    // Collect decorator metadata if present
+    if (node->as.struct_decl.decorators.count > 0 ||
+        (node->as.struct_decl.field_decorators && node->as.struct_decl.field_decorators->count > 0)) {
+        compiler_collect_decorator_metadata(node->as.struct_decl.name,
+                                           &node->as.struct_decl.decorators,
+                                           node->as.struct_decl.field_decorators);
+    }
 }
 
 static void compile_interface_decl(ASTNode* node) {
@@ -1395,6 +1415,14 @@ static void compile_method_decl(ASTNode* node) {
         emit_byte(OP_DEFINE_GLOBAL_LONG);
         emit_byte((name_constant >> 8) & 0xff);
         emit_byte(name_constant & 0xff);
+    }
+    
+    // Collect decorator metadata if present
+    if (node->as.method_decl.decorators.count > 0 ||
+        (node->as.method_decl.param_decorators && node->as.method_decl.param_decorators->count > 0)) {
+        compiler_collect_decorator_metadata(method_full_name,
+                                           &node->as.method_decl.decorators,
+                                           node->as.method_decl.param_decorators);
     }
     
     emit_byte(OP_LOG_POP_CTX);
@@ -1932,4 +1960,173 @@ void function_free(Function* function) {
     free(function->name);
     chunk_free(&function->chunk);
     free(function);
+}
+
+// Decorator metadata collection functions
+void compiler_collect_decorator_metadata(const char* entity_name, DecoratorList* decorators, DecoratorList* param_decorators) {
+    if (g_decorator_metadata_count >= g_decorator_metadata_capacity) {
+        int old_capacity = g_decorator_metadata_capacity;
+        g_decorator_metadata_capacity = old_capacity < 8 ? 8 : old_capacity * 2;
+        g_decorator_metadata = realloc(g_decorator_metadata, 
+                                      sizeof(DecoratorMetadata) * g_decorator_metadata_capacity);
+    }
+    
+    DecoratorMetadata* meta = &g_decorator_metadata[g_decorator_metadata_count++];
+    meta->entity_name = strdup(entity_name);
+    
+    // Deep copy decorators
+    decorator_list_init(&meta->decorators);
+    if (decorators) {
+        for (int i = 0; i < decorators->count; i++) {
+            Decorator* dec = &decorators->decorators[i];
+            decorator_list_add(&meta->decorators, dec->name, dec->args, dec->arg_count);
+        }
+    }
+    
+    // Deep copy param_decorators
+    decorator_list_init(&meta->param_decorators);
+    if (param_decorators) {
+        for (int i = 0; i < param_decorators->count; i++) {
+            Decorator* dec = &param_decorators->decorators[i];
+            decorator_list_add(&meta->param_decorators, dec->name, dec->args, dec->arg_count);
+        }
+    }
+}
+
+void compiler_register_all_decorators(void* vm_ptr) {
+    VM* vm = (VM*)vm_ptr;
+    
+    for (int i = 0; i < g_decorator_metadata_count; i++) {
+        DecoratorMetadata* meta = &g_decorator_metadata[i];
+        
+        // Convert decorators to Value arrays
+        Value decorators_array;
+        decorators_array.type = VALUE_ARRAY;
+        decorators_array.as.array.count = meta->decorators.count;
+        decorators_array.as.array.values = malloc(sizeof(Value) * meta->decorators.count);
+        
+        for (int j = 0; j < meta->decorators.count; j++) {
+            Decorator* dec = &meta->decorators.decorators[j];
+            
+            // Create decorator object {name: "...", ...}
+            // Start with name property, add more if there are named arguments
+            int prop_count = 1;
+            
+            // Count named arguments from decorator args
+            for (int k = 0; k < dec->arg_count; k++) {
+                ASTNode* arg = dec->args[k];
+                if (arg && arg->type == AST_ASSIGNMENT) {
+                    prop_count++;
+                }
+            }
+            
+            Value dec_obj;
+            dec_obj.type = VALUE_OBJECT;
+            dec_obj.as.object.count = 0;
+            dec_obj.as.object.keys = malloc(sizeof(char*) * prop_count);
+            dec_obj.as.object.values = malloc(sizeof(Value) * prop_count);
+            
+            // Add name property
+            dec_obj.as.object.keys[dec_obj.as.object.count] = strdup("name");
+            dec_obj.as.object.values[dec_obj.as.object.count].type = VALUE_STRING;
+            dec_obj.as.object.values[dec_obj.as.object.count].as.string = strdup(dec->name);
+            dec_obj.as.object.count++;
+            
+            // Add named arguments as properties
+            for (int k = 0; k < dec->arg_count; k++) {
+                ASTNode* arg = dec->args[k];
+                if (arg && arg->type == AST_ASSIGNMENT) {
+                    // Named argument: key=value
+                    // target should be an identifier
+                    if (arg->as.assignment.target->type != AST_IDENTIFIER) continue;
+                    
+                    const char* key = arg->as.assignment.target->as.identifier;
+                    ASTNode* value_node = arg->as.assignment.value;
+                    
+                    dec_obj.as.object.keys[dec_obj.as.object.count] = strdup(key);
+                    
+                    // Convert AST node to Value (simple literal conversion)
+                    if (value_node->type == AST_LITERAL) {
+                        dec_obj.as.object.values[dec_obj.as.object.count] = value_node->as.literal;
+                    } else if (value_node->type == AST_IDENTIFIER) {
+                        // Store identifier name as string for later lookup
+                        Value id_val;
+                        id_val.type = VALUE_STRING;
+                        id_val.as.string = strdup(value_node->as.identifier);
+                        dec_obj.as.object.values[dec_obj.as.object.count] = id_val;
+                    } else {
+                        // Unknown type, store as nil
+                        Value nil_val;
+                        nil_val.type = VALUE_NIL;
+                        dec_obj.as.object.values[dec_obj.as.object.count] = nil_val;
+                    }
+                    
+                    dec_obj.as.object.count++;
+                }
+            }
+            
+            decorators_array.as.array.values[j] = dec_obj;
+        }
+        
+        // Convert param_decorators to Value arrays
+        Value param_decorators;
+        if (meta->param_decorators.count > 0) {
+            param_decorators.type = VALUE_ARRAY;
+            param_decorators.as.array.count = meta->param_decorators.count;
+            param_decorators.as.array.values = malloc(sizeof(Value) * meta->param_decorators.count);
+            
+            for (int j = 0; j < meta->param_decorators.count; j++) {
+                param_decorators.as.array.values[j].type = VALUE_NIL;
+            }
+        } else {
+            param_decorators.type = VALUE_NIL;
+        }
+        
+        vm_register_decorators(vm, meta->entity_name, decorators_array, param_decorators);
+    }
+}
+
+void compiler_clear_decorator_metadata() {
+    for (int i = 0; i < g_decorator_metadata_count; i++) {
+        free(g_decorator_metadata[i].entity_name);
+        decorator_list_free(&g_decorator_metadata[i].decorators);
+        decorator_list_free(&g_decorator_metadata[i].param_decorators);
+    }
+    g_decorator_metadata_count = 0;
+}
+
+// Query functions for decorator metadata
+int compiler_get_all_decorated_entities(const char*** out_names) {
+    if (out_names) {
+        *out_names = malloc(sizeof(char*) * g_decorator_metadata_count);
+        for (int i = 0; i < g_decorator_metadata_count; i++) {
+            (*out_names)[i] = g_decorator_metadata[i].entity_name;
+        }
+    }
+    return g_decorator_metadata_count;
+}
+
+int compiler_find_entities_by_decorator(const char* decorator_name, const char*** out_names) {
+    // First pass: count matches
+    int match_count = 0;
+    for (int i = 0; i < g_decorator_metadata_count; i++) {
+        DecoratorList* list = &g_decorator_metadata[i].decorators;
+        if (decorator_list_find(list, decorator_name) != NULL) {
+            match_count++;
+        }
+    }
+    
+    // Second pass: collect names
+    if (out_names && match_count > 0) {
+        *out_names = malloc(sizeof(char*) * match_count);
+        int idx = 0;
+        for (int i = 0; i < g_decorator_metadata_count; i++) {
+            DecoratorList* list = &g_decorator_metadata[i].decorators;
+            if (decorator_list_find(list, decorator_name) != NULL) {
+                (*out_names)[idx++] = g_decorator_metadata[i].entity_name;
+            }
+        }
+    }
+    
+    return match_count;
 }

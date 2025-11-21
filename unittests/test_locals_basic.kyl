@@ -4,17 +4,17 @@ import "../interfaces/interface_str.kyl"
 fn testBasic(arg1) {
     print("[TEST1] Basic local variable")
     let local1 = 100
-    print("local1 = " + str_toString(local1))
+    print("local1 = " + local1)
     return local1
 }
 
 fn main() {
     let result = await avatar testBasic(5)
-    print("Result: " + str_toString(result))
+    print("Result: " + result)
     if result == 100 {
         print("✓ TEST1 PASSED")
     } else {
-        print("✗ TEST1 FAILED: got " + str_toString(result))
+        print("✗ TEST1 FAILED: got " + result)
     }
 }
 

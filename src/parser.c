@@ -130,6 +130,58 @@ ASTNode* ast_node_new(ASTNodeType type) {
     return node;
 }
 
+// Decorator management
+void decorator_list_init(DecoratorList* list) {
+    list->decorators = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+void decorator_list_add(DecoratorList* list, const char* name, ASTNode** args, int arg_count) {
+    if (list->count >= list->capacity) {
+        int new_capacity = list->capacity == 0 ? 4 : list->capacity * 2;
+        list->decorators = realloc(list->decorators, sizeof(Decorator) * new_capacity);
+        list->capacity = new_capacity;
+    }
+    
+    Decorator* dec = &list->decorators[list->count++];
+    dec->name = strdup(name);
+    dec->arg_count = arg_count;
+    if (arg_count > 0) {
+        dec->args = malloc(sizeof(ASTNode*) * arg_count);
+        for (int i = 0; i < arg_count; i++) {
+            dec->args[i] = args[i];
+        }
+    } else {
+        dec->args = NULL;
+    }
+}
+
+void decorator_list_free(DecoratorList* list) {
+    for (int i = 0; i < list->count; i++) {
+        free(list->decorators[i].name);
+        if (list->decorators[i].args) {
+            for (int j = 0; j < list->decorators[i].arg_count; j++) {
+                ast_node_free(list->decorators[i].args[j]);
+            }
+            free(list->decorators[i].args);
+        }
+    }
+    free(list->decorators);
+    list->decorators = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+Decorator* decorator_list_find(DecoratorList* list, const char* name) {
+    for (int i = 0; i < list->count; i++) {
+        if (strcmp(list->decorators[i].name, name) == 0) {
+            return &list->decorators[i];
+        }
+    }
+    return NULL;
+}
+
 // Create an error node to prevent crashes after parse errors
 static ASTNode* error_node(Parser* parser) {
     ASTNode* node = ast_node_new(AST_ERROR);
@@ -249,6 +301,7 @@ static ASTNode* struct_declaration(Parser* parser);
 static ASTNode* interface_declaration(Parser* parser);
 static ASTNode* interface_declaration_impl(Parser* parser, bool is_exported);
 static ASTNode* method_declaration(Parser* parser);
+static DecoratorList parse_decorators(Parser* parser);
 static ASTNode* switch_statement(Parser* parser);
 static ASTNode* avatar_statement(Parser* parser);
 static ASTNode* block_statement(Parser* parser);
@@ -632,6 +685,24 @@ static ASTNode* primary(Parser* parser) {
         ASTNode* expr = expression(parser);
         consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
         return expr;
+    }
+    
+    // Handle @get() and other decorator introspection functions
+    if (parser_match(parser, TOKEN_AT)) {
+        Token* at_token = previous_token(parser);
+        Token* name_token = consume(parser, TOKEN_IDENTIFIER, "Expect identifier after '@' in expression.");
+        
+        // Create identifier for the decorator function (e.g., "@get" becomes a call to "@get")
+        char* func_name = malloc(name_token->length + 2); // +1 for @ and +1 for null terminator
+        func_name[0] = '@';
+        memcpy(func_name + 1, name_token->start, name_token->length);
+        func_name[name_token->length + 1] = '\0';
+        
+        ASTNode* func_node = ast_node_new(AST_IDENTIFIER);
+        set_node_location(func_node, at_token);
+        func_node->as.identifier = func_name;
+        
+        return func_node;
     }
     
     if (parser_match(parser, TOKEN_FN)) {
@@ -1874,27 +1945,38 @@ static ASTNode* function_declaration(Parser* parser) {
     fn_node->as.function_decl.name = fn_name;
     fn_node->as.function_decl.is_exported = false;  // Default to not exported
     
+    // Initialize decorators (will be set by caller from declaration())
+    decorator_list_init(&fn_node->as.function_decl.decorators);
+    fn_node->as.function_decl.param_decorators = NULL;
+    
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
     
-    // Parse parameters
+    // Parse parameters (with optional decorators)
     fn_node->as.function_decl.params = NULL;
     fn_node->as.function_decl.param_count = 0;
     
     if (!check(parser, TOKEN_RIGHT_PAREN)) {
         int capacity = 4;
         fn_node->as.function_decl.params = malloc(sizeof(char*) * capacity);
+        fn_node->as.function_decl.param_decorators = malloc(sizeof(DecoratorList) * capacity);
         
         do {
             if (fn_node->as.function_decl.param_count >= capacity) {
                 capacity *= 2;
                 fn_node->as.function_decl.params = realloc(fn_node->as.function_decl.params, sizeof(char*) * capacity);
+                fn_node->as.function_decl.param_decorators = realloc(fn_node->as.function_decl.param_decorators, sizeof(DecoratorList) * capacity);
             }
+            
+            // Parse parameter decorators (@inject, etc.)
+            DecoratorList param_decs = parse_decorators(parser);
             
             Token* param = consume(parser, TOKEN_IDENTIFIER, "Expect parameter name.");
             char* param_name = malloc(param->length + 1);
             memcpy(param_name, param->start, param->length);
             param_name[param->length] = '\0';
-            fn_node->as.function_decl.params[fn_node->as.function_decl.param_count++] = param_name;
+            fn_node->as.function_decl.params[fn_node->as.function_decl.param_count] = param_name;
+            fn_node->as.function_decl.param_decorators[fn_node->as.function_decl.param_count] = param_decs;
+            fn_node->as.function_decl.param_count++;
         } while (parser_match(parser, TOKEN_COMMA));
     }
     
@@ -1974,6 +2056,10 @@ static ASTNode* struct_declaration(Parser* parser) {
     
     consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after struct name.");
     
+    // Initialize decorators (will be set by caller from declaration())
+    decorator_list_init(&struct_node->as.struct_decl.decorators);
+    struct_node->as.struct_decl.field_decorators = NULL;
+    
     // Parse field names
     struct_node->as.struct_decl.fields = NULL;
     struct_node->as.struct_decl.field_count = 0;
@@ -1981,6 +2067,7 @@ static ASTNode* struct_declaration(Parser* parser) {
     if (!check(parser, TOKEN_RIGHT_BRACE)) {
         int capacity = 4;
         struct_node->as.struct_decl.fields = malloc(sizeof(char*) * capacity);
+        struct_node->as.struct_decl.field_decorators = malloc(sizeof(DecoratorList) * capacity);
         
         do {
             // Skip optional newlines
@@ -1991,7 +2078,11 @@ static ASTNode* struct_declaration(Parser* parser) {
             if (struct_node->as.struct_decl.field_count >= capacity) {
                 capacity *= 2;
                 struct_node->as.struct_decl.fields = realloc(struct_node->as.struct_decl.fields, sizeof(char*) * capacity);
+                struct_node->as.struct_decl.field_decorators = realloc(struct_node->as.struct_decl.field_decorators, sizeof(DecoratorList) * capacity);
             }
+            
+            // Parse field decorators
+            DecoratorList field_decs = parse_decorators(parser);
             
             // Check if this is a typed field: type fieldName; (e.g., int32 status;)
             // or untyped field: fieldName (e.g., name)
@@ -2015,7 +2106,9 @@ static ASTNode* struct_declaration(Parser* parser) {
                 field_name[first_ident->length] = '\0';
             }
             
-            struct_node->as.struct_decl.fields[struct_node->as.struct_decl.field_count++] = field_name;
+            struct_node->as.struct_decl.fields[struct_node->as.struct_decl.field_count] = field_name;
+            struct_node->as.struct_decl.field_decorators[struct_node->as.struct_decl.field_count] = field_decs;
+            struct_node->as.struct_decl.field_count++;
             
             // Skip optional semicolon after field
             parser_match(parser, TOKEN_SEMICOLON);
@@ -2416,27 +2509,38 @@ static ASTNode* method_declaration(Parser* parser) {
     method_name_str[method_name->length] = '\0';
     method_node->as.method_decl.method_name = method_name_str;
     
+    // Initialize decorators (will be set by caller from declaration())
+    decorator_list_init(&method_node->as.method_decl.decorators);
+    method_node->as.method_decl.param_decorators = NULL;
+    
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after method name.");
     
-    // Parse parameters
+    // Parse parameters (with optional decorators)
     method_node->as.method_decl.params = NULL;
     method_node->as.method_decl.param_count = 0;
     
     if (!check(parser, TOKEN_RIGHT_PAREN)) {
         int capacity = 4;
         method_node->as.method_decl.params = malloc(sizeof(char*) * capacity);
+        method_node->as.method_decl.param_decorators = malloc(sizeof(DecoratorList) * capacity);
         
         do {
             if (method_node->as.method_decl.param_count >= capacity) {
                 capacity *= 2;
                 method_node->as.method_decl.params = realloc(method_node->as.method_decl.params, sizeof(char*) * capacity);
+                method_node->as.method_decl.param_decorators = realloc(method_node->as.method_decl.param_decorators, sizeof(DecoratorList) * capacity);
             }
+            
+            // Parse parameter decorators
+            DecoratorList param_decs = parse_decorators(parser);
             
             Token* param = consume(parser, TOKEN_IDENTIFIER, "Expect parameter name.");
             char* param_name = malloc(param->length + 1);
             memcpy(param_name, param->start, param->length);
             param_name[param->length] = '\0';
-            method_node->as.method_decl.params[method_node->as.method_decl.param_count++] = param_name;
+            method_node->as.method_decl.params[method_node->as.method_decl.param_count] = param_name;
+            method_node->as.method_decl.param_decorators[method_node->as.method_decl.param_count] = param_decs;
+            method_node->as.method_decl.param_count++;
         } while (parser_match(parser, TOKEN_COMMA));
     }
     
@@ -2453,11 +2557,94 @@ static ASTNode* method_declaration(Parser* parser) {
     return method_node;
 }
 
+// Parse decorators: @decorator_name or @decorator_name(arg1, arg2, ...)
+// Returns a DecoratorList that needs to be freed by caller
+static DecoratorList parse_decorators(Parser* parser) {
+    DecoratorList list;
+    decorator_list_init(&list);
+    
+    while (parser_match(parser, TOKEN_AT)) {
+        Token* name_token = consume(parser, TOKEN_IDENTIFIER, "Expect decorator name after '@'.");
+        char* dec_name = malloc(name_token->length + 1);
+        memcpy(dec_name, name_token->start, name_token->length);
+        dec_name[name_token->length] = '\0';
+        
+        // Check for arguments
+        ASTNode** args = NULL;
+        int arg_count = 0;
+        
+        if (parser_match(parser, TOKEN_LEFT_PAREN)) {
+            // Parse decorator arguments
+            if (!check(parser, TOKEN_RIGHT_PAREN)) {
+                int capacity = 4;
+                args = malloc(sizeof(ASTNode*) * capacity);
+                
+                do {
+                    if (arg_count >= capacity) {
+                        capacity *= 2;
+                        args = realloc(args, sizeof(ASTNode*) * capacity);
+                    }
+                    
+                    // Parse argument (can be identifier, string, number, or expression)
+                    // For named arguments like func=myFunc, parse as assignment-like expression
+                    if (check(parser, TOKEN_IDENTIFIER)) {
+                        Token* peek_ahead = parser->current + 1 < parser->count ? &parser->tokens[parser->current + 1] : NULL;
+                        if (peek_ahead && peek_ahead->type == TOKEN_ASSIGN) {
+                            // Named argument: name=value
+                            Token* param_name = current_token(parser);
+                            parser_advance(parser);
+                            parser_advance(parser); // consume '='
+                            
+                            // Create an assignment node to represent name=value
+                            ASTNode* assign_node = ast_node_new(AST_ASSIGNMENT);
+                            set_node_location(assign_node, param_name);
+                            
+                            ASTNode* target = ast_node_new(AST_IDENTIFIER);
+                            char* name = malloc(param_name->length + 1);
+                            memcpy(name, param_name->start, param_name->length);
+                            name[param_name->length] = '\0';
+                            target->as.identifier = name;
+                            assign_node->as.assignment.target = target;
+                            assign_node->as.assignment.value = expression(parser);
+                            assign_node->as.assignment.operator = TOKEN_ASSIGN;
+                            
+                            args[arg_count++] = assign_node;
+                        } else {
+                            // Regular positional argument
+                            args[arg_count++] = expression(parser);
+                        }
+                    } else {
+                        // Regular expression argument
+                        args[arg_count++] = expression(parser);
+                    }
+                } while (parser_match(parser, TOKEN_COMMA));
+            }
+            consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after decorator arguments.");
+        }
+        
+        decorator_list_add(&list, dec_name, args, arg_count);
+        free(dec_name);
+        if (args) free(args);  // decorator_list_add copies the array
+        
+        // Allow newlines between decorators
+        while (parser_match(parser, TOKEN_NEWLINE));
+    }
+    
+    return list;
+}
+
 static ASTNode* declaration(Parser* parser) {
+    // Parse decorators (if any) before declarations
+    DecoratorList decorators = parse_decorators(parser);
+    
     if (parser_match(parser, TOKEN_STRUCT)) {
-        return struct_declaration(parser);
+        ASTNode* struct_node = struct_declaration(parser);
+        struct_node->as.struct_decl.decorators = decorators;
+        return struct_node;
     }
     if (parser_match(parser, TOKEN_INTERFACE)) {
+        // Interfaces don't support decorators yet, free the list
+        decorator_list_free(&decorators);
         return interface_declaration(parser);
     }
     if (parser_match(parser, TOKEN_EXPORT)) {
@@ -2466,35 +2653,53 @@ static ASTNode* declaration(Parser* parser) {
             if (check(parser, TOKEN_IDENTIFIER)) {
                 ASTNode* fn_node = function_declaration(parser);
                 fn_node->as.function_decl.is_exported = true;
+                fn_node->as.function_decl.decorators = decorators;
                 return fn_node;
             } else {
                 error_at_current(parser, "export can only be used with named functions.");
+                decorator_list_free(&decorators);
                 return NULL;
             }
         } else if (parser_match(parser, TOKEN_INTERFACE)) {
             // export interface name { ... }
+            decorator_list_free(&decorators);  // Interfaces don't support decorators
             ASTNode* iface_node = interface_declaration_impl(parser, true);
             return iface_node;
         } else {
             error_at_current(parser, "export can only be used with function or interface declarations.");
+            decorator_list_free(&decorators);
             return NULL;
         }
     }
     if (parser_match(parser, TOKEN_FN)) {
         // Check if it's a method declaration fn (Type) method()
         if (check(parser, TOKEN_LEFT_PAREN)) {
-            return method_declaration(parser);
+            ASTNode* method_node = method_declaration(parser);
+            method_node->as.method_decl.decorators = decorators;
+            return method_node;
         }
         // Check if it's a function declaration (fn name(...)) or anonymous function expression (fn(...))
         if (check(parser, TOKEN_IDENTIFIER)) {
-            return function_declaration(parser);
+            ASTNode* fn_node = function_declaration(parser);
+            fn_node->as.function_decl.decorators = decorators;
+            return fn_node;
         } else {
             // It's an anonymous function expression - treat as expression statement
+            decorator_list_free(&decorators);  // Can't decorate anonymous functions in expression position
             parser->current--; // Back up to re-parse the fn token
             return statement(parser);
         }
     }
-    if (parser_match(parser, TOKEN_LET)) return var_declaration(parser);
+    if (parser_match(parser, TOKEN_LET)) {
+        decorator_list_free(&decorators);  // Variables don't support decorators
+        return var_declaration(parser);
+    }
+    
+    // No declaration keyword found, decorators are invalid
+    if (decorators.count > 0) {
+        error_at_current(parser, "Decorators can only be applied to functions, methods, or structs.");
+        decorator_list_free(&decorators);
+    }
     
     return statement(parser);
 }

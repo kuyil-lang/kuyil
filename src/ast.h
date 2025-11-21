@@ -90,6 +90,19 @@ typedef struct Value {
     } as;
 } Value;
 
+// Decorator support
+typedef struct {
+    char* name;              // Decorator name (e.g., "inject", "wrap")
+    ASTNode** args;          // Decorator arguments (can be expressions)
+    int arg_count;
+} Decorator;
+
+typedef struct {
+    Decorator* decorators;
+    int count;
+    int capacity;
+} DecoratorList;
+
 typedef struct {
     char* key;
     ASTNode* value;
@@ -118,6 +131,8 @@ typedef struct {
     int param_count;
     Block* body;
     bool is_exported;  // Whether this function should be exported from module
+    DecoratorList decorators;  // Decorators applied to this function
+    DecoratorList* param_decorators;  // Decorators for each parameter (array of DecoratorList)
 } FunctionDecl;
 
 typedef struct {
@@ -198,6 +213,8 @@ typedef struct {
     char* name;
     char** fields;
     int field_count;
+    DecoratorList decorators;  // Decorators applied to this struct
+    DecoratorList* field_decorators;  // Decorators for each field (array of DecoratorList)
 } StructDecl;
 
 typedef struct {
@@ -219,6 +236,8 @@ typedef struct {
     char** params;
     int param_count;
     Block* body;
+    DecoratorList decorators;  // Decorators applied to this method
+    DecoratorList* param_decorators;  // Decorators for each parameter
 } MethodDecl;
 
 typedef struct {
@@ -292,5 +311,11 @@ void ast_print(ASTNode* node, int indent);
 // Memory management
 ASTNode* ast_node_new(ASTNodeType type);
 void ast_node_free(ASTNode* node);
+
+// Decorator management
+void decorator_list_init(DecoratorList* list);
+void decorator_list_add(DecoratorList* list, const char* name, ASTNode** args, int arg_count);
+void decorator_list_free(DecoratorList* list);
+Decorator* decorator_list_find(DecoratorList* list, const char* name);
 
 #endif

@@ -1,0 +1,277 @@
+// Practical Decorator Example - Real-world Use Cases
+// This demonstrates how decorators can be used for common programming patterns
+
+print("╔═══════════════════════════════════════════════════════════╗")
+print("║     Kuyil Decorators - Practical Examples                ║")
+print("╚═══════════════════════════════════════════════════════════╝")
+print("")
+
+// ============================================================================
+// Example 1: API Endpoint with Multiple Decorators
+// ============================================================================
+print("Example 1: REST API Endpoint")
+print("───────────────────────────────────────────────────────────")
+
+@route(path="/api/users", method="POST")
+@authenticate
+@rateLimit(maxRequests=100, window=60)
+@validate
+@logRequest
+fn createUserEndpoint(@body userData, @header authToken) {
+    print("  → Creating user with data: " + userData)
+    print("  → Auth token: " + authToken)
+    return "User created successfully"
+}
+
+print("Endpoint: createUserEndpoint")
+print("Decorators applied:")
+let api_decorators = @get("createUserEndpoint")
+print(api_decorators)
+print("")
+
+// ============================================================================
+// Example 2: Database Operations with Transactions
+// ============================================================================
+print("Example 2: Database Transaction")
+print("───────────────────────────────────────────────────────────")
+
+@transaction
+@retry(maxAttempts=3, backoff="exponential")
+@timeout(seconds=30)
+@logQuery
+fn updateUserBalance(@inject db, userId, amount) {
+    print("  → Updating balance for user: " + userId)
+    print("  → Amount: " + amount)
+    return "Balance updated"
+}
+
+print("Function: updateUserBalance")
+print("Decorators applied:")
+let db_decorators = @get("updateUserBalance")
+print(db_decorators)
+print("")
+
+// ============================================================================
+// Example 3: Caching with Performance Monitoring
+// ============================================================================
+print("Example 3: Cached Function with Performance Tracking")
+print("───────────────────────────────────────────────────────────")
+
+@cache(ttl=300, strategy="LRU", maxSize=1000)
+@measurePerformance
+@log(level="debug")
+fn fetchExpensiveData(queryId) {
+    print("  → Fetching data for query: " + queryId)
+    // Simulate expensive operation
+    let result = "Data for query " + queryId
+    return result
+}
+
+print("Function: fetchExpensiveData")
+print("Decorators applied:")
+let cache_decorators = @get("fetchExpensiveData")
+print(cache_decorators)
+print("")
+
+// ============================================================================
+// Example 4: Input Validation and Sanitization
+// ============================================================================
+print("Example 4: Input Validation")
+print("───────────────────────────────────────────────────────────")
+
+@validateInput
+fn processUserInput(@required @trim @lowercase email, @required @minLength(8) @maxLength(100) password, @optional @sanitize name) {
+    print("  → Processing user input")
+    print("  → Email: " + email)
+    print("  → Password: [REDACTED]")
+    print("  → Name: " + name)
+    return "Input processed"
+}
+
+print("Function: processUserInput")
+print("Parameter decorators:")
+let param_decorators = @get("processUserInput", "params")
+print(param_decorators)
+print("")
+
+// ============================================================================
+// Example 5: Struct/Entity with ORM-like Decorators
+// ============================================================================
+print("Example 5: Database Entity (ORM-style)")
+print("───────────────────────────────────────────────────────────")
+
+@entity
+@table("users")
+@index(["email"], unique=true)
+@index(["created_at", "status"])
+struct User {
+    @primary
+    @autoIncrement
+    id,
+    
+    @required
+    @unique
+    @email
+    @maxLength(255)
+    email,
+    
+    @required
+    @minLength(3)
+    @maxLength(100)
+    name,
+    
+    @required
+    @hash(algorithm="bcrypt")
+    password,
+    
+    @defaultValue("active")
+    @enum(["active", "inactive", "banned"])
+    status,
+    
+    @timestamp
+    @defaultValue("NOW()")
+    created_at,
+    
+    @timestamp
+    @nullable
+    updated_at
+}
+
+print("Struct: User")
+print("Struct decorators:")
+let user_decorators = @get("User")
+print(user_decorators)
+print("")
+
+// ============================================================================
+// Example 6: Method Decorators on Struct Methods
+// ============================================================================
+print("Example 6: Struct Methods with Decorators")
+print("───────────────────────────────────────────────────────────")
+
+@memoize
+@measurePerformance
+fn User_calculateScore(this, @required metrics) {
+    print("  → Calculating score for user: " + this.name)
+    return "Score: 95"
+}
+
+@deprecated(message="Use User_updateProfile instead", since="v2.0")
+@logUsage
+fn User_updateData(this, data) {
+    print("  → [DEPRECATED] Updating user data")
+    return "Updated (deprecated)"
+}
+
+print("Method: User_calculateScore")
+let method1_decorators = @get("User_calculateScore")
+print(method1_decorators)
+print("")
+
+print("Method: User_updateData")
+let method2_decorators = @get("User_updateData")
+print(method2_decorators)
+print("")
+
+// ============================================================================
+// Example 7: Event Handlers with Decorators
+// ============================================================================
+print("Example 7: Event Handler with Middleware")
+print("───────────────────────────────────────────────────────────")
+
+@eventHandler(event="user.created")
+@async
+@queue(name="notifications")
+@retry(maxAttempts=5)
+fn sendWelcomeEmail(@event userData) {
+    print("  → Sending welcome email to: " + userData.email)
+    return "Email queued"
+}
+
+print("Function: sendWelcomeEmail")
+let event_decorators = @get("sendWelcomeEmail")
+print(event_decorators)
+print("")
+
+// ============================================================================
+// Example 8: Authorization and Permission Checks
+// ============================================================================
+print("Example 8: Authorization Decorators")
+print("───────────────────────────────────────────────────────────")
+
+@requireAuth
+@requireRole("admin")
+@requirePermission("users.delete")
+@auditLog
+fn deleteUser(@inject currentUser, @pathParam userId) {
+    print("  → Admin " + currentUser + " deleting user: " + userId)
+    return "User deleted"
+}
+
+print("Function: deleteUser")
+let auth_decorators = @get("deleteUser")
+print(auth_decorators)
+print("")
+
+// ============================================================================
+// Example 9: Data Transformation Pipeline
+// ============================================================================
+print("Example 9: Data Transformation")
+print("───────────────────────────────────────────────────────────")
+
+@transform
+@validate
+@normalize
+fn processDataPipeline(@deserialize @validateJSON rawData, @transform @uppercase fields) {
+    print("  → Processing data pipeline")
+    return "Data transformed"
+}
+
+print("Function: processDataPipeline")
+let transform_decorators = @get("processDataPipeline")
+print(transform_decorators)
+print("")
+
+// ============================================================================
+// Example 10: Custom Business Logic with Decorators
+// ============================================================================
+print("Example 10: Business Logic with Multiple Concerns")
+print("───────────────────────────────────────────────────────────")
+
+@businessLogic
+@circuitBreaker(threshold=5, timeout=60)
+@fallback(handler="getDefaultPaymentStatus")
+@notify(events=["payment.success", "payment.failed"])
+fn processPayment(@inject paymentGateway, @required @positive amount, @required @validate currency) {
+    print("  → Processing payment: " + amount + " " + currency)
+    return "Payment processed"
+}
+
+print("Function: processPayment")
+let payment_decorators = @get("processPayment")
+print(payment_decorators)
+print("")
+
+// ============================================================================
+// SUMMARY
+// ============================================================================
+print("╔═══════════════════════════════════════════════════════════╗")
+print("║                    SUMMARY                                ║")
+print("╚═══════════════════════════════════════════════════════════╝")
+print("")
+print("Decorator Use Cases Demonstrated:")
+print("  ✓ REST API routing and middleware")
+print("  ✓ Database transactions and retries")
+print("  ✓ Caching and performance monitoring")
+print("  ✓ Input validation and sanitization")
+print("  ✓ ORM-style entity definitions")
+print("  ✓ Method decorators for business logic")
+print("  ✓ Event-driven architecture")
+print("  ✓ Authorization and security")
+print("  ✓ Data transformation pipelines")
+print("  ✓ Circuit breakers and fault tolerance")
+print("")
+print("All decorators are accessible via @get() for introspection!")
+print("This enables frameworks to implement decorator-driven behavior.")
+print("")
+print("🎉 Kuyil decorators support production-ready patterns!")

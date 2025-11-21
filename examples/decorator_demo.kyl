@@ -1,0 +1,157 @@
+// Decorator Demo for Kuyil Language
+// Demonstrates @decorator, @inject, @get(), and @wrap() features
+
+print("=== Kuyil Decorator Demo ===\n")
+
+// Example 1: Function decorators
+print("1. Function Decorators:")
+print("   Decorators can be applied to functions\n")
+
+@log
+@cache
+fn fibonacci(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+print("   fibonacci(5) = " + fibonacci(5))
+print("")
+
+// Example 2: Parameter decorators with @inject
+print("2. Parameter Injection:")
+print("   Use @inject to mark dependency injection\n")
+
+@rest
+fn createUser(@inject db, @inject logger, name, email) {
+    print("   Creating user: " + name)
+    print("   DB: " + db)
+    print("   Logger: " + logger)
+    return "User created: " + name
+}
+
+print("")
+
+// Example 3: Struct decorators
+print("3. Struct Decorators:")
+print("   Decorators can describe struct behavior\n")
+
+@entity
+@table("users")
+struct User {
+    @primary
+    @autoIncrement
+    id
+    
+    @required
+    @maxLength(100)
+    name
+    
+    @email
+    @unique
+    emailAddress
+    
+    @timestamp
+    createdAt
+}
+
+print("   Defined struct User with decorators")
+print("")
+
+// Example 4: @get() to retrieve all decorators
+print("4. Retrieving Decorators with @get():")
+print("   Use @get() to access decorator metadata\n")
+
+fn inspectFunction(funcName) {
+    let decorators = @get(funcName)
+    print("   Function: " + funcName)
+    print("   Decorators: " + array_length(decorators))
+    
+    let i = 0
+    while (i < array_length(decorators)) {
+        print("     - " + decorators[i].name)
+        i = i + 1
+    }
+}
+
+inspectFunction("fibonacci")
+print("")
+
+// Example 5: @wrap() for custom decorator handlers
+print("5. Custom Decorator Handler with @wrap():")
+print("   Implement custom decorator logic\n")
+
+fn loggingDecorator(targetFunc, args) {
+    print("   [LOG] Calling function...")
+    let result = targetFunc(args[0], args[1])
+    print("   [LOG] Function returned: " + result)
+    return result
+}
+
+@wrap(handler=loggingDecorator)
+fn multiply(a, b) {
+    return a * b
+}
+
+let result = multiply(6, 7)
+print("   Result: " + result)
+print("")
+
+// Example 6: Method decorators
+print("6. Method Decorators:")
+print("   Decorators on struct methods\n")
+
+struct Calculator {
+    value
+}
+
+@memoize
+fn (Calculator) square() {
+    return this.value * this.value
+}
+
+@deprecated
+fn (Calculator) oldMethod() {
+    print("   This method is deprecated")
+}
+
+print("   Defined Calculator with decorated methods")
+print("")
+
+// Example 7: Decorator with parameters
+print("7. Decorators with Parameters:")
+print("   Pass configuration to decorators\n")
+
+@rateLimit(requests=100, window=60)
+@timeout(seconds=30)
+fn apiCall(endpoint) {
+    print("   Calling API: " + endpoint)
+    return "Response from " + endpoint
+}
+
+print("   apiCall decorated with rate limiting and timeout")
+print("")
+
+// Example 8: Multiple decorators with @get()
+print("8. Inspect Parameter Decorators:")
+print("   Check which parameters have @inject\n")
+
+fn inspectParams(funcName) {
+    let paramDecorators = @get(funcName, "params")
+    print("   Function: " + funcName)
+    print("   Parameter decorators: " + array_length(paramDecorators))
+}
+
+inspectParams("createUser")
+print("")
+
+print("=== Decorator Demo Complete ===")
+print("\nKey Features Demonstrated:")
+print("  ✓ @decorator on functions and methods")
+print("  ✓ @inject for dependency injection")
+print("  ✓ @get() to retrieve decorator metadata")
+print("  ✓ @wrap(func=handler) for custom logic")
+print("  ✓ Decorators on structs and fields")
+print("  ✓ Decorators with parameters")
+print("  ✓ Multiple decorators per entity")

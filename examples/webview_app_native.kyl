@@ -46,7 +46,7 @@ fn main() {
     let files = heapfs_list()
     for let i = 0; i < files.length; i = i + 1 {
         let info = heapfs_info(files[i])
-        print("  - " + files[i] + " (" + str_toString(info.size) + " bytes)")
+        print("  - " + files[i] + " (" + info.size + " bytes)")
     }
     print("")
     
@@ -55,13 +55,13 @@ fn main() {
     let htmlContent = loadFileAsString("index.html")
     
     if htmlContent.length > 0 {
-        print("Successfully loaded HTML (" + str_toString(htmlContent.length) + " bytes)")
+        print("Successfully loaded HTML (" + htmlContent.length + " bytes)")
         
         // Load CSS and inject into HTML
         print("Loading CSS from embedded resources...")
         let cssContent = loadFileAsString("style.css")
         if cssContent.length > 0 {
-            print("Successfully loaded CSS (" + str_toString(cssContent.length) + " bytes)")
+            print("Successfully loaded CSS (" + cssContent.length + " bytes)")
             htmlContent = str_replace(htmlContent, "<link rel=\"stylesheet\" href=\"style.css\">", "<style>" + cssContent + "</style>")
         }
         
@@ -69,12 +69,12 @@ fn main() {
         print("Loading JS from embedded resources...")
         let jsContent = loadFileAsString("app.js")
         if jsContent.length > 0 {
-            print("Successfully loaded JS (" + str_toString(jsContent.length) + " bytes)")
+            print("Successfully loaded JS (" + jsContent.length + " bytes)")
             htmlContent = str_replace(htmlContent, "<script src=\"app.js\"></script>", "<script>" + jsContent + "</script>")
         }
         
         print("\n✅ All resources loaded from embedded binary!")
-        print("HTML+CSS+JS ready (" + str_toString(htmlContent.length) + " bytes total)\n")
+        print("HTML+CSS+JS ready (" + htmlContent.length + " bytes total)\n")
         print("Note: WebView display requires @loadlib('webview') and interface methods")
         print("This demo shows embedded resources work - WebView integration pending")
     } else {
