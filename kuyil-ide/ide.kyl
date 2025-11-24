@@ -1,604 +1,973 @@
-// Kuyil AI IDE - Using WebView App Framework
+// Kuyil AI IDE - Supports both IDE mode and Remote mode
+// Usage: ./kuyil kuyil-ide/ide_bridge.kyl (IDE mode, default)
+//        KUYIL_IDE_MODE=remote ./kuyil kuyil-ide/ide_bridge.kyl (HTTP server mode)
 
-import "interfaces/interface_system.kyl"
-import "interfaces/interface_fileio.kyl"
-import "interfaces/interface_http.kyl"
-import "interfaces/interface_http_client_ex.kyl"
-import "interfaces/interface_webview_app.kyl"
-import "interfaces/interface_str.kyl"
-import "interfaces/interface_transcoder.kyl"
-import "interfaces/interface_crypto.kyl"
-import "interfaces/interface_ds.kyl"
+import("interfaces/interface_system.kyl") as sys
+import("interfaces/interface_fileio.kyl") as file
+import("interfaces/interface_webview_app.kyl") as app
+import("interfaces/interface_str.kyl") as str
+import("interfaces/interface_transcoder.kyl") as json
+import("interfaces/interface_crypto.kyl") as crypto
+import("interfaces/interface_http_client_ex.kyl") as httpc
+import("interfaces/interface_http.kyl") as http
 
 // ============================================
 // Configuration
 // ============================================
 
-let g_workspace_path = "kuyil-ai-ide/workspace/"
-let g_cached_file_list = ""  // Cache file list to avoid avatar threading issues
-
-// ============================================
-// Bridge Worker Functions
-// ============================================
-
-fn processParam(params) {
-    let cleanParams = params
-    
-    // Only remove surrounding quotes if present (from extra stringification)
-    let paramLen = str_length(cleanParams)
-    if paramLen > 2 {
-        let firstChar = str_substring(cleanParams, 0, 1)
-        let lastChar = str_substring(cleanParams, paramLen - 1, paramLen)
-        
-        if firstChar == "\"" and lastChar == "\"" {
-            cleanParams = str_substring(cleanParams, 1, paramLen - 1)
-        }
-    }
-    
-    // Unescape AFTER removing quotes - JavaScript JSON.stringify escapes quotes
-    cleanParams = kyl_system_unescape(cleanParams)
-
-    print(cleanParams)
-
-    return cleanParams
-}
-
-fn fetchBridgeWorker(params) {
-    print("[fetchBridge Worker] Processing request")
-
-    print(1)
-    let cleanParams = processParam(params)
-    print(2)
-    
-    print("[fetchBridge Worker] Sending to Ollama...")
-    print("[fetchBridge Worker] Payload preview: " + str_substring(cleanParams, 0, 150))
-    
-    let url = "http://127.0.0.1:11434/api/generate"
-    
-    print("[fetchBridge Worker] Calling http_clientPostEx...")
-    let response = http_clientPostEx(url, cleanParams, {})
-    
-    print("[fetchBridge Worker] Response received")
-    print("[fetchBridge Worker] Status: " + response.status)
-    
-    if response.status != 200 {
-        print("[fetchBridge Worker] ERROR: HTTP " + response.status)
-        return jsonError("HTTP error " + response.status)
-    }
-    
-    if response.body == nil {
-        print("[fetchBridge Worker] ERROR: Body is nil")
-        return jsonError("Empty response")
-    }
-    
-    print("[fetchBridge Worker] SUCCESS! Returning body")
-    return response.body
-}
-
-fn aiGenerateWorker(prompt) {
-    print("[aiGenerate Worker] prompt=" + prompt)
-    let body = "{\"model\":\"llama3.1:8b\",\"prompt\":\"" + prompt + "\",\"stream\":false}"
-    let raw = clientPost("http://127.0.0.1:11434/api/generate", body)
-    
-    if raw == nil {
-        return jsonError("No response from Ollama")
-    }
-    
-    return raw
-}
-
-fn kuyilReadFileWorker(pathParam) {
-    let path = processParam(pathParam)
-    
-    let fullPath = path
-    let pathLen = str_length(path)
-    
-    if pathLen > 0 {
-        let wpl = str_length(g_workspace_path)
-        let wsPrefix = str_substring(path, 0, wpl)
-        
-        if wsPrefix != g_workspace_path {
-            fullPath = g_workspace_path + path
-            print("[kuyilReadFile Worker] Prepended workspace path")
-        }
-    }
-    
-    if file_exists(fullPath) {
-        let content = file_readText(fullPath)
-        if content != nil {
-            let contentLen = str_length(content)
-            print("[kuyilReadFile Worker] Successfully read file, length: " + contentLen)
-            
-            // Base64 encode to avoid ALL escaping issues with framework
-            let encoded = crypto_base64Encode(content)
-            if encoded == nil {
-                print("[kuyilReadFile Worker] ERROR: Base64 encoding failed")
-                return "// Error: Could not encode file - " + fullPath
-            }
-            
-            print("[kuyilReadFile Worker] Base64 encoded, returning")
-            return "BASE64:" + encoded
-        } else {
-            print("[kuyilReadFile Worker] ERROR: file_readText returned nil")
-            return "// Error: Could not read file - " + fullPath
-        }
-    }
-    
-    print("[kuyilReadFile Worker] ERROR: File does not exist")
-    return "// Error: File not found - " + fullPath
-}
-
-fn readDocumentationWorker(docNameParam) {
-    let docName = processParam(docNameParam)
-    print("[readDocumentation Worker] Reading doc: " + docName)
-    
-    // Use absolute path - avatars have different working directory
-    let docPath = "/home/vmukumar/akish/kuyil/docs/" + docName
-    print("[readDocumentation Worker] Trying path: " + docPath)
-    
-    let content = file_readText(docPath)
-    if content != nil {
-        print("[readDocumentation Worker] Success! Length: " + str_length(content))
-        
-        // Base64 encode to avoid ALL escaping issues
-        let encoded = crypto_base64Encode(content)
-        if encoded == nil {
-            return "ERROR: Could not encode documentation"
-        }
-        
-        return "BASE64:" + encoded
-    }
-    
-    print("[readDocumentation Worker] File not found")
-    return "# Documentation Not Found\\n\\nThe documentation file " + docName + " could not be found."
-}
-
-fn listDocsWorker(args) {
-    print("[listDocs Worker] Listing documentation files...")
-    return "[\"DOCUMENTATION_INDEX.md\",\"operators.md\",\"conditionals.md\",\"loops.md\",\"structs-and-methods.md\",\"avatars.md\",\"import-system.md\",\"ffi-guide.md\",\"language-reference.md\",\"quick-start.md\"]"
-}
+let g_workspace_path = "kuyil-ide/workspace/"
+let g_mode = "ide"  // "ide" for webview, "remote" for HTTP server
 
 // ============================================
 // Helper Functions
 // ============================================
 
-// JSON response builders
-fn jsonError(message) {
-    return "{\"error\":\"" + message + "\"}"
+fn parseBody(bodyStr) {
+    if (bodyStr == nil || bodyStr == "") {
+        return nil
+    }
+    if (typeof(bodyStr) != "string") {
+        return bodyStr  // Already parsed
+    }
+    return json.transcode_jsonParse(bodyStr)
 }
 
-fn jsonSuccess(dataFields) {
-    return "{\"success\":true," + dataFields + "}"
+// Resolve path - if path already has workspace prefix, use as-is, otherwise prepend
+fn resolvePath(path) {
+    let workspacePrefix = "kuyil-ide/workspace/"
+    let pathStart = str_substring(path, 0, str_length(workspacePrefix))
+    if (pathStart == workspacePrefix) {
+        return path
+    }
+    return g_workspace_path + path
 }
 
-fn findDocPath(docName) {
-    let searchPaths = [
-        "../docs/" + docName,
-        "../docs/guides/" + docName,
-        "/usr/share/kuyil/docs/" + docName,
-        "/usr/share/kuyil/docs/guides/" + docName,
-        "/usr/local/share/kuyil/docs/" + docName,
-        "/usr/local/share/kuyil/docs/guides/" + docName,
-        "./docs/" + docName,
-        "./docs/guides/" + docName
-    ]
-    
-    if file_exists(searchPaths[0]) {
-        return searchPaths[0]
+// Unescape content to convert escape sequences to actual characters
+fn unescapeContent(content) {
+    if (content == nil) {
+        return ""
     }
-    if file_exists(searchPaths[1]) {
-        return searchPaths[1]
-    }
-    if file_exists(searchPaths[2]) {
-        return searchPaths[2]
-    }
-    if file_exists(searchPaths[3]) {
-        return searchPaths[3]
-    }
-    if file_exists(searchPaths[4]) {
-        return searchPaths[4]
-    }
-    if file_exists(searchPaths[5]) {
-        return searchPaths[5]
-    }
-    if file_exists(searchPaths[6]) {
-        return searchPaths[6]
-    }
-    if file_exists(searchPaths[7]) {
-        return searchPaths[7]
-    }
-    
-    return ""
+    // Unescape JSON escape sequences to actual characters
+    // Must process double-backslash FIRST before other escapes
+    content = str_regexReplace(content, "\\\\\\\\", "\x01")  // Temporarily protect \\ with placeholder
+    content = str_regexReplace(content, "\\\\r\\\\n", "\n")  // Windows CRLF (\r\n -> newline)
+    content = str_regexReplace(content, "\\\\n", "\n")       // Unix LF (\n -> newline)
+    content = str_regexReplace(content, "\\\\t", "\t")       // Tab (\t -> tab)
+    content = str_regexReplace(content, "\\\\r", "\r")       // CR (\r -> carriage return)
+    content = str_regexReplace(content, '\\\\"', '"')        // Quote (\" -> ")
+    content = str_regexReplace(content, "\x01", "\\")        // Restore protected backslashes
+    return content
 }
 
-// Legacy functions for compatibility
-fn listExtensionsWorker(args) { return "[]" }
-fn getSettingsBridgeWorker(args) { return "{}" }
-
-// File operations worker functions
-fn createFolderWorker(argsJson) {
-    print("[createFolder Worker] Received: " + argsJson)
-    
-    // Clean the JSON string (remove extra quotes if present)
-    let cleanJson = processParam(argsJson)
-    print("[createFolder Worker] Clean JSON: " + cleanJson)
-    
-    // Extract path from JSON
-    let path = transcode_jsonGetField(cleanJson, "path")
-    
-    if path == nil {
-        print("[createFolder Worker] ERROR: No path field in JSON")
-        return jsonError("No path field")
+// JSON stringify helper - escapes string for use in JSON
+fn jsonStringify(str) {
+    if (str == nil) {
+        return '""'
     }
-    
-    print("[createFolder Worker] Extracted path: " + path)
-    
-    // Prepend workspace path if not already absolute
-    let fullPath = path
-    if str_substring(path, 0, str_length(g_workspace_path)) != g_workspace_path {
-        fullPath = g_workspace_path + path
-    }
-    
-    print("[createFolder Worker] Full path: " + fullPath)
-    
-    // Create folder using system command
-    let result = kyl_system_exec("mkdir -p " + fullPath)
-    
-    if result == 0 {
-        print("[createFolder Worker] SUCCESS: Created " + fullPath)
-        return jsonSuccess("\"path\":\"" + fullPath + "\"")
-    } else {
-        print("[createFolder Worker] ERROR: Failed to create " + fullPath)
-        return jsonError("Failed to create folder")
-    }
+    // Escape special characters for JSON
+    let escaped = str_regexReplace(str, "\\\\", "\\\\\\\\")  // Backslash first
+    escaped = str_regexReplace(escaped, "\"", "\\\\\"")       // Quote
+    escaped = str_regexReplace(escaped, "\n", "\\\\n")        // Newline
+    escaped = str_regexReplace(escaped, "\r", "\\\\r")        // Carriage return
+    escaped = str_regexReplace(escaped, "\t", "\\\\t")        // Tab
+    return '"' + escaped + '"'
 }
 
-fn createFileWorker(argsJson) {
-    print("[createFile Worker] Creating file")
-    print("[createFile Worker] Args length: " + str_length(argsJson))
+// ============================================
+// API Routes using @route decorator
+// Routes are automatically intercepted by webview fetch()
+// ============================================
+
+// AI Generate - POST /api/ai/generate
+@route(method="POST", path="/api/ai/generate", bridge=true)
+fn handleAiGenerate(request, response) {
+    print("[API] /api/ai/generate")
     
-    // Use processParam to clean the input
-    let cleanJson = processParam(argsJson)
+    let body = parseBody(request.body)
+    print("[API] Body type: " + typeof(body))
     
-    print("[createFile Worker] JSON preview: " + str_substring(cleanJson, 0, 60))
-    
-    // Extract path using JSON parser
-    print("[createFile Worker] Extracting path...")
-    let path = transcode_jsonGetField(cleanJson, "path")
-    
-    if path == nil or path == "" {
-        print("[createFile Worker] ERROR: Could not find path field")
-        return jsonError("Invalid JSON - no path field")
+    // Get prompt from body
+    let prompt = body.prompt
+    if (prompt == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No prompt provided"}`)
+        return
     }
     
-    print("[createFile Worker] Extracted path: " + path)
-    
-    // Prepend workspace path
-    let fullPath = g_workspace_path + path
-    print("[createFile Worker] Full path: " + fullPath)
-    
-    // Extract content using JSON parser
-    print("[createFile Worker] Extracting content...")
-    let content = transcode_jsonGetField(cleanJson, "content")
-    
-    if content == nil {
-        print("[createFile Worker] ERROR: Could not find content field")
-        return jsonError("No content field")
+    // Unescape if needed
+    if (typeof(prompt) == "string") {
+        prompt = sys.unescape(prompt)
     }
     
-    // Content from JSON has escape sequences like \n, \t, \"
-    // Use system unescape to convert them properly
-    content = kyl_system_unescape(content)
+    print("[API] Prompt: " + str_substring(prompt, 0, 100))
     
-    print("[createFile Worker] Content preview: " + str_substring(content, 0, 100))
-    print("[createFile Worker] Content length: " + str_length(content))
+    // Call Ollama
+    let ollamaBody = `{"model":"llama3.1:8b","prompt":"` + prompt + `","stream":false}`
+    let ollamaUrl = "http://127.0.0.1:11434/api/generate"
     
-    // Write file
-    print("[createFile Worker] Writing file...")
-    let success = file_writeText(fullPath, content)
+    let ollamaResponse = httpc.http_clientPostEx(ollamaUrl, ollamaBody, {})
     
-    print("[createFile Worker] Write result: " + success)
-    
-    if success {
-        print("[createFile Worker] SUCCESS: Created " + fullPath)
-        
-        // Refresh file list cache
-        g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
-        print("[createFile Worker] Cache refreshed, files: " + str_length(g_cached_file_list))
-        
-        return jsonSuccess("\"path\":\"" + fullPath + "\"")
-    } else {
-        print("[createFile Worker] ERROR: Failed to create " + fullPath)
-        return jsonError("Failed to write file")
+    if (ollamaResponse.status != 200) {
+        aio_response_setStatus(response, 500)
+        aio_response_setBody(response, `{"error":"Ollama error"}`)
+        return
     }
+    
+    print("[API] Ollama response OK")
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, ollamaResponse.body)
 }
 
-fn writeFileWorker(argsJson) {
-    print("[writeFile Worker] Writing file")
+// Fetch Bridge - POST /api/bridge/fetch
+// Direct passthrough to Ollama
+@route(method="POST", path="/api/bridge/fetch", bridge=true)
+fn handleFetchBridge(request, response) {
+    print("[API] /api/bridge/fetch START")
     
-    // Use processParam to clean the input
-    let cleanJson = processParam(argsJson)
-    
-    print("[writeFile Worker] JSON preview: " + str_substring(cleanJson, 0, 60))
-    
-    // Extract path using JSON parser
-    let path = transcode_jsonGetField(cleanJson, "path")
-    
-    if path == nil or path == "" {
-        print("[writeFile Worker] ERROR: Could not find path field")
-        return jsonError("Invalid JSON - no path field")
+    if (request == nil) {
+        print("[API] ERROR: request is nil")
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"Request is nil"}`)
+        return
     }
     
-    print("[writeFile Worker] Extracted path: " + path)
+    print("[API] request type: " + typeof(request))
     
-    // Prepend workspace path
-    let fullPath = g_workspace_path + path
-    print("[writeFile Worker] Full path: " + fullPath)
+    // Body comes as STRING (already unescaped by framework)
+    let bodyStr = request.body
+    print("[API] body type: " + typeof(bodyStr))
     
-    // Extract content using JSON parser
-    let content = transcode_jsonGetField(cleanJson, "content")
-    
-    if content == nil {
-        print("[writeFile Worker] ERROR: Could not find content field")
-        return jsonError("No content field")
+    if (bodyStr == nil || bodyStr == "") {
+        print("[API] ERROR: body is empty")
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No body in request"}`)
+        return
     }
     
-    // Content from JSON has escape sequences like \n, \t, \"
-    // Use system unescape to convert them properly
-    content = kyl_system_unescape(content)
+    print("[API] Body string length: " + str_length(bodyStr))
+    print("[API] Body preview: " + str_substring(bodyStr, 0, 150))
     
-    print("[writeFile Worker] Content length: " + str_length(content))
+    // Forward directly to Ollama
+    let url = "http://127.0.0.1:11434/api/generate"
     
-    // Write file
-    let success = file_writeText(fullPath, content)
+    let bodyLen = str_length(bodyStr)
+    print("[API] Calling Ollama at: " + url)
+    print("[API] Body length: " + bodyLen)
     
-    if success {
-        print("[writeFile Worker] SUCCESS: Wrote " + fullPath)
-        
-        // Refresh file list cache
-        g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
-        print("[writeFile Worker] Cache refreshed, files: " + str_length(g_cached_file_list))
-        
-        return jsonSuccess("\"path\":\"" + fullPath + "\"")
-    } else {
-        print("[writeFile Worker] ERROR: Failed to write " + fullPath)
-        return jsonError("Failed to write file")
+    // Check for reasonable body size
+    if (bodyLen > 100000) {
+        print("[API] ERROR: Body too large (" + bodyLen + " bytes)")
+        aio_response_setStatus(response, 413)
+        aio_response_setBody(response, `{"error":"Request body too large"}`)
+        return
     }
+    
+    // Call HTTP client - now returns string directly
+    print("[API] Making HTTP POST request...")
+    let ollamaResponse = httpc.http_clientPostEx(url, bodyStr)
+    
+    // Try to use the value directly without checking
+    print("[API] Trying to get length...")
+    let responseLen = str_length(ollamaResponse)
+    print("[API] Response length: " + responseLen)
+    
+    if (ollamaResponse == nil) {
+        print("[API] ERROR: HTTP client returned nil - is Ollama running?")
+        aio_response_setStatus(response, 503)
+        aio_response_setBody(response, `{"error":"Cannot connect to Ollama. Make sure Ollama is running on port 11434"}`)
+        return
+    }
+    
+    print("[API] String length: " + ollamaResponse.length)
+    
+    // Return response directly
+    print("[API] Setting response status 200")
+    aio_response_setStatus(response, 200)
+    
+    print("[API] Setting response body from ollamaResponse string")
+    aio_response_setBody(response, ollamaResponse)
+    
+    print("[API] Response set - handler complete")
 }
 
-fn deleteFileWorker(pathParam) {
-    let path = processParam(pathParam)
-    print("[deleteFile Worker] Deleting file: " + path)
+// Read File - POST /api/files/read
+@route(method="POST", path="/api/files/read", bridge=true)
+fn handleReadFile(request, response) {
+    print("[API] /api/files/read")
     
-    // Prepend workspace path if not already absolute
+    let body = parseBody(request.body)
+    let path = body.path
+    
+    if (path == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No path provided"}`)
+        return
+    }
+    
+    print("[API] Reading: " + path)
+    
+    // Prepend workspace path if needed
     let fullPath = path
     let pathLen = str_length(path)
-    
-    if pathLen > 0 {
+    if (pathLen > 0) {
         let wpl = str_length(g_workspace_path)
         let wsPrefix = str_substring(path, 0, wpl)
-        
-        if wsPrefix != g_workspace_path {
-            fullPath = g_workspace_path + path
-            print("[deleteFile Worker] Prepended workspace path")
-        }
-    }
-    
-    print("[deleteFile Worker] Full path: " + fullPath)
-    
-    // Check if file exists
-    if !file_exists(fullPath) {
-        print("[deleteFile Worker] ERROR: File not found")
-        return jsonError("File not found: " + path)
-    }
-    
-    print("[deleteFile Worker] File exists, attempting delete...")
-    
-    // Delete the file using system command
-    let result = kyl_system_capture("rm -f \"" + fullPath + "\" && echo 'OK' || echo 'FAIL'")
-    print("[deleteFile Worker] rm result: " + result)
-    
-    // Check if deletion was successful
-    if result != nil and str_indexOf(result, "OK") >= 0 {
-        print("[deleteFile Worker] SUCCESS: Deleted " + fullPath)
-        
-        // Refresh file list cache
-        g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -type f \\( -name '*.kyl' -o -name '*.js' -o -name '*.mjs' -o -name '*.py' -o -name '*.go' \\)")
-        print("[deleteFile Worker] Cache refreshed")
-        
-        return jsonSuccess("\"path\":\"" + fullPath + "\"")
-    } else {
-        print("[deleteFile Worker] ERROR: rm command failed")
-        return jsonError("Failed to delete file")
-    }
-}
-
-fn refreshCacheWorker(args) {
-    print("[refreshCache Worker] Refreshing file list cache...")
-    g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
-    print("[refreshCache Worker] Cache refreshed, length: " + str_length(g_cached_file_list))
-    return jsonSuccess("\"cached_files\":" + str_length(g_cached_file_list))
-}
-
-fn runFileWorker(pathParam) {
-    let path = processParam(pathParam)
-    print("[runFile Worker] Running file: " + path)
-    
-    // If path doesn't start with workspace path, prepend it
-    let fullPath = path
-    if str_length(path) > 0 {
-        let wsPrefix = str_substring(path, 0, str_length(g_workspace_path))
-        if wsPrefix != g_workspace_path {
+        if (wsPrefix != g_workspace_path) {
             fullPath = g_workspace_path + path
         }
     }
     
-    print("[runFile Worker] Full path: " + fullPath)
-    
-    if !file_exists(fullPath) {
-        print("[runFile Worker] ERROR: File not found")
-        return jsonError("File not found: " + path)
-    }
-    
-    // Determine command based on file extension
-    let command = ""
-    let pathLen = str_length(fullPath)
-    
-    // Check for .js or .mjs (Node.js)
-    if str_indexOf(fullPath, ".js") >= 0 or str_indexOf(fullPath, ".mjs") >= 0 {
-        if str_substring(fullPath, pathLen - 3, pathLen) == ".js" or str_substring(fullPath, pathLen - 4, pathLen) == ".mjs" {
-            command = "node " + fullPath
-            print("[runFile Worker] Detected Node.js file")
+    if (file.file_exists(fullPath)) {
+        let content = file.file_readText(fullPath)
+        if (content != nil) {
+            print("[API] File read, length: " + str_length(content))
+            aio_response_setStatus(response, 200)
+            aio_response_addHeader(response, "Content-Type", "text/plain")
+            aio_response_setBody(response, content)
+            return
         }
     }
     
-    // Check for .py (Python)
-    if command == "" and str_indexOf(fullPath, ".py") >= 0 {
-        if str_substring(fullPath, pathLen - 3, pathLen) == ".py" {
-            command = "python3 " + fullPath
-            print("[runFile Worker] Detected Python file")
-        }
-    }
-    
-    // Check for .go (Go)
-    if command == "" and str_indexOf(fullPath, ".go") >= 0 {
-        if str_substring(fullPath, pathLen - 3, pathLen) == ".go" {
-            command = "go run " + fullPath
-            print("[runFile Worker] Detected Go file")
-        }
-    }
-    
-    // Check for .kyl (Kuyil) - default
-    if command == "" {
-        command = "./kuyil " + fullPath
-        print("[runFile Worker] Using Kuyil interpreter")
-    }
-    
-    // Execute the file and capture output
-    print("[runFile Worker] Executing: " + command)
-    let output = kyl_system_capture(command)
-    if output == nil {
-        output = ""
-    }
-    
-    print("[runFile Worker] Output length: " + str_length(output))
-    
-    // Escape quotes and newlines for JSON
-    output = str_replace(output, "\\", "\\\\")
-    output = str_replace(output, "\"", "\\\"")
-    output = str_replace(output, "\n", "\\n")
-    output = str_replace(output, "\r", "\\r")
-    output = str_replace(output, "\t", "\\t")
-    
-    return `{"success":true,"output":"` + output + `"}`
+    print("[API] File not found")
+    aio_response_setStatus(response, 404)
+    aio_response_setBody(response, `{"error":"File not found"}`)
+    return
 }
 
-fn listWorkspaceFilesWorker(args) {
-    print("[listWorkspaceFiles Worker] Starting...")
+// Create File - POST /api/files/create
+@route(method="POST", path="/api/files/create", bridge=true)
+fn handleCreateFile(request, response) {
+    print("[API] /api/files/create")
+    print("[API] request.body type: " + typeof(request.body))
+    print("[API] request.body: " + request.body)
     
-    // Always refresh the cache to get the latest file list
-    // Include .kyl, .js, .mjs, .py, .go files
-    print("[listWorkspaceFiles Worker] Refreshing cache...")
-    g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -type f \\( -name '*.kyl' -o -name '*.js' -o -name '*.mjs' -o -name '*.py' -o -name '*.go' \\)")
-    let result = g_cached_file_list
+    let body = parseBody(request.body)
+    print("[API] parsed body type: " + typeof(body))
     
-    if result == nil or result == "" {
-        print("[listWorkspaceFiles Worker] No files found or cache empty")
-        return `{"success":true,"files":[]}`
+    if (body == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"Empty body"}`)
+        return
     }
     
-    print("[listWorkspaceFiles Worker] Cache length: " + str_length(result))
+    let path = body["path"]
+    let content = body["content"]
+
+    print("[API] path: " + path)
+    print("[API] content type: " + typeof(content))
     
-    // Split by newlines to get file paths
-    let lines = str_split(result, "\n")
+    if (path == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No path provided"}`)
+        return
+    }
     
-    // Build JSON array
-    let json = "["
-    let added = 0
-    let numLines = array_length(lines)
+    print("[API] Creating: " + path)
     
-    print("[listWorkspaceFiles Worker] Processing " + numLines + " lines")
+    let fullPath = resolvePath(path)
+    print("[API] Full path: " + fullPath)
     
+    // Create parent directories if needed
+    let lastSlash = -1
     let i = 0
-    while i < numLines and i < 50 {
+    let pathLen = str_length(fullPath)
+    while (i < pathLen) {
+        let char = str_substring(fullPath, i, i + 1)
+        if (char == "/") {
+            lastSlash = i
+        }
+        i = i + 1
+    }
+    
+    if (lastSlash > 0) {
+        let dirPath = str_substring(fullPath, 0, lastSlash)
+        print("[API] Creating parent dir: " + dirPath)
+        sys.capture("mkdir -p \"" + dirPath + "\"")
+    }
+    
+    // Unescape the content to convert escape sequences to actual characters
+    content = unescapeContent(content)
+    
+    print("[API] Final content length: " + sys.length(content))
+    let success = file.file_writeText(fullPath, content)
+    
+    if (success) {
+        print("[API] File created successfully")
+        aio_response_setStatus(response, 201)
+        aio_response_setBody(response, `{"success":true,"path":"` + fullPath + `"}`)
+        return
+    } else {
+        print("[API] Failed to create file - file_writeText returned false")
+        aio_response_setStatus(response, 500)
+        aio_response_setBody(response, `{"error":"Failed to create file at ` + fullPath + `"}`)
+        return
+    }
+}
+
+// Create Folder - POST /api/folders/create
+@route(method="POST", path="/api/folders/create", bridge=true)
+fn handleCreateFolder(request, response) {
+    print("[API] /api/folders/create")
+    
+    let body = parseBody(request.body)
+    let path = body.path
+    
+    if (path == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No path provided"}`)
+        return
+    }
+    
+    let fullPath = resolvePath(path)
+    
+    print("[API] Creating folder: " + fullPath)
+    
+    let result = sys.capture("mkdir -p " + fullPath + " && echo 0 || echo 1")
+    
+    if (str_substring(result, 0, 1) == "0") {
+        print("[API] Folder created")
+        aio_response_setStatus(response, 201)
+        aio_response_setBody(response, `{"success":true,"path":"` + fullPath + `"}`)
+        return
+    } else {
+        print("[API] Failed to create folder")
+        aio_response_setStatus(response, 500)
+        aio_response_setBody(response, `{"error":"Failed to create folder"}`)
+        return
+    }
+}
+
+// Delete File - POST /api/files/delete
+@route(method="POST", path="/api/files/delete", bridge=true)
+fn handleDeleteFile(request, response) {
+    print("[API] /api/files/delete")
+    
+    let body = parseBody(request.body)
+    let path = body.path
+    
+    if (path == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No path provided"}`)
+        return
+    }
+    
+    let fullPath = resolvePath(path)
+    print("[API] Deleting: " + fullPath)
+    
+    let result = sys.capture("rm -f " + fullPath + " && echo 0 || echo 1")
+    
+    if (str_substring(result, 0, 1) == "0") {
+        print("[API] File deleted")
+        aio_response_setStatus(response, 200)
+        aio_response_setBody(response, `{"success":true}`)
+        return
+    } else {
+        print("[API] Failed to delete file")
+        aio_response_setStatus(response, 500)
+        aio_response_setBody(response, `{"error":"Failed to delete file"}`)
+        return
+    }
+}
+
+// List Files - POST /api/files/list
+@route(method="POST", path="/api/files/list", bridge=true)
+fn handleListFiles(request, response) {
+    print("[API] /api/files/list")
+    
+    let body = request.body
+    let path = body.path
+    
+    if (path == nil) {
+        path = ""
+    }
+    
+    let fullPath = g_workspace_path + path
+    print("[API] Listing: " + fullPath)
+    
+    // Use ls command to list files and directories
+    let cmdResult = sys.capture("ls -1 " + fullPath + " 2>/dev/null")
+    
+    if (cmdResult == nil || cmdResult == "") {
+        aio_response_setStatus(response, 200)
+        aio_response_setBody(response, `{"files":[]}`)
+        return
+    }
+    
+    // Split by newlines and build JSON array
+    let lines = str_split(cmdResult, "\n")
+    let numLines = array_length(lines)
+    let jsonArray = "["
+    let added = 0
+    let i = 0
+    
+    while (i < numLines) {
         let line = lines[i]
-        
-        if line != nil and line != "" {
+        if (line != nil && line != "") {
             let trimmed = str_trim(line)
-            if trimmed != "" {
-                // Remove workspace path prefix
-                let relativePath = str_replace(trimmed, g_workspace_path, "")
-                
-                // Remove leading slash if present
-                if str_length(relativePath) > 0 and str_substring(relativePath, 0, 1) == "/" {
-                    relativePath = str_substring(relativePath, 1, str_length(relativePath))
+            if (trimmed != "") {
+                if (added > 0) {
+                    jsonArray = jsonArray + ","
                 }
-                
-                if added > 0 {
-                    json = json + ","
-                }
-                json = json + `"` + relativePath + `"`
+                jsonArray = jsonArray + `"` + trimmed + `"`
                 added = added + 1
             }
         }
         i = i + 1
     }
     
-    json = json + "]"
+    jsonArray = jsonArray + "]"
+    print("[API] Found " + added + " items")
     
-    print("[listWorkspaceFiles Worker] SUCCESS: Returning " + added + " files")
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, `{"files":` + jsonArray + `}`)
+    return
+}
+
+// Read Documentation - POST /api/docs/read
+@route(method="POST", path="/api/docs/read", bridge=true)
+fn handleReadDocs(request, response) {
+    print("[API] /api/docs/read - Handler called")
+    print("[API] request type: " + typeof(request))
+    print(request)
+    print(request.body)
     
-    return `{"success":true,"files":` + json + `}`
+    if (request == nil) {
+        print("[API] ERROR: request is nil")
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No request object"}`)
+        return
+    }
+    
+    // Request is now always an object (parsed by caller)
+    // Body is also parsed if it was JSON string
+    let body = parseBody(request.body)
+    print("[API] Body field type: " + typeof(body))
+    
+    if (body == nil) {
+        print("[API] ERROR: Empty body")
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"Empty body"}`)
+        return
+    }
+    
+    // Body is now an object (parsed by caller if it was JSON string)
+    let docName = body.docName
+    print("[API] docName: " + docName)
+    
+    if (docName == nil || docName == "") {
+        print("[API] No docName found")
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No document name provided"}`)
+        return
+    }
+    
+    print("[API] Reading doc: " + docName)
+    
+    let docPath = "/home/vmukumar/akish/kuyil/docs/" + docName
+    let content = file.file_readText(docPath)
+    if (content != nil) {
+        print("[API] Doc found, length: " + str_length(content))
+        aio_response_setStatus(response, 200)
+        aio_response_addHeader(response, "Content-Type", "text/plain")
+        aio_response_setBody(response, content)
+        return
+    }
+    
+    print("[API] Doc not found")
+    aio_response_setStatus(response, 404)
+    aio_response_setBody(response, `{"error":"Documentation not found"}`)
+    return
+}
+
+// List Documentation - GET /api/docs/list
+@route(path="/api/docs/list", bridge=true)
+fn handleListDocs(request, response) {
+    print("[API] /api/docs/list")
+    
+    // Scan actual docs directory
+    let docsPath = "/home/vmukumar/akish/kuyil/docs/"
+    let cmdResult = sys.capture("ls -1 " + docsPath + "*.md 2>/dev/null | xargs -n1 basename")
+    
+    if (cmdResult == nil || cmdResult == "") {
+        print("[API] No docs found")
+        aio_response_setStatus(response, 200)
+        aio_response_setBody(response, `{"docs":[]}`)
+        return
+    }
+    
+    // Split by newlines and build JSON array
+    let lines = str_split(cmdResult, "\n")
+    let numLines = array_length(lines)
+    let jsonArray = "["
+    let added = 0
+    let i = 0
+    
+    while (i < numLines) {
+        let line = lines[i]
+        if (line != nil && line != "") {
+            let trimmed = str_trim(line)
+            if (trimmed != "" && str_substring(trimmed, str_length(trimmed) - 3, str_length(trimmed)) == ".md") {
+                if (added > 0) {
+                    jsonArray = jsonArray + ","
+                }
+                jsonArray = jsonArray + `"` + trimmed + `"`
+                added = added + 1
+            }
+        }
+        i = i + 1
+    }
+    
+    jsonArray = jsonArray + "]"
+    print("[API] Found " + added + " docs")
+    
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, `{"docs":` + jsonArray + `}`)
+    return
+}
+
+// Health Check - GET /api/health
+@route(path="/api/health", bridge=true)
+fn handleHealth(request, response) {
+    print("[API] /api/health")
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, `{"status":"ok","service":"kuyil-ide"}`)
+    return
+}
+
+// List Workspace Files - POST /api/workspace/files
+@route(method="GET", path="/api/workspace/files", bridge=true)
+fn handleListWorkspaceFiles(request, response) {
+    print("[API] /api/workspace/files")
+    print("[API] Workspace path: " + g_workspace_path)
+    
+    // Use find command to list all .kyl files recursively
+    let findCmd = "find " + g_workspace_path + " -type f -name '*.kyl' 2>/dev/null"
+    print("[API] Command: " + findCmd)
+    let result = sys.capture(findCmd)
+    
+    if (result == nil || result == "") {
+        print("[API] No files found")
+        aio_response_setStatus(response, 200)
+        aio_response_setBody(response, `{"success":true,"files":[]}`)
+        return
+    }
+    
+    // Split by newlines
+    let lines = str_split(result, "\n")
+    let numLines = array_length(lines)
+    
+    // Build JSON array
+    let jsonArray = "["
+    let added = 0
+    let i = 0
+    
+    while (i < numLines && i < 100) {
+        let line = lines[i]
+        
+        if (line != nil && line != "") {
+            let trimmed = str_trim(line)
+            if (trimmed != "") {
+                // Remove workspace path prefix
+                let relativePath = str_replace(trimmed, g_workspace_path, "")
+                
+                // Remove leading slash
+                let pathLen = str_length(relativePath)
+                if (pathLen > 0 && str_substring(relativePath, 0, 1) == "/") {
+                    relativePath = str_substring(relativePath, 1, pathLen)
+                }
+                
+                if (added > 0) {
+                    jsonArray = jsonArray + ","
+                }
+                jsonArray = jsonArray + `"` + relativePath + `"`
+                added = added + 1
+            }
+        }
+        i = i + 1
+    }
+    
+    jsonArray = jsonArray + "]"
+    
+    // Build final result carefully to avoid memory issues
+    let prefix = `{"success":true,"files":`
+    let suffix = `}`
+    let finalResult = prefix + jsonArray + suffix
+    
+    print("[API] Returning " + added + " files")
+    print("[API] Final result: " + finalResult)
+    print("[API] Final result length: " + str_length(finalResult))
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, finalResult)
+    return
+}
+
+// Save File - POST /api/files/save
+@route(method="POST", path="/api/files/save", bridge=true)
+fn handleSaveFile(request, response) {
+    print("[API] /api/files/save")
+    
+    let body = parseBody(request.body)
+    
+    let path = body.path
+    let content = body.content
+    
+    if (path == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No path provided"}`)
+        return
+    }
+    
+    print("[API] Saving: " + path)
+    print("[API] Content length: " + sys.length(content))
+    print(content)
+    
+    let fullPath = resolvePath(path)
+    print("[API] Full path: " + fullPath)
+    
+    // Create parent directories if needed
+    let lastSlash = -1
+    let i = 0
+    let pathLen = str_length(fullPath)
+    while (i < pathLen) {
+        let char = str_substring(fullPath, i, i + 1)
+        if (char == "/") {
+            lastSlash = i
+        }
+        i = i + 1
+    }
+    
+    if (lastSlash > 0) {
+        let dirPath = str_substring(fullPath, 0, lastSlash)
+        print("[API] Ensuring parent dir: " + dirPath)
+        sys.capture("mkdir -p \"" + dirPath + "\"")
+    }
+    
+    // Unescape the content to convert escape sequences to actual characters
+    content = unescapeContent(content)
+    
+    let success = file.file_writeText(fullPath, content)
+    
+    if (success) {
+        print("[API] File saved successfully")
+        aio_response_setStatus(response, 200)
+        aio_response_setBody(response, `{"success":true}`)
+        return
+    } else {
+        print("[API] Failed to save file")
+        aio_response_setStatus(response, 500)
+        aio_response_setBody(response, `{"error":"Failed to save file at ` + fullPath + `"}`)
+        return
+    }
+}
+
+// Rename File - POST /api/files/rename
+@route(method="POST", path="/api/files/rename", bridge=true)
+fn handleRenameFile(request, response) {
+    print("[API] /api/files/rename")
+    
+    let body = parseBody(request.body)
+    let oldPath = body.oldPath
+    let newPath = body.newPath
+    
+    if (oldPath == nil || newPath == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"Missing paths"}`)
+        return
+    }
+    
+    let fullOldPath = g_workspace_path + oldPath
+    let fullNewPath = g_workspace_path + newPath
+    
+    print("[API] Renaming: " + fullOldPath + " -> " + fullNewPath)
+    
+    let result = sys.capture("mv " + fullOldPath + " " + fullNewPath + " && echo 0 || echo 1")
+    
+    if (str_substring(result, 0, 1) == "0") {
+        print("[API] File renamed")
+        aio_response_setStatus(response, 200)
+        aio_response_setBody(response, `{"success":true}`)
+        return
+    } else {
+        print("[API] Failed to rename")
+        aio_response_setStatus(response, 500)
+        aio_response_setBody(response, `{"error":"Failed to rename file"}`)
+        return
+    }
+}
+
+// Load LLM Actions Config - GET /api/llm/config
+@route(method="GET", path="/api/llm/config", bridge=true)
+fn handleGetLLMConfig(request, response) {
+    print("[API] /api/llm/config")
+    
+    let configPath = "kuyil-ide/llm_actions.yaml"
+    
+    if (file.file_exists(configPath)) {
+        let content = file.file_readText(configPath)
+        if (content != nil) {
+            print("[API] Config loaded, length: " + str_length(content))
+            aio_response_setStatus(response, 200)
+            aio_response_addHeader(response, "Content-Type", "text/plain")
+            aio_response_setBody(response, content)
+            return
+        }
+    }
+    
+    print("[API] Config file not found")
+    aio_response_setStatus(response, 404)
+    aio_response_setBody(response, `{"error":"LLM config not found"}`)
+    return
+}
+
+// Process LLM Action - POST /api/llm/action
+@route(method="POST", path="/api/llm/action", bridge=true)
+fn handleLLMAction(request, response) {
+    print("[API] /api/llm/action")
+    
+    let body = parseBody(request.body)
+    let action = body.action
+    let userPrompt = body.prompt
+    let currentCode = body.currentCode
+    let executionOutput = body.executionOutput
+    let exitCode = body.exitCode
+    let model = body.model
+    
+    if (action == nil || action == "") {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No action specified"}`)
+        return
+    }
+    
+    if (userPrompt == nil) {
+        userPrompt = ""
+    }
+    
+    if (model == nil || model == "") {
+        model = "qwen2.5-coder:32b"
+    }
+    
+    print("[API] Action: " + action)
+    print("[API] Model: " + model)
+    print("[API] Prompt length: " + str_length(userPrompt))
+    
+    // Build the complete prompt
+    let fullPrompt = userPrompt
+    
+    // Add current code if provided
+    if (currentCode != nil && currentCode != "") {
+        fullPrompt = fullPrompt + "\n\nCurrent code:\n```kuyil\n" + currentCode + "\n```"
+    }
+    
+    // Add execution output if provided
+    if (executionOutput != nil && executionOutput != "") {
+        fullPrompt = fullPrompt + "\n\nExecution output:\n```\n" + executionOutput + "\n```"
+        if (exitCode != nil) {
+            fullPrompt = fullPrompt + "\nExit code: " + exitCode
+        }
+    }
+    
+    print("[API] Full prompt length: " + str_length(fullPrompt))
+    
+    // Use C library jsonStringify for proper Unicode and escape handling
+    let escapedPrompt = json.transcode_jsonStringify(fullPrompt)
+    
+    // Build Ollama request body with properly escaped prompt
+    let ollamaBody = `{"model":"` + model + `","prompt":` + escapedPrompt + `,"stream":false}`
+    let ollamaUrl = "http://127.0.0.1:11434/api/generate"
+    
+    print("[API] Calling Ollama...")
+    let ollamaResponse = httpc.http_clientPostEx(ollamaUrl, ollamaBody)
+    
+    if (ollamaResponse == nil) {
+        print("[API] Ollama error")
+        aio_response_setStatus(response, 503)
+        aio_response_setBody(response, `{"error":"Cannot connect to Ollama"}`)
+        return
+    }
+    
+    print("[API] Ollama response OK")
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, ollamaResponse)
+    return
+}
+
+// Execute Code - POST /api/code/execute
+@route(method="POST", path="/api/code/execute", bridge=true)
+fn handleExecuteCode(request, response) {
+    print("[API] /api/code/execute")
+    
+    let body = parseBody(request.body)
+    let code = body.code
+    let filename = body.filename
+    
+    if (code == nil || code == "") {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"error":"No code provided"}`)
+        return
+    }
+    
+    // Use provided filename or create temp file
+    let tempFile = ""
+    if (filename != nil && filename != "") {
+        tempFile = resolvePath(filename)
+    } else {
+        tempFile = g_workspace_path + ".temp_exec.kyl"
+    }
+    
+    print("[API] Writing code to: " + tempFile)
+    
+    // Unescape and write code
+    code = unescapeContent(code)
+    let writeSuccess = file.file_writeText(tempFile, code)
+    
+    if (!writeSuccess) {
+        aio_response_setStatus(response, 500)
+        aio_response_setBody(response, `{"error":"Failed to write code file"}`)
+        return
+    }
+    
+    // Execute with full capture of stdout, stderr, and exit code
+    print("[API] Executing: ./kuyil " + tempFile)
+    let execCmd = "cd /home/vmukumar/akish/kuyil && ./kuyil " + tempFile + " 2>&1; echo \"__EXIT_CODE__:$?\""
+    let output = sys.capture(execCmd)
+    
+    // Parse output and exit code
+    let exitCode = 0
+    let stdout = output
+    
+    // Extract exit code from marker - use simple string search
+    let exitMarker = "__EXIT_CODE__:"
+    let markerIdx = str_indexOf(output, exitMarker)
+    
+    if (markerIdx >= 0) {
+        // Get stdout (everything before marker)
+        stdout = str_substring(output, 0, markerIdx)
+        
+        // Get exit code string (everything after marker)
+        let exitStart = markerIdx + str_length(exitMarker)
+        let exitStr = str_substring(output, exitStart, str_length(output))
+        exitStr = str_trim(exitStr)
+        
+        // Convert to integer manually (safer than sys.parseInt)
+        if (exitStr == "0") {
+            exitCode = 0
+        }
+        if (exitStr == "1") {
+            exitCode = 1
+        }
+        if (exitStr == "2") {
+            exitCode = 2
+        }
+        if (exitStr != "" && exitStr != "0" && exitStr != "1" && exitStr != "2") {
+            // Try to extract first digit for other codes
+            let firstChar = str_substring(exitStr, 0, 1)
+            if (firstChar == "0") {
+                exitCode = 0
+            }
+            if (firstChar == "1") {
+                exitCode = 1
+            }
+            if (firstChar == "2") {
+                exitCode = 2
+            }
+            if (firstChar == "3") {
+                exitCode = 3
+            }
+            if (firstChar != "0" && firstChar != "1" && firstChar != "2" && firstChar != "3") {
+                exitCode = 1
+            }
+        }
+    }
+    
+    // Clean up temp file if we created one
+    if (filename == nil || filename == "") {
+        sys.capture("rm -f " + tempFile)
+    }
+    
+    print("[API] Execution complete. Exit code: " + exitCode)
+    
+    // Build JSON response manually to avoid escaping issues
+    let jsonResponse = `{"success":true,"exitCode":` + exitCode + `,"stdout":"`
+    
+    // Escape special characters in stdout for JSON
+    let stdoutEscaped = str_regexReplace(stdout, "\\\\", "\\\\\\\\")
+    stdoutEscaped = str_regexReplace(stdoutEscaped, "\"", "\\\\\"")
+    stdoutEscaped = str_regexReplace(stdoutEscaped, "\n", "\\\\n")
+    stdoutEscaped = str_regexReplace(stdoutEscaped, "\r", "\\\\r")
+    stdoutEscaped = str_regexReplace(stdoutEscaped, "\t", "\\\\t")
+    
+    jsonResponse = jsonResponse + stdoutEscaped + `"}`
+    
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, jsonResponse)
+    return
 }
 
 // ============================================
-// Main Function
+// Main Application
 // ============================================
 
 fn main() {
-    print("═══════════════════════════════════════════════════════")
-    print("   🚀 KUYIL AI IDE")
-    print("═══════════════════════════════════════════════════════")
+    print("╔══════════════════════════════════════════════════════╗")
+    print("║            Kuyil AI IDE - Unified Mode              ║")
+    print("╚══════════════════════════════════════════════════════╝\n")
     
-    // Register worker avatars
-    registerHandler("fetchBridge", fetchBridgeWorker)
-    registerHandler("aiGenerate", aiGenerateWorker)
-    registerHandler("kuyilReadFile", kuyilReadFileWorker)
-    registerHandler("readDocumentation", readDocumentationWorker)
-    registerHandler("listDocs", listDocsWorker)
-    registerHandler("createFolder", createFolderWorker)
-    registerHandler("createFile", createFileWorker)
-    registerHandler("listWorkspaceFiles", listWorkspaceFilesWorker)
-    registerHandler("listExtensions", listExtensionsWorker)
-    registerHandler("getSettingsBridge", getSettingsBridgeWorker)
-    registerHandler("writeFile", writeFileWorker)
-    registerHandler("deleteFile", deleteFileWorker)
-    registerHandler("refreshCache", refreshCacheWorker)
-    registerHandler("runFile", runFileWorker)
-    
-    print("")
-    print("═══════════════════════════════════════════════════════")
-    print("  ✨ IDE Starting...")
-    print("  📚 Documentation integrated")
-    print("  🤖 AI ready (Ollama)")
-    print("═══════════════════════════════════════════════════════")
-    print("")
-    
-    // Pre-populate file list cache (avatars can't safely call library functions)
-    // Use find command for recursive file listing
-    print("[CACHE] Listing files in: " + g_workspace_path)
-    g_cached_file_list = kyl_system_capture("find " + g_workspace_path + " -name '*.kyl' -type f")
-    print("[CACHE] file list returned: '" + g_cached_file_list + "'")
-    print("[CACHE] Length: " + str_length(g_cached_file_list))
-    if g_cached_file_list == nil {
-        g_cached_file_list = ""
+    // Check environment variable for mode (set KUYIL_IDE_MODE=remote for HTTP server)
+    let mode_env = sys.capture("echo -n $KUYIL_IDE_MODE")
+    if (mode_env != nil && mode_env != "") {
+        g_mode = mode_env
     }
     
-    // Use runWebViewAppFromDist to properly handle local file URIs
-    // This avoids collision with embedded heapfs resources
-    runWebViewAppFromDist("Kuyil AI IDE", "kuyil-ide/assets")
+    print("Mode: " + g_mode)
     
-    print("✓ IDE shutdown complete")
+    // Create workspace directory if it doesn't exist
+    let mkdirCmd = "mkdir -p " + g_workspace_path
+    sys.capture(mkdirCmd)
+    print("✓ Workspace: " + g_workspace_path)
+    
+    print("✓ @route handlers registered:")
+    print("  POST /api/ai/generate")
+    print("  POST /api/bridge/fetch")
+    print("  POST /api/files/read")
+    print("  POST /api/files/create")
+    print("  POST /api/files/save")
+    print("  POST /api/files/rename")
+    print("  POST /api/folders/create")
+    print("  POST /api/files/delete")
+    print("  POST /api/files/list")
+    print("  POST /api/workspace/files")
+    print("  POST /api/code/execute")
+    print("  GET  /api/llm/config")
+    print("  POST /api/llm/action")
+    print("  POST /api/docs/read")
+    print("  GET  /api/docs/list")
+    print("  GET  /api/health")
+    
+    if (g_mode == "remote") {
+        print("\n🚀 Starting HTTP server on port 3000...")
+        print("   Remote access mode - use http://localhost:3000\n")
+        
+        // Start HTTP server
+        let server = http.http_createServer("0.0.0.0", 3000)
+        if (server == nil) {
+            print("ERROR: Failed to create server")
+            return
+        }
+        
+        print("✓ Server running on http://0.0.0.0:3000")
+        print("  Press Ctrl+C to stop\n")
+        
+        // Keep server running
+        while (true) {
+            sys.sleep(1000)
+        }
+    } else {
+        print("\n🚀 Starting webview with direct bridge routing...")
+        print("   IDE mode - fetch() calls automatically routed to @route handlers\n")
+        
+        // Run webview app - fetch calls are intercepted and routed to @route handlers
+        runWebViewAppFromDist("Kuyil AI IDE", "kuyil-ide/assets")
+    }
 }
 
 main()

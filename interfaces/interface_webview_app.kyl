@@ -6,6 +6,8 @@ import "interface_fileio.kyl"
 import "interface_webview.kyl"
 import "interface_eventloop.kyl"
 import "interface_str.kyl"
+import "interface_crypto.kyl"
+import("interfaces/interface_transcoder.kyl") as json
 
 
 // Global state
@@ -81,7 +83,6 @@ fn _runWebViewAppInternal(title, htmlContent, distFolder, useHeapFS) {
             let content = file.readText(indexPath)
             if content != nil {
                 finalHtml = content
-                print(finalHtml)
                 // Replace relative paths with app-localfs:// URIs
                 finalHtml = str_replace(finalHtml, "href=\"style.css\"", "href=\"app-localfs://" + distFolder + "/style.css\"")
                 finalHtml = str_replace(finalHtml, "src=\"app.js\"", "src=\"app-localfs://" + distFolder + "/app.js\"")
@@ -118,7 +119,7 @@ fn _runWebViewAppInternal(title, htmlContent, distFolder, useHeapFS) {
     // Wait for page load
     print("[Framework] Debug: waiting for load...")
     let i = 0
-    while i < 30 {
+    while i < 50 {
         step(g_app_window)
         system.sleep(10)
         i++
@@ -127,6 +128,10 @@ fn _runWebViewAppInternal(title, htmlContent, distFolder, useHeapFS) {
     // Bind universal bridge
     print("[Framework] Debug: binding bridge")
     bind(g_app_window, "__kuyilBridge", _universalBridge)
+    
+    // Bind direct route bridge for @route handlers
+    print("[Framework] Debug: binding route bridge")
+    bind(g_app_window, "__kuyilRouteBridge", _routeBridgeDirect)
     
     // Bind console log forwarder
     bind(g_app_window, "__kuyilConsole", _consoleForwarder)
@@ -147,26 +152,13 @@ fn _runWebViewAppInternal(title, htmlContent, distFolder, useHeapFS) {
         if (g_pending_request_id != "") {
             print("[Framework] Spawning avatar for: " + g_pending_request_id)
             
-            // Find worker
-            let idx = -1
-            let i = 0
-            while i < g_handler_names.length {
-                if g_handler_names[i] == g_pending_handler_name {
-                    idx = i
-                }
-                i++
-            }
+            let reqId = g_pending_request_id
+            let handlerName = g_pending_handler_name
+            let base64Payload = g_pending_args_json
             
-            if idx != -1 {
-                let worker = g_workers[idx]
-                let reqId = g_pending_request_id  // Capture for avatar closure
-                
-                // Spawn avatar - it will push result directly to JS when done
-                avatar workerWithCallback(reqId, worker, g_pending_args_json)
-                print("[Framework] Avatar spawned with ID: " + reqId)
-            } else {
-                print("[Framework] ERROR: Handler not found: " + g_pending_handler_name)
-            }
+            // Spawn avatar with bridgeAdapter - handles base64 decode/encode
+            avatar bridgeAdapter(reqId, handlerName, base64Payload)
+            print("[Framework] Bridge avatar spawned with ID: " + reqId)
             
             // Clear request flags
             g_pending_request_id = ""
@@ -181,34 +173,132 @@ fn _runWebViewAppInternal(title, htmlContent, distFolder, useHeapFS) {
 }
 
 // Wrapper that calls worker and pushes result to JS
+// REFERENCE IMPLEMENTATION - kept for reference, not used
 fn workerWithCallback(reqId, worker, args) {
     print("[Avatar] workerWithCallback ENTERED for: " + reqId)
     print("[Avatar] Starting work for: " + reqId)
+    
+    // Call worker and catch errors
     let result = worker(args)
+    let success = true
+    
     print("[Avatar] Work completed for: " + reqId)
     print("[Avatar] Result type: " + typeof(result))
     print("[Avatar] Result value: " + result)
     
-    // Push result directly to JavaScript from avatar
-    // The result is a JSON string, so we pass it as a string literal with proper escaping
-    // Escape for JavaScript string literal - must escape backslash FIRST, then other special chars
-    let escaped = str_replace(result, "\\", "\\\\")
-    escaped = str_replace(escaped, "'", "\\'")
-    escaped = str_replace(escaped, "\"", "\\\"")
-    escaped = str_replace(escaped, "\n", "\\n")
-    escaped = str_replace(escaped, "\r", "\\r")
-    escaped = str_replace(escaped, "\t", "\\t")
+    // Convert result to proper JSON format
+    // Workers can return strings, numbers, booleans, or JSON strings
+    let jsonResult = ""
+    let resultType = typeof(result)
     
-    // Pass as string, JavaScript will JSON.parse it
-    let js = "try { window.handleKuyilResponse('" + reqId + "', '" + escaped + "'); } catch(e) { console.error('[Kuyil] Response error:', e.message, e); }"
+    if resultType == "string" {
+        // Check if it's already JSON (starts with { or [)
+        let firstChar = str_substring(result, 0, 1)
+        if firstChar == "{" || firstChar == "[" {
+            // Already JSON, use as-is
+            jsonResult = result
+        } else {
+            // Plain string, wrap in JSON string format
+            // Escape special characters properly for JSON
+            let escaped = result
+            escaped = str_replace(escaped, "\\", "\\\\")  // Backslash first
+            escaped = str_replace(escaped, "\"", "\\\"")  // Then quotes
+            escaped = str_replace(escaped, "\n", "\\n")
+            escaped = str_replace(escaped, "\r", "\\r")
+            escaped = str_replace(escaped, "\t", "\\t")
+            jsonResult = "\"" + escaped + "\""
+        }
+    } else if resultType == "number" || resultType == "boolean" {
+        // Numbers and booleans are valid JSON as-is
+        jsonResult = result
+    } else {
+        // For other types, convert to JSON string
+        jsonResult = "\"" + result + "\""
+    }
+    
+    print("[Avatar] JSON result: " + jsonResult)
+    
+    // For JavaScript eval, we pass JSON string as a string literal
+    // Safest approach: escape the jsonResult for use inside a JavaScript string
+    // We'll wrap it in single quotes and escape single quotes/backslashes
+    let jsEscaped = str_replace(jsonResult, "\\", "\\\\")
+    jsEscaped = str_replace(jsEscaped, "'", "\\'")
+    
+    // Use JSON.parse to convert the JSON string into a JavaScript value
+    let js = "try { var jsonStr = '" + jsEscaped + "'; var result = JSON.parse(jsonStr); window.handleKuyilResponse('" + reqId + "', result); } catch(e) { console.error('[Kuyil] Response error:', e.message, 'JSON:', jsonStr); }"
     print("[Avatar] Pushing to JS")
     print("[Avatar] JS code length: " + str_length(js))
-    print("[Avatar] JS preview: " + str_substring(js, 0, 200))
+    print("[Avatar] JS preview: " + str_substring(js, 0, 250))
     
-    // Try to eval and catch any errors
     let evalResult = eval(g_app_window, js)
     print("[Avatar] Eval result: " + evalResult)
     print("[Avatar] Eval completed")
+    
+    return "ok"
+}
+
+// NEW: XMLHttpRequest/Fetch bridge adapter with base64 encoding
+// Simulates HTTP bridge behavior with proper payload encoding
+fn bridgeAdapter(reqId, handlerName, base64Payload) {
+    print("[Bridge] Request ID: " + reqId)
+    print("[Bridge] Handler: " + handlerName)
+    print("[Bridge] Base64 payload length: " + str_length(base64Payload))
+    
+    // Step 1: Decode base64 payload to get JSON request data
+    let decodedPayload = base64Decode(base64Payload)
+    print("[Bridge] Decoded payload (JSON): " + decodedPayload)
+    
+    // Step 2: Parse JSON to get actual arguments
+    // The payload is JSON-encoded, so we need to pass it to the handler
+    // Handler will receive the JSON string and can parse it if needed
+    // For simple cases (strings, numbers), we pass as-is
+    
+    // Step 3: Find the handler worker function
+    let workerIdx = -1
+    let i = 0
+    while i < g_handler_names.length {
+        if g_handler_names[i] == handlerName {
+            workerIdx = i
+        }
+        i++
+    }
+    
+    if workerIdx == -1 {
+        print("[Bridge] ERROR: Handler not found: " + handlerName)
+        // Send error response back to JS (base64 encoded)
+        let errorResponse = "Error: Handler not found: " + handlerName
+        let errorBase64 = base64Encode(errorResponse)
+        let js = "window.__kuyilBridgeResponse('" + reqId + "', '" + errorBase64 + "');"
+        eval(g_app_window, js)
+        return "error"
+    }
+    
+    // Step 3: Call the handler worker with decoded payload
+    let worker = g_workers[workerIdx]
+    print("[Bridge] Calling worker...")
+    
+    let result = nil
+    let success = true
+    let errorMsg = ""
+    
+    // Try to call the worker (error handling would go here in production)
+    result = worker(decodedPayload)
+    
+    print("[Bridge] Worker returned: " + result)
+    print("[Bridge] Result type: " + typeof(result))
+    
+    // Step 4: Convert result to string (base64 handles all escaping)
+    let responsePayload = result
+    
+    // Step 5: Base64 encode the raw response
+    let responseBase64 = base64Encode(responsePayload)
+    print("[Bridge] Response base64 length: " + str_length(responseBase64))
+    
+    // Step 6: Send response back to JavaScript
+    let js = "window.__kuyilBridgeResponse('" + reqId + "', '" + responseBase64 + "');"
+    print("[Bridge] Calling JS response handler")
+    eval(g_app_window, js)
+    print("[Bridge] Response sent")
     
     return "ok"
 }
@@ -248,6 +338,111 @@ fn _universalBridge(combined) {
     return reqId
 }
 
+    
+fn routeInvoker(parts) {
+    let reqId = parts[0]
+    let routePattern = parts[1]  // e.g., "GET /api/users"
+    let requestJson = parts[2]   // base64-encoded request
+    
+    print("[Route Avatar] Route: " + routePattern)
+    print("[Route Avatar] Request ID: " + reqId)
+    
+    // Decode and parse request JSON to object
+    let decodedRequest = base64Decode(requestJson)
+    print("[Route Avatar] Decoded request: " + decodedRequest)
+    
+    let requestObject = json.transcode_jsonParse(decodedRequest)
+    if (requestObject == nil) {
+        print("[Route Avatar] ERROR: Failed to parse request JSON")
+        return `{"error":"Invalid request JSON"}`
+    }
+   
+    // DON'T parse nested body - the transcode_jsonParse can't handle nested objects properly
+    // Keep body as string, let handler parse if needed
+    if (requestObject.body != nil && typeof(requestObject.body) == "string") {
+        let bodyStr = requestObject.body
+        requestObject.body = system.unescape(bodyStr)
+        print("[Route Avatar] Body unescaped (kept as string)")
+    }
+
+    // Call route_bridge_invoke to get handler, request, and response objects
+    // Handler receives object with body as STRING
+    let route_info = route_bridge_invoke(routePattern, requestObject)
+    
+    print("[Route Avatar] Got route_info type: " + typeof(route_info))
+    
+    // Check if route_info is an error string
+    if (typeof(route_info) == "string") {
+        print("[Route Avatar] ERROR: route_info is string: " + route_info)
+        let errorResponse = `{"status":500,"headers":{},"body":"` + base64Encode(route_info) + `"}`
+        let errorBase64 = base64Encode(errorResponse)
+        let js = "window.__kuyilRouteBridgeResponse('" + reqId + "', '" + errorBase64 + "');"
+        eval(g_app_window, js)
+        return nil
+    }
+    
+    // Extract handler, request, and response from the returned map
+    print("[Route Avatar] Extracting handler...")
+    print("[Route Avatar] About to access route_info[handler]...")
+    let handler = route_info["handler"]
+    print("[Route Avatar] After access, handler assigned")
+    print("[Route Avatar] handler extracted: " + typeof(handler))
+    let request = route_info["request"]
+    let response_obj = route_info["response"]
+    let response_id = route_info["response_id"]
+    
+    print("[Route Avatar] handler type: " + typeof(handler))
+    print("[Route Avatar] request type: " + typeof(request))
+    print("[Route Avatar] response_obj type: " + typeof(response_obj))
+    print("[Route Avatar] response_id type: " + typeof(response_id))
+    
+    print("[Route Avatar] Executing handler...")
+    
+    // Execute the handler - this is where the route logic runs
+    handler(request, response_obj)
+    
+    print("[Route Avatar] Handler executed, getting response body...")
+    
+    // Get the response body that handler wrote to response object
+    let response = aio_response_get_body(response_obj)
+    
+    print("[Route Avatar] Response type: " + typeof(response))
+    print(response)
+    
+    // Handler returns JSON body as string - base64 encode it
+    let responseStr = ""
+    if (response) {
+        let responseBodyBase64 = base64Encode(response)
+        responseStr = `{"status":200,"headers":{},"body":"` + responseBodyBase64 + `"}`
+        print("[Route Avatar] Response encoded, length: " + str_length(responseStr))
+    } else {
+        responseStr = `{"status":500,"headers":{}}`
+    }
+    
+    // Encode response as base64
+    let responseBase64 = base64Encode(responseStr)
+    
+    // Send response back to JavaScript
+    let js = "window.__kuyilRouteBridgeResponse('" + reqId + "', '" + responseBase64 + "');"
+    eval(g_app_window, js)
+    
+    print("[Route Avatar] Response sent back to JavaScript")
+}
+
+// Internal: Direct route bridge - calls route_bridge_invoke for @route handlers
+fn _routeBridgeDirect(combined) {
+    print("[_routeBridgeDirect] === CALLED ===")
+    print("[Route Bridge] Called with: " + combined)
+    
+    let parts = str_split(combined, "|")
+    let reqId = parts[0]
+
+    // Use avatar so route handlers execute asynchronously on separate stack
+    avatar routeInvoker(parts)
+
+    return reqId
+}
+
 // Internal: Console log forwarder - prints JS console to terminal
 fn _consoleForwarder(message) {
     print("[JS Console] " + message)
@@ -256,6 +451,413 @@ fn _consoleForwarder(message) {
 
 // Inject framework JavaScript with pendingRequests tracking
 fn _injectFrameworkJS(html) {
-    let js = "<script>(function(){var oc=console.log;var oce=console.error;var ocw=console.warn;console.log=function(){var args=Array.prototype.slice.call(arguments);oc.apply(console,args);if(window.__kuyilConsole){window.__kuyilConsole('[LOG] '+args.map(function(a){return typeof a==='object'?JSON.stringify(a):String(a);}).join(' '));}};console.error=function(){var args=Array.prototype.slice.call(arguments);oce.apply(console,args);if(window.__kuyilConsole){window.__kuyilConsole('[ERROR] '+args.map(function(a){return typeof a==='object'?JSON.stringify(a):String(a);}).join(' '));}};console.warn=function(){var args=Array.prototype.slice.call(arguments);ocw.apply(console,args);if(window.__kuyilConsole){window.__kuyilConsole('[WARN] '+args.map(function(a){return typeof a==='object'?JSON.stringify(a):String(a);}).join(' '));}};})();var requestCounter=0;var pendingRequests={};window.kuyil={call:function(name,args){return new Promise(function(resolve,reject){var id=name+'_'+Date.now()+'_'+(requestCounter++);console.log('[Kuyil] Calling:',name,'with ID:',id);if(window.__kuyilBridge){var combined=id+'|'+name+'|'+JSON.stringify(args);window.__kuyilBridge(combined);console.log('[Kuyil] Sent to bridge:',combined);var t=setTimeout(function(){console.error('[Kuyil] Timeout for',id);reject(new Error('Timeout'));delete pendingRequests[id];},30000);pendingRequests[id]={timeout:t,resolve:resolve,reject:reject};console.log('[Kuyil] Stored',id,'in pendingRequests');}else{reject(new Error('No bridge'));}});}};window.handleKuyilResponse=function(id,result){console.log('[Kuyil] Response:',id,result);if(pendingRequests[id]){console.log('[Kuyil] Resolving!');pendingRequests[id].resolve(result);clearTimeout(pendingRequests[id].timeout);delete pendingRequests[id];}else{console.error('[Kuyil] No entry for',id,'pending:',Object.keys(pendingRequests));}};console.log('[Kuyil] Framework Ready');</script>"
+    // Readable, properly formatted JavaScript for the framework
+    let js = `<script>
+// Console forwarding to Kuyil
+(function() {
+    var oc = console.log;
+    var oce = console.error;
+    var ocw = console.warn;
+    
+    console.log = function() {
+        var args = Array.prototype.slice.call(arguments);
+        oc.apply(console, args);
+        if (window.__kuyilConsole) {
+            window.__kuyilConsole('[LOG] ' + args.map(function(a) {
+                return typeof a === 'object' ? JSON.stringify(a) : String(a);
+            }).join(' '));
+        }
+    };
+    
+    console.error = function() {
+        var args = Array.prototype.slice.call(arguments);
+        oce.apply(console, args);
+        if (window.__kuyilConsole) {
+            window.__kuyilConsole('[ERROR] ' + args.map(function(a) {
+                return typeof a === 'object' ? JSON.stringify(a) : String(a);
+            }).join(' '));
+        }
+    };
+    
+    console.warn = function() {
+        var args = Array.prototype.slice.call(arguments);
+        ocw.apply(console, args);
+        if (window.__kuyilConsole) {
+            window.__kuyilConsole('[WARN] ' + args.map(function(a) {
+                return typeof a === 'object' ? JSON.stringify(a) : String(a);
+            }).join(' '));
+        }
+    };
+})();
+
+// UTF-8 safe base64 encoding/decoding
+function textToBase64(str) {
+    var utf8Bytes = new TextEncoder().encode(str);
+    var binaryString = String.fromCharCode.apply(null, utf8Bytes);
+    return btoa(binaryString);
+}
+
+function base64ToText(base64) {
+    var binaryString = atob(base64);
+    var utf8Bytes = Uint8Array.from(binaryString, function(m) { return m.charCodeAt(0); });
+    return new TextDecoder().decode(utf8Bytes);
+}
+
+// Kuyil Bridge API with base64 encoding
+var requestCounter = 0;
+var pendingRequests = {};
+
+window.kuyil = {
+    call: function(name, args) {
+        return new Promise(function(resolve, reject) {
+            var id = name + '_' + Date.now() + '_' + (requestCounter++);
+            console.log('[Kuyil] Calling:', name, 'with ID:', id, 'args:', args);
+            
+            if (!window.__kuyilBridge) {
+                reject(new Error('Bridge not available'));
+                return;
+            }
+            
+            // Step 1: Encode request payload as base64
+            var requestPayload = JSON.stringify(args);
+            var base64Payload = textToBase64(requestPayload);
+            console.log('[Kuyil] Request payload:', requestPayload);
+            console.log('[Kuyil] Base64 payload:', base64Payload);
+            
+            // Combine request data: requestId|handlerName|base64Payload
+            var combined = id + '|' + name + '|' + base64Payload;
+            console.log('[Kuyil] Sending to bridge (length:', combined.length, ')');
+            
+            // Call the bridge (synchronous call to Kuyil)
+            window.__kuyilBridge(combined);
+            
+            // Set timeout for response
+            var timeout = setTimeout(function() {
+                console.error('[Kuyil] Timeout for request:', id);
+                reject(new Error('Request timeout'));
+                delete pendingRequests[id];
+            }, 30000);
+            
+            // Store pending request
+            pendingRequests[id] = {
+                timeout: timeout,
+                resolve: resolve,
+                reject: reject
+            };
+            
+            console.log('[Kuyil] Request stored in pending:', id);
+        });
+    }
+};
+
+// Handle base64-encoded response from Kuyil bridge adapter
+window.__kuyilBridgeResponse = function(id, base64Response) {
+    console.log('[Kuyil] Base64 response received for:', id, 'length:', base64Response.length);
+    
+    if (!pendingRequests[id]) {
+        console.error('[Kuyil] No pending request for:', id);
+        console.error('[Kuyil] Current pending:', Object.keys(pendingRequests));
+        return;
+    }
+    
+    try {
+        // Decode base64 to get the raw result (no JSON parsing needed)
+        var result = base64ToText(base64Response);
+        console.log('[Kuyil] Decoded result:', result);
+        
+        // Try to parse as JSON if it looks like JSON
+        if ((result.startsWith('{') || result.startsWith('[')) && result.length > 1) {
+            try {
+                result = JSON.parse(result);
+                console.log('[Kuyil] Parsed as JSON:', result);
+            } catch (e) {
+                console.log('[Kuyil] Not JSON, using as string');
+            }
+        }
+        
+        // Resolve promise with the result
+        pendingRequests[id].resolve(result);
+        clearTimeout(pendingRequests[id].timeout);
+        delete pendingRequests[id];
+        
+        console.log('[Kuyil] Request completed:', id);
+    } catch (e) {
+        console.error('[Kuyil] Failed to handle response:', e.message);
+        console.error('[Kuyil] Base64:', base64Response);
+        pendingRequests[id].reject(new Error('Response handling error: ' + e.message));
+        clearTimeout(pendingRequests[id].timeout);
+        delete pendingRequests[id];
+    }
+};
+
+console.log('[Kuyil] Framework initialized');
+
+// Wait for Kuyil bridge to be ready
+var bridgeReady = false;
+var bridgeReadyCallbacks = [];
+
+function waitForBridge(callback) {
+    if (typeof window.__kuyilRouteBridge === 'function') {
+        console.log('[Bridge] Already ready');
+        callback();
+    } else {
+        console.log('[Bridge] Waiting for binding...');
+        bridgeReadyCallbacks.push(callback);
+    }
+}
+
+// Check periodically for bridge
+var bridgeCheckInterval = setInterval(function() {
+    if (typeof window.__kuyilRouteBridge === 'function' && !bridgeReady) {
+        bridgeReady = true;
+        clearInterval(bridgeCheckInterval);
+        console.log('[Bridge] ✅ Route bridge is now ready');
+        
+        // Execute all waiting callbacks
+        bridgeReadyCallbacks.forEach(function(cb) { cb(); });
+        bridgeReadyCallbacks = [];
+        
+        // Trigger any onBridgeReady handlers that might exist
+        console.log('[Bridge] Checking for onBridgeReady...', typeof window.onBridgeReady);
+        if (typeof window.onBridgeReady === 'function') {
+            console.log('[Bridge] Calling onBridgeReady...');
+            window.onBridgeReady();
+        } else {
+            console.log('[Bridge] No onBridgeReady function found yet');
+        }
+    }
+}, 50);
+
+// Route bridge support for @route decorated handlers
+var pendingRouteRequests = {};
+var routeRequestId = 0;
+
+// Response handler from Kuyil for route bridge
+window.__kuyilRouteBridgeResponse = function(requestId, responseBase64) {
+    console.log('[Route Bridge] Response received:', requestId);
+    if (pendingRouteRequests[requestId]) {
+        try {
+            // Decode base64 response
+            var responseJson = base64ToText(responseBase64);
+            console.log('[Route Bridge] Response JSON:', responseJson.length);
+            pendingRouteRequests[requestId].resolve(responseJson);
+            delete pendingRouteRequests[requestId];
+        } catch (e) {
+            console.error('[Route Bridge] Error:', e);
+            pendingRouteRequests[requestId].reject(e);
+            delete pendingRouteRequests[requestId];
+        }
+    }
+};
+
+// Call route bridge helper
+function callRouteBridge(pattern, request) {
+    return new Promise(function(resolve, reject) {
+        var id = 'route_' + Date.now() + '_' + (routeRequestId++);
+        pendingRouteRequests[id] = { resolve: resolve, reject: reject };
+        console.log('[Fetch]1')
+        // Encode request as base64
+        var requestJson = JSON.stringify(request);
+        console.log('[Fetch]2')
+        var requestBase64 = textToBase64(requestJson);
+        
+        console.log('[Fetch]3')
+        // Call bridge: requestId|pattern|base64Request
+        var bridgeArg = id + '|' + pattern + '|' + requestBase64;
+        console.log('[Route Bridge] Calling:', pattern);
+        
+        window.__kuyilRouteBridge(bridgeArg);
+        
+        // Timeout after 10 seconds
+        setTimeout(function() {
+            if (pendingRouteRequests[id]) {
+                delete pendingRouteRequests[id];
+                reject(new Error('Bridge timeout'));
+            }
+        }, 10000);
+    });
+}
+
+// Intercept fetch() to route through Kuyil bridge for @route handlers
+var originalFetch = window.fetch;
+window.fetch = async function(url, options) {
+    options = options || {};
+    console.log('[Fetch] Intercepted:', options.method || 'GET', url);
+    
+    // Bridge should already be ready when fetch is called (via onBridgeReady)
+    // If not, fail fast rather than blocking
+    if (typeof window.__kuyilRouteBridge !== 'function') {
+        console.error('[Fetch] Route bridge not available!');
+        throw new Error('Route bridge not initialized');
+    }
+    
+    var method = options.method || 'GET';
+    var path = url;
+    
+    // Handle body - convert FormData to string
+    var bodyContent = '';
+    if (options.body) {
+        if (options.body instanceof FormData) {
+            var parts = [];
+            for (var pair of options.body.entries()) {
+                var key = pair[0];
+                var value = pair[1];
+                if (value instanceof Blob) {
+                    var text = await value.text();
+                    parts.push(key + '=' + text);
+                } else {
+                    parts.push(key + '=' + value);
+                }
+            }
+            bodyContent = parts.join('&');
+            console.log('[Fetch] FormData:', bodyContent);
+        } else if (typeof options.body === 'string') {
+            bodyContent = options.body;
+        } else {
+            bodyContent = JSON.stringify(options.body);
+        }
+    }
+
+    // Build request object
+    var request = {
+        method: method,
+        path: path,
+        headers: options.headers || {},
+        body: bodyContent,
+        params: {}
+    };
+    
+    // Call through route bridge
+    var routeKey = method + ' ' + path;
+    var responseJson = await callRouteBridge(routeKey, request);
+    console.log('[Fetch] Bridge response:', responseJson);
+    
+    // Parse response
+    var resp = JSON.parse(responseJson);
+    
+    // Build Response object
+    var responseInit = {
+        status: resp.status || 200,
+        statusText: resp.statusText || 'OK',
+        headers: new Headers(resp.headers || {})
+    };
+    
+    // Body is always base64-encoded, decode it
+    var body = resp.body || '';
+    if (body) {
+        try {
+            body = base64ToText(body);
+        } catch(e) {
+            console.error('[Fetch] Failed to decode base64 body:', e);
+        }
+    }
+   
+    return new Response(body, responseInit);
+};
+
+// Intercept XMLHttpRequest to route through Kuyil bridge
+var OriginalXMLHttpRequest = window.XMLHttpRequest;
+window.XMLHttpRequest = function() {
+    var self = this;
+    var method, url, requestHeaders = {};
+    
+    // Response state
+    self.readyState = 0;
+    self.status = 0;
+    self.statusText = '';
+    self.responseText = '';
+    self.response = '';
+    self.responseType = '';
+    
+    // Event handlers
+    self.onreadystatechange = null;
+    self.onload = null;
+    self.onerror = null;
+    self.onprogress = null;
+    
+    self.open = function(m, u, async) {
+        method = m;
+        url = u;
+        self.readyState = 1;
+        console.log('[XMLHttpRequest] Open:', method, url);
+        if (self.onreadystatechange) self.onreadystatechange();
+    };
+    
+    self.setRequestHeader = function(header, value) {
+        requestHeaders[header] = value;
+    };
+    
+    self.send = function(body) {
+        console.log('[XMLHttpRequest] Send:', method, url, 'body:', body);
+        
+        self.readyState = 2;
+        if (self.onreadystatechange) self.onreadystatechange();
+        
+        // Convert to fetch-style request
+        var request = {
+            method: method,
+            path: url,
+            headers: requestHeaders,
+            body: body || '',
+            params: {}
+        };
+        
+        var routeKey = method + ' ' + url;
+        
+        callRouteBridge(routeKey, request).then(function(responseJson) {
+            console.log('[XMLHttpRequest] Response received:', responseJson);
+            var resp = JSON.parse(responseJson);
+            
+            // Set response properties
+            self.status = resp.status || 200;
+            self.statusText = resp.statusText || 'OK';
+            
+            var respBody = resp.body || '';
+            if (typeof respBody === 'object') {
+                respBody = JSON.stringify(respBody);
+            }
+            self.responseText = respBody;
+            self.response = respBody;
+            
+            // Simulate state transitions
+            self.readyState = 3;
+            if (self.onreadystatechange) self.onreadystatechange();
+            
+            self.readyState = 4;
+            if (self.onreadystatechange) self.onreadystatechange();
+            if (self.onload) {
+                console.log('[XMLHttpRequest] Calling onload');
+                self.onload({ target: self });
+            }
+        }).catch(function(error) {
+            console.error('[XMLHttpRequest] Error:', error);
+            self.status = 500;
+            self.statusText = 'Bridge Error';
+            self.readyState = 4;
+            if (self.onerror) {
+                console.log('[XMLHttpRequest] Calling onerror');
+                self.onerror({ target: self });
+            }
+        });
+    };
+    
+    self.abort = function() {
+        console.log('[XMLHttpRequest] Abort');
+    };
+    
+    self.getAllResponseHeaders = function() {
+        return '';
+    };
+    
+    self.getResponseHeader = function(header) {
+        return null;
+    };
+    
+    return self;
+};
+
+console.log('[Kuyil] Fetch and XMLHttpRequest interception active');
+</script>`
+    
     return str_replace(html, "</head>", js + "</head>")
 }

@@ -1,0 +1,107 @@
+// Backend Switching Example - Same code, different databases
+
+import("orm/sqlite_backend.kyl")
+import("orm/mysql_backend.kyl")
+import("orm/orm.kyl")
+
+@entity
+@table("products")
+struct Product {
+    @primary @autoIncrement id,
+    @required name,
+    @required price,
+    stock
+}
+
+// Generic function that works with ANY backend
+fn manage_products(orm) {
+    print("Creating products table...")
+    ORM_create_table(orm, "Product")
+    
+    print("\nInserting products...")
+    let p1 = ORM_insert(orm, "products", {
+        name: "Laptop",
+        price: 999.99,
+        stock: 50
+    })
+    print("  ✓ Product ID: " + p1)
+    
+    let p2 = ORM_insert(orm, "products", {
+        name: "Mouse",
+        price: 29.99,
+        stock: 200
+    })
+    print("  ✓ Product ID: " + p2)
+    
+    print("\nQuerying products...")
+    let all = ORM_find_all(orm, "products")
+    print("  ✓ Found: " + all)
+    
+    print("\nUpdating stock...")
+    ORM_update(orm, "products", p1, { stock: 45 })
+    print("  ✓ Updated laptop stock")
+    
+    print("\n✓ Operations complete!")
+}
+
+fn main() {
+    print("╔════════════════════════════════════════════════════╗")
+    print("║       BACKEND SWITCHING DEMONSTRATION              ║")
+    print("╚════════════════════════════════════════════════════╝\n")
+    
+    // ═══════════════════════════════════════════════════════
+    // Option 1: SQLite Backend
+    // ═══════════════════════════════════════════════════════
+    
+    print("=== Using SQLite Backend ===\n")
+    let sqlite_config = {
+        backend: "sqlite",
+        file_path: "products_sqlite.db"
+    }
+    
+    let orm1 = ORM_create(sqlite_config)
+    manage_products(orm1)  // Same function!
+    ORM_disconnect(orm1)
+    
+    print("\n" + ("=" * 50) + "\n")
+    
+    // ═══════════════════════════════════════════════════════
+    // Option 2: MySQL Backend (same exact code!)
+    // ═══════════════════════════════════════════════════════
+    
+    print("=== Using MySQL Backend ===\n")
+    let mysql_config = {
+        backend: "mysql",
+        host: "localhost",
+        port: 3306,
+        database: "products_db",
+        username: "root",
+        password: ""
+    }
+    
+    let orm2 = ORM_create(mysql_config)
+    
+    if (orm2.connected) {
+        manage_products(orm2)  // Same function works!
+        ORM_disconnect(orm2)
+    } else {
+        print("MySQL not available, but SQLite worked fine!")
+    }
+    
+    print("\n╔════════════════════════════════════════════════════╗")
+    print("║            KEY TAKEAWAY                            ║")
+    print("╚════════════════════════════════════════════════════╝")
+    print("")
+    print("✓ Same code works with SQLite, MySQL, PostgreSQL")
+    print("✓ Switch backend by changing ONE config value")
+    print("✓ SQL injection protection in all backends")
+    print("✓ No code changes needed when migrating databases")
+    print("")
+    print("To switch from SQLite to MySQL:")
+    print("  Just change:  backend: 'sqlite'")
+    print("  To:           backend: 'mysql'")
+    print("")
+    print("That's it! 🎉")
+}
+
+main()

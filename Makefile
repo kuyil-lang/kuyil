@@ -18,8 +18,8 @@ ifdef EMBED_DIR
 endif
 
 # Source files  
-SOURCES = $(SRCDIR)/main.c $(SRCDIR)/vm.c $(SRCDIR)/vm_call_shared.c $(SRCDIR)/logging.c $(SRCDIR)/config.c $(SRCDIR)/ffi.c $(SRCDIR)/file_reader.c $(SRCDIR)/green_threads.c $(SRCDIR)/library_loader.c $(SRCDIR)/vm_library_integration.c $(SRCDIR)/vm_task_queue.c $(SRCDIR)/async_http.c $(SRCDIR)/thread_pool.c $(SRCDIR)/avatar_runtime.c $(SRCDIR)/async_request_queue.c $(SRCDIR)/opcode_executor.c $(SRCDIR)/heapfs.c $(EMBED_SRC)
-HEADERS = $(SRCDIR)/tokens.h $(SRCDIR)/ast.h $(SRCDIR)/bytecode.h $(SRCDIR)/vm.h $(SRCDIR)/vm_call_shared.h $(SRCDIR)/logging.h $(SRCDIR)/config.h $(SRCDIR)/ffi.h $(SRCDIR)/file_reader.h $(SRCDIR)/green_threads.h $(SRCDIR)/library_loader.h $(SRCDIR)/vm_library_integration.h $(SRCDIR)/async_http.h $(SRCDIR)/thread_pool.h $(SRCDIR)/avatar_runtime.h $(SRCDIR)/async_request_queue.h $(SRCDIR)/opcode_executor.h $(SRCDIR)/heapfs.h
+SOURCES = $(SRCDIR)/main.c $(SRCDIR)/vm.c $(SRCDIR)/vm_call_shared.c $(SRCDIR)/logging.c $(SRCDIR)/config.c $(SRCDIR)/ffi.c $(SRCDIR)/file_reader.c $(SRCDIR)/green_threads.c $(SRCDIR)/library_loader.c $(SRCDIR)/vm_library_integration.c $(SRCDIR)/vm_task_queue.c $(SRCDIR)/async_http.c $(SRCDIR)/thread_pool.c $(SRCDIR)/avatar_runtime.c $(SRCDIR)/async_request_queue.c $(SRCDIR)/opcode_executor.c $(SRCDIR)/heapfs.c $(SRCDIR)/test_vm_pool.c src/request_response.c src/kyl_response_functions.c src/route_decorator.c src/async_http_server.c $(SRCDIR)/mutex_primitives.c $(EMBED_SRC)
+HEADERS = $(SRCDIR)/tokens.h $(SRCDIR)/ast.h $(SRCDIR)/bytecode.h $(SRCDIR)/vm.h $(SRCDIR)/vm_call_shared.h $(SRCDIR)/logging.h $(SRCDIR)/config.h $(SRCDIR)/ffi.h $(SRCDIR)/file_reader.h $(SRCDIR)/green_threads.h $(SRCDIR)/library_loader.h $(SRCDIR)/vm_library_integration.h $(SRCDIR)/async_http.h $(SRCDIR)/thread_pool.h $(SRCDIR)/avatar_runtime.h $(SRCDIR)/async_request_queue.h $(SRCDIR)/opcode_executor.h $(SRCDIR)/heapfs.h $(SRCDIR)/test_vm_pool.h $(SRCDIR)/route_decorator.h $(SRCDIR)/request_response.h $(SRCDIR)/async_http_server.h $(SRCDIR)/mutex_primitives.h
 
 # Target executable
 TARGET = kuyil

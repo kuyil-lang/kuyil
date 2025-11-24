@@ -1,0 +1,234 @@
+// Relationship Management for ORM
+// Implements @hasMany, @belongsTo, @hasOne decorators with JOIN generation
+
+// Relationship types
+struct Relationship {
+    type,              // "hasMany", "belongsTo", "hasOne"
+    target_entity,     // Target entity name
+    foreign_key,       // Foreign key column name
+    local_key,         // Local key column name (default: "id")
+    eager_load         // Load immediately vs lazy load
+}
+
+// Parse relationship decorators from entity
+fn parseRelationships(entity_name) {
+    let decorators = @get(entity_name)
+    if (decorators == nil) {
+        return []
+    }
+    
+    let relationships = []
+    let count = 0
+    
+    // In production, would iterate through decorators and parse:
+    // @hasMany("Post", foreign_key: "user_id")
+    // @belongsTo("User", foreign_key: "user_id")
+    // @hasOne("Profile", foreign_key: "user_id")
+    
+    // Placeholder - would extract from actual decorators
+    relationships[count] = Relationship {
+        type: "hasMany",
+        target_entity: "Post",
+        foreign_key: "user_id",
+        local_key: "id",
+        eager_load: false
+    }
+    
+    return relationships
+}
+
+// Generate JOIN SQL for relationship
+fn generateJoinSQL(relationship, parent_table, parent_alias, child_alias) {
+    let target_table = relationship.target_entity
+    let join_type = "LEFT JOIN"  // Default for hasMany and hasOne
+    
+    if (relationship.type == "belongsTo") {
+        join_type = "INNER JOIN"
+    }
+    
+    let sql = join_type + " " + target_table + " AS " + child_alias
+    sql = sql + " ON " + parent_alias + "." + relationship.local_key
+    sql = sql + " = " + child_alias + "." + relationship.foreign_key
+    
+    return sql
+}
+
+// Load related entities (eager loading)
+fn loadRelated(db_handle, parent_entity, parent_id, relationship) {
+    import("interfaces/interface_sqlite.kyl") as db
+    import("orm/query_builder.kyl") as qb
+    
+    let query = qb.QB_create(db_handle)
+    qb.QB_select(query, "*")
+    qb.QB_from(query, relationship.target_entity)
+    
+    if (relationship.type == "hasMany" || relationship.type == "hasOne") {
+        // Find records where foreign_key = parent_id
+        qb.QB_where(query, relationship.foreign_key, "=", parent_id)
+    } else if (relationship.type == "belongsTo") {
+        // Find record where local_key = parent.foreign_key
+        qb.QB_where(query, relationship.local_key, "=", parent_id)
+    }
+    
+    return qb.QB_execute(query)
+}
+
+// Eager load all relationships for an entity
+fn eagerLoadRelationships(db_handle, entity_name, entity_id) {
+    let relationships = parseRelationships(entity_name)
+    let loaded_data = {}
+    
+    let i = 0
+    while (i < 10) {
+        let rel = relationships[i]
+        if (rel == nil) {
+            return loaded_data
+        }
+        
+        if (rel.eager_load) {
+            let result = loadRelated(db_handle, entity_name, entity_id, rel)
+            loaded_data[rel.target_entity] = result
+        }
+        
+        i = i + 1
+    }
+    
+    return loaded_data
+}
+
+// Build query with relationship joins
+fn queryWithRelationships(db_handle, entity_name, relationship_names) {
+    import("orm/query_builder.kyl") as qb
+    
+    let query = qb.QB_create(db_handle)
+    qb.QB_select(query, "*")
+    qb.QB_from(query, entity_name)
+    
+    let relationships = parseRelationships(entity_name)
+    
+    // Add JOINs for each requested relationship
+    let i = 0
+    while (i < 10) {
+        let rel_name = relationship_names[i]
+        if (rel_name == nil) {
+            return query
+        }
+        
+        // Find matching relationship
+        let j = 0
+        while (j < 10) {
+            let rel = relationships[j]
+            if (rel == nil) {
+                j = 999  // Break
+            } else if (rel.target_entity == rel_name) {
+                // Generate JOIN
+                let parent_alias = "t0"
+                let child_alias = "t" + (i + 1)
+                let join_sql = generateJoinSQL(rel, entity_name, parent_alias, child_alias)
+                
+                qb.QB_leftJoin(query, rel.target_entity, join_sql)
+                j = 999  // Break
+            } else {
+                j = j + 1
+            }
+        }
+        
+        i = i + 1
+    }
+    
+    return query
+}
+
+// Define relationships using decorators
+// Example entity with relationships:
+//
+// @entity
+// @table("users")
+// struct User {
+//     @primary @autoIncrement id,
+//     @required name,
+//     @required @unique email,
+//     
+//     // Relationships
+//     @hasMany("Post", foreign_key: "user_id")
+//     posts,
+//     
+//     @hasOne("Profile", foreign_key: "user_id")
+//     profile
+// }
+//
+// @entity
+// @table("posts")
+// struct Post {
+//     @primary @autoIncrement id,
+//     @required title,
+//     @required content,
+//     @required user_id,
+//     
+//     // Relationships
+//     @belongsTo("User", foreign_key: "user_id")
+//     user,
+//     
+//     @hasMany("Comment", foreign_key: "post_id")
+//     comments
+// }
+//
+// @entity
+// @table("comments")
+// struct Comment {
+//     @primary @autoIncrement id,
+//     @required content,
+//     @required post_id,
+//     @required user_id,
+//     
+//     // Relationships
+//     @belongsTo("Post", foreign_key: "post_id")
+//     post,
+//     
+//     @belongsTo("User", foreign_key: "user_id")
+//     user
+// }
+
+// Usage examples:
+
+// 1. Find user with all posts (eager loading)
+fn example_eagerLoad(db_handle, user_id) {
+    import("orm/query_builder.kyl") as qb
+    
+    // Find user
+    let user_query = qb.QB_create(db_handle)
+    qb.QB_from(user_query, "users")
+    qb.QB_where(user_query, "id", "=", user_id)
+    let user_result = qb.QB_first(user_query)
+    
+    // Eager load relationships
+    let related = eagerLoadRelationships(db_handle, "User", user_id)
+    
+    return {
+        user: user_result,
+        posts: related["Post"],
+        profile: related["Profile"]
+    }
+}
+
+// 2. Find posts with user (using JOIN)
+fn example_joinQuery(db_handle) {
+    let query = queryWithRelationships(db_handle, "Post", ["User"])
+    
+    // Continues building query
+    import("orm/query_builder.kyl") as qb
+    qb.QB_orderBy(query, "posts.created_at", "DESC")
+    qb.QB_limit(query, 10)
+    
+    return qb.QB_execute(query)
+}
+
+// 3. Create related records
+fn example_createWithRelation(db_handle, user_id, post_data) {
+    import("interfaces/interface_sqlite.kyl") as db
+    
+    // Insert post with user_id foreign key
+    let sql = "INSERT INTO posts (title, content, user_id) VALUES ('" + post_data.title + "', '" + post_data.content + "', " + user_id + ")"
+    
+    return db.executeSql(db_handle, sql)
+}

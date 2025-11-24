@@ -1,0 +1,331 @@
+# LLM Action Orchestration Configuration
+# This file defines actions that can be triggered from the IDE's AI panel
+
+# LLM Settings
+llm:
+  default_model: "qwen2.5-coder:32b"
+  temperature: 0.7
+  max_tokens: 4096
+  endpoint: "http://127.0.0.1:11434/api/generate"
+
+# Context Files - Documentation and examples to include with prompts
+context_files:
+  documentation:
+    - path: "docs/README.md"
+      description: "Main Kuyil language documentation"
+    - path: "docs/SYNTAX.md"
+      description: "Language syntax reference"
+    - path: "docs/STDLIB.md"
+      description: "Standard library reference"
+  
+  examples:
+    - path: "examples/hello_world.kyl"
+      description: "Basic hello world example"
+    - path: "examples/fibonacci.kyl"
+      description: "Recursive function example"
+
+# Action Definitions
+actions:
+  # Generate new code from description
+  - name: "generate_code"
+    handler: "code_generation"
+    aliases: ["create", "write", "make"]
+    description: "Generate new Kuyil code from a description"
+    system_instruction: |
+      You are an expert Kuyil programming language assistant. Generate clean, idiomatic Kuyil code based on the user's description.
+      Follow these guidelines:
+      - Use proper Kuyil syntax (fn for functions, let for variables)
+      - Include helpful comments
+      - Follow best practices for the language
+      - Make the code production-ready
+    prompt_template: |
+      Generate Kuyil code for the following requirement:
+      
+      {{USER_PROMPT}}
+      
+      Requirements:
+      - Write complete, working Kuyil code
+      - Include a main() function if appropriate
+      - Add comments to explain key parts
+      - Follow Kuyil language conventions
+    include_documentation: true
+    include_examples: true
+    include_current_file: false
+
+  # Explain existing code
+  - name: "explain_code"
+    handler: "code_explanation"
+    aliases: ["describe", "understand", "what"]
+    description: "Explain how the current code works"
+    system_instruction: |
+      You are an expert Kuyil programming language teacher. Explain the provided code clearly and concisely.
+      Break down:
+      - What the code does (high-level purpose)
+      - How it works (step-by-step logic)
+      - Key language features being used
+      - Any potential improvements or issues
+    prompt_template: |
+      Please explain this Kuyil code:
+      
+      {{CURRENT_FILE_CONTENT}}
+      
+      Provide:
+      1. A brief summary of what the code does
+      2. A step-by-step explanation of how it works
+      3. Key Kuyil language features being used
+      4. Any suggestions for improvement
+    include_documentation: false
+    include_examples: false
+    include_current_file: true
+
+  # Fix errors in code
+  - name: "fix_error"
+    handler: "error_fixing"
+    aliases: ["debug", "repair", "correct"]
+    description: "Fix errors in the current code"
+    system_instruction: |
+      You are an expert Kuyil debugger. Analyze the code and fix any errors.
+      Focus on:
+      - Syntax errors
+      - Logic errors
+      - Runtime errors
+      - Best practice violations
+    prompt_template: |
+      Fix the errors in this Kuyil code:
+      
+      {{CURRENT_FILE_CONTENT}}
+      
+      {{#if EXECUTION_OUTPUT}}
+      Error output:
+      {{EXECUTION_OUTPUT}}
+      Exit code: {{EXIT_CODE}}
+      {{/if}}
+      
+      {{#if USER_PROMPT}}
+      Additional context:
+      {{USER_PROMPT}}
+      {{/if}}
+      
+      Provide the corrected code with explanations of what was wrong.
+    include_documentation: true
+    include_examples: false
+    include_current_file: true
+    include_execution_output: true
+
+  # Optimize code performance
+  - name: "optimize_code"
+    handler: "code_optimization"
+    aliases: ["improve", "faster", "performance"]
+    description: "Optimize the current code for better performance"
+    system_instruction: |
+      You are an expert Kuyil performance optimizer. Improve the code's efficiency while maintaining correctness.
+      Consider:
+      - Algorithm efficiency (time and space complexity)
+      - Unnecessary computations
+      - Better data structures
+      - Language-specific optimizations
+    prompt_template: |
+      Optimize this Kuyil code for better performance:
+      
+      {{CURRENT_FILE_CONTENT}}
+      
+      {{#if USER_PROMPT}}
+      Focus on: {{USER_PROMPT}}
+      {{/if}}
+      
+      Provide the optimized code with explanations of improvements made.
+    include_documentation: false
+    include_examples: false
+    include_current_file: true
+
+  # Add documentation/comments
+  - name: "add_comments"
+    handler: "documentation"
+    aliases: ["document", "comment", "annotate"]
+    description: "Add helpful comments and documentation to code"
+    system_instruction: |
+      You are an expert at writing clear, helpful code documentation. Add comments to explain the code.
+      Guidelines:
+      - Add function/purpose comments
+      - Explain complex logic
+      - Document parameters and return values
+      - Keep comments concise and relevant
+    prompt_template: |
+      Add helpful comments and documentation to this Kuyil code:
+      
+      {{CURRENT_FILE_CONTENT}}
+      
+      Return the same code with added comments that explain:
+      - What each function does
+      - Complex logic and algorithms
+      - Important variables and their purposes
+    include_documentation: false
+    include_examples: false
+    include_current_file: true
+
+  # Convert code from other languages
+  - name: "convert_to_kuyil"
+    handler: "language_conversion"
+    aliases: ["translate", "port", "convert"]
+    description: "Convert code from another language to Kuyil"
+    system_instruction: |
+      You are an expert at converting code between languages. Convert the provided code to idiomatic Kuyil.
+      Ensure:
+      - Correct Kuyil syntax
+      - Equivalent functionality
+      - Idiomatic Kuyil patterns
+      - Proper error handling
+    prompt_template: |
+      Convert this code to Kuyil:
+      
+      {{USER_PROMPT}}
+      
+      Provide clean, idiomatic Kuyil code that does the same thing.
+    include_documentation: true
+    include_examples: true
+    include_current_file: false
+
+  # Learn about Kuyil features
+  - name: "learn_kuyil"
+    handler: "language_help"
+    aliases: ["help", "tutorial", "how"]
+    description: "Learn about Kuyil language features"
+    system_instruction: |
+      You are a Kuyil language tutor. Teach users about Kuyil features with clear examples.
+      Provide:
+      - Clear explanations
+      - Working code examples
+      - Common use cases
+      - Best practices
+    prompt_template: |
+      Explain the following Kuyil language feature:
+      
+      {{USER_PROMPT}}
+      
+      Include:
+      - Clear explanation of the concept
+      - Working code examples
+      - Common use cases
+      - Tips and best practices
+    include_documentation: true
+    include_examples: true
+    include_current_file: false
+
+  # Code review
+  - name: "review_code"
+    handler: "code_review"
+    aliases: ["check", "audit", "review"]
+    description: "Review code for quality and best practices"
+    system_instruction: |
+      You are an expert code reviewer. Analyze the code for quality, correctness, and best practices.
+      Review for:
+      - Code correctness
+      - Readability and maintainability
+      - Performance issues
+      - Security concerns
+      - Best practice adherence
+    prompt_template: |
+      Review this Kuyil code:
+      
+      {{CURRENT_FILE_CONTENT}}
+      
+      {{#if USER_PROMPT}}
+      Focus areas: {{USER_PROMPT}}
+      {{/if}}
+      
+      Provide feedback on:
+      1. Code quality and correctness
+      2. Potential bugs or issues
+      3. Readability and maintainability
+      4. Performance considerations
+      5. Suggested improvements
+    include_documentation: false
+    include_examples: false
+    include_current_file: true
+
+  # Refactor code
+  - name: "refactor_code"
+    handler: "code_refactoring"
+    aliases: ["restructure", "reorganize", "cleanup"]
+    description: "Refactor code to improve structure"
+    system_instruction: |
+      You are an expert at code refactoring. Improve the code structure while maintaining functionality.
+      Focus on:
+      - Better organization
+      - Clearer naming
+      - Reduced complexity
+      - Improved modularity
+    prompt_template: |
+      Refactor this Kuyil code to improve its structure:
+      
+      {{CURRENT_FILE_CONTENT}}
+      
+      {{#if USER_PROMPT}}
+      Focus on: {{USER_PROMPT}}
+      {{/if}}
+      
+      Provide refactored code with explanations of structural improvements.
+    include_documentation: false
+    include_examples: false
+    include_current_file: true
+
+# Handler Mapping - Maps actions to their handler functions
+handlers:
+  code_generation:
+    - generate_code
+  
+  code_explanation:
+    - explain_code
+  
+  error_fixing:
+    - fix_error
+  
+  code_optimization:
+    - optimize_code
+  
+  documentation:
+    - add_comments
+  
+  language_conversion:
+    - convert_to_kuyil
+  
+  language_help:
+    - learn_kuyil
+  
+  code_review:
+    - review_code
+  
+  code_refactoring:
+    - refactor_code
+
+# Quick Actions - Buttons shown in UI
+quick_actions:
+  - action: "generate_code"
+    icon: "✨"
+    label: "Generate"
+    tooltip: "Generate code from description"
+  
+  - action: "explain_code"
+    icon: "💡"
+    label: "Explain"
+    tooltip: "Explain current code"
+  
+  - action: "fix_error"
+    icon: "🔧"
+    label: "Fix"
+    tooltip: "Fix errors in code"
+  
+  - action: "optimize_code"
+    icon: "⚡"
+    label: "Optimize"
+    tooltip: "Optimize performance"
+  
+  - action: "review_code"
+    icon: "👀"
+    label: "Review"
+    tooltip: "Review code quality"
+  
+  - action: "add_comments"
+    icon: "📝"
+    label: "Document"
+    tooltip: "Add documentation"

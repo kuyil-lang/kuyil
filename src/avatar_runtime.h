@@ -9,13 +9,8 @@
 typedef struct AvatarRuntime AvatarRuntime;
 typedef struct AvatarHandle AvatarHandle;
 
-// Avatar execution context
-typedef struct {
-    Value* args;           // Function arguments
-    int arg_count;         // Number of arguments
-    Function* function;    // Function to execute
-    void* vm_context;      // VM context (opaque)
-} AvatarContext;
+// Get main VM context from avatar handle
+void* avatar_handle_get_main_vm(AvatarHandle* handle);
 
 // Completion callback - invoked on main thread when avatar completes
 // handle: Avatar handle

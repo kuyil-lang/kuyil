@@ -88,4 +88,11 @@ void async_http_cancel(AsyncHttpRequest* request);
 // Returns: Number of active requests
 int async_http_process(AsyncHttpClient* client);
 
+// ============================================================================
+// Pointer Registry for Response/Request Objects
+// ============================================================================
+int kyl_aio_register_ptr(void* p);
+void* kyl_aio_get_ptr(int h);
+void kyl_aio_unregister_ptr(int h);
+
 #endif // ASYNC_HTTP_H

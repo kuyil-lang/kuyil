@@ -1,0 +1,284 @@
+// Generic ORM Facade - Works with any backend (SQLite, MySQL, PostgreSQL, etc.)
+// Provides unified API with SQL injection protection via prepared statements
+
+// ═══════════════════════════════════════════════════════════
+// ORM Main Class
+// ═══════════════════════════════════════════════════════════
+
+struct ORM {
+    backend,
+    backend_type,
+    config,
+    connected
+}
+
+// ═══════════════════════════════════════════════════════════
+// Factory Method - Creates ORM instance with chosen backend
+// ═══════════════════════════════════════════════════════════
+
+fn ORM_create(config) {
+    let backend_type = config.backend or "sqlite"
+    let orm = ORM {
+        backend: false,
+        backend_type: backend_type,
+        config: config,
+        connected: false
+    }
+    
+    print("╔════════════════════════════════════════════════════╗")
+    print("║           GENERIC ORM SYSTEM                       ║")
+    print("║     Backend: " + backend_type + "                                ║")
+    print("╚════════════════════════════════════════════════════╝")
+    
+    // Load appropriate backend
+    if (backend_type == "sqlite") {
+        orm.backend = sqlite_connect(config)
+        orm.connected = orm.backend.connected
+    } else if (backend_type == "mysql") {
+        orm.backend = mysql_connect(config)
+        orm.connected = orm.backend.connected
+    } else if (backend_type == "postgres") {
+        print("✗ PostgreSQL backend not yet implemented")
+    } else if (backend_type == "mongodb") {
+        print("✗ MongoDB backend not yet implemented")
+    } else if (backend_type == "elasticsearch") {
+        print("✗ Elasticsearch backend not yet implemented")
+    } else {
+        print("✗ Unknown backend: " + backend_type)
+    }
+    
+    return orm
+}
+
+// ═══════════════════════════════════════════════════════════
+// Generic ORM Operations (Backend-agnostic)
+// ═══════════════════════════════════════════════════════════
+
+fn ORM_disconnect(orm) {
+    if (!orm.connected) {
+        return false
+    }
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_disconnect(orm.backend)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_disconnect(orm.backend)
+    }
+    
+    return false
+}
+
+fn ORM_create_table(orm, entity_name) {
+    if (!orm.connected) {
+        print("✗ Not connected to database")
+        return false
+    }
+    
+    print("Creating table for entity: " + entity_name)
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_create_table(orm.backend, entity_name)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_create_table(orm.backend, entity_name)
+    }
+    
+    return false
+}
+
+fn ORM_insert(orm, table_name, data) {
+    if (!orm.connected) {
+        print("✗ Not connected to database")
+        return -1
+    }
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_insert(orm.backend, table_name, data)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_insert(orm.backend, table_name, data)
+    }
+    
+    return -1
+}
+
+fn ORM_find_all(orm, table_name) {
+    if (!orm.connected) {
+        print("✗ Not connected to database")
+        return []
+    }
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_find_all(orm.backend, table_name)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_find_all(orm.backend, table_name)
+    }
+    
+    return []
+}
+
+fn ORM_find_by_id(orm, table_name, id) {
+    if (!orm.connected) {
+        print("✗ Not connected to database")
+        return false
+    }
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_find_by_id(orm.backend, table_name, id)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_find_by_id(orm.backend, table_name, id)
+    }
+    
+    return false
+}
+
+fn ORM_find_where(orm, table_name, conditions) {
+    if (!orm.connected) {
+        print("✗ Not connected to database")
+        return []
+    }
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_find_where(orm.backend, table_name, conditions)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_find_where(orm.backend, table_name, conditions)
+    }
+    
+    return []
+}
+
+fn ORM_update(orm, table_name, id, data) {
+    if (!orm.connected) {
+        print("✗ Not connected to database")
+        return false
+    }
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_update(orm.backend, table_name, id, data)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_update(orm.backend, table_name, id, data)
+    }
+    
+    return false
+}
+
+fn ORM_delete(orm, table_name, id) {
+    if (!orm.connected) {
+        print("✗ Not connected to database")
+        return false
+    }
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_delete(orm.backend, table_name, id)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_delete(orm.backend, table_name, id)
+    }
+    
+    return false
+}
+
+fn ORM_count(orm, table_name) {
+    if (!orm.connected) {
+        print("✗ Not connected to database")
+        return 0
+    }
+    
+    if (orm.backend_type == "sqlite") {
+        return sqlite_count(orm.backend, table_name)
+    } else if (orm.backend_type == "mysql") {
+        return mysql_count(orm.backend, table_name)
+    }
+    
+    return 0
+}
+
+// ═══════════════════════════════════════════════════════════
+// Transaction Support (where available)
+// ═══════════════════════════════════════════════════════════
+
+fn ORM_begin_transaction(orm) {
+    if (!orm.connected) {
+        return false
+    }
+    
+    if (orm.backend_type == "mysql") {
+        return mysql_begin_transaction(orm.backend)
+    } else if (orm.backend_type == "sqlite") {
+        return sqlite_execute_sql(orm.backend, "BEGIN TRANSACTION")
+    }
+    
+    return false
+}
+
+fn ORM_commit(orm) {
+    if (!orm.connected) {
+        return false
+    }
+    
+    if (orm.backend_type == "mysql") {
+        return mysql_commit(orm.backend)
+    } else if (orm.backend_type == "sqlite") {
+        return sqlite_execute_sql(orm.backend, "COMMIT")
+    }
+    
+    return false
+}
+
+fn ORM_rollback(orm) {
+    if (!orm.connected) {
+        return false
+    }
+    
+    if (orm.backend_type == "mysql") {
+        return mysql_rollback(orm.backend)
+    } else if (orm.backend_type == "sqlite") {
+        return sqlite_execute_sql(orm.backend, "ROLLBACK")
+    }
+    
+    return false
+}
+
+// ═══════════════════════════════════════════════════════════
+// Helper Functions
+// ═══════════════════════════════════════════════════════════
+
+fn type_of(value) {
+    if (is_string(value)) {
+        return "string"
+    } else if (is_int(value)) {
+        return "int"
+    } else if (is_float(value)) {
+        return "float"
+    } else if (is_bool(value)) {
+        return "bool"
+    } else if (value == nil) {
+        return "null"
+    }
+    return "unknown"
+}
+
+fn to_string(value) {
+    if (is_string(value)) {
+        return value
+    }
+    return "" + value
+}
+
+fn string_replace(str, search, replace, count) {
+    // Simple string replacement
+    let result = ""
+    let pos = 0
+    let replacements = 0
+    
+    while (pos < string_length(str) and replacements < count) {
+        let found = string_index_of(str, search, pos)
+        if (found >= 0) {
+            result = result + string_substring(str, pos, found) + replace
+            pos = found + string_length(search)
+            replacements = replacements + 1
+        } else {
+            result = result + string_substring(str, pos, string_length(str))
+            break
+        }
+    }
+    
+    return result
+}

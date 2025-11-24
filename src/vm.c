@@ -13,6 +13,9 @@
 #include "green_threads.h"
 #include "vm_library_integration.h"
 #include "opcode_executor.h"
+#include "route_decorator.h"
+#include "request_response.h"
+#include "async_http_server.h"
 #include "lexer.c"
 #include "parser.c"
 #include "compiler.c"
@@ -585,6 +588,71 @@ static const char* value_type_name(ValueType t) {
     }
 }
 
+// ============================================================================
+// Object Field Utilities - for C code to manipulate VALUE_OBJECT uniformly
+// ============================================================================
+
+// Get field value from object by key name, returns NULL if not found
+Value* vm_object_get_field(Value* object, const char* key) {
+    if (!object || object->type != VALUE_OBJECT || !key) {
+        return NULL;
+    }
+    
+    for (int i = 0; i < object->as.object.count; i++) {
+        if (strcmp(object->as.object.keys[i], key) == 0) {
+            return &object->as.object.values[i];
+        }
+    }
+    return NULL;
+}
+
+// Set existing field value or add new field if it doesn't exist
+void vm_object_set_field(Value* object, const char* key, Value value) {
+    if (!object || object->type != VALUE_OBJECT || !key) {
+        return;
+    }
+    
+    // Check if field already exists
+    for (int i = 0; i < object->as.object.count; i++) {
+        if (strcmp(object->as.object.keys[i], key) == 0) {
+            // Free old value if it was a string
+            if (object->as.object.values[i].type == VALUE_STRING && 
+                object->as.object.values[i].as.string) {
+                free(object->as.object.values[i].as.string);
+            }
+            // Set new value
+            object->as.object.values[i] = value;
+            return;
+        }
+    }
+    
+    // Field doesn't exist, add it
+    int new_count = object->as.object.count + 1;
+    object->as.object.keys = realloc(object->as.object.keys, new_count * sizeof(char*));
+    object->as.object.values = realloc(object->as.object.values, new_count * sizeof(Value));
+    
+    object->as.object.keys[object->as.object.count] = strdup(key);
+    object->as.object.values[object->as.object.count] = value;
+    object->as.object.count = new_count;
+}
+
+// Create a new empty object
+Value vm_object_create(void) {
+    Value obj;
+    obj.type = VALUE_OBJECT;
+    obj.as.object.count = 0;
+    obj.as.object.keys = NULL;
+    obj.as.object.values = NULL;
+    return obj;
+}
+
+// Create object with single field (common case)
+Value vm_object_create_with_field(const char* key, Value value) {
+    Value obj = vm_object_create();
+    vm_object_set_field(&obj, key, value);
+    return obj;
+}
+
 // Shared frame setup utility for both main VM and avatars
 // This extracts the common logic from call_value() to ensure consistency
 // add_reserve: if true, add extra stack space for expression evaluation (avatars need this)
@@ -686,9 +754,36 @@ static bool vm_get_global_helper(void* context, const char* name, Value* out) {
 }
 
 static bool call_value(VM* vm, Value callee, int arg_count) {
+    // Check for mocked functions (test mode)
+    extern bool mock_matches_call(const char* name, Value* args, int arg_count, Value* out_value);
+    
+    // Check string callees
+    if (callee.type == VALUE_STRING && vm->test_mode) {
+        Value* args = vm->stack_top - arg_count - 1;
+        Value mock_result;
+        if (mock_matches_call(callee.as.string, args, arg_count, &mock_result)) {
+            // Function is mocked, return mock value
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, mock_result);
+            return true;
+        }
+    }
+    
     if (callee.type == VALUE_FUNCTION) {
         // Function call
         Function* function = callee.as.function.function;
+        
+        // Check if this function is mocked (test mode)
+        if (vm->test_mode && function->name) {
+            Value* args = vm->stack_top - arg_count - 1;
+            Value mock_result;
+            if (mock_matches_call(function->name, args, arg_count, &mock_result)) {
+                // Function is mocked, return mock value
+                vm->stack_top -= arg_count + 1;
+                vm_push(vm, mock_result);
+                return true;
+            }
+        }
         
         // Check for @wrap() decorator - intercepts function calls
         // Skip wrapping if this is the unwrapped function being called from within a handler
@@ -808,6 +903,11 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
         };
         
         CallResult result = vm_call_string_shared(&ctx, callee.as.string, arg_count);
+        
+        // CRITICAL: After library call (especially route_bridge_invoke which uses call_kuyil_function),
+        // the frame pointer may be stale. However, in main VM's call_value we don't need to refresh
+        // because call_value is called from within the execution loop which will refresh the frame
+        // at the start of the next iteration.
         
         if (result == CALL_RESULT_ERROR) {
             return false;
@@ -1042,6 +1142,25 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
                 vm_push(vm, result);
                 return true;
             }
+            // Enhanced mock with conditional arguments: mock_function(name, returnVal, whenArg1, whenArg2, ...)
+            if (strcmp(callee.as.string, "mock_function") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                extern void mock_set_return_when(const char* name, Value v, Value* when_args, int when_arg_count);
+                if (arg_count >= 2 && args[0].type == VALUE_STRING) {
+                    const char* func_name = args[0].as.string;
+                    Value return_value = args[1];
+                    
+                    // Remaining arguments are the "when" conditions
+                    Value* when_args = (arg_count > 2) ? &args[2] : NULL;
+                    int when_arg_count = (arg_count > 2) ? (arg_count - 2) : 0;
+                    
+                    mock_set_return_when(func_name, return_value, when_args, when_arg_count);
+                }
+                vm->stack_top -= arg_count + 1;
+                Value result = (Value){VALUE_BOOL, {.boolean = true}};
+                vm_push(vm, result);
+                return true;
+            }
             if (strcmp(callee.as.string, "mock_clear") == 0) {
                 Value* args = vm->stack_top - arg_count - 1;
                 extern void mock_clear(const char* name);
@@ -1081,6 +1200,285 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
                 vm_push(vm, result);
                 return true;
             }
+            // assert_equals(actual, expected, message)
+            if (strcmp(callee.as.string, "assert_equals") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                vm->assertions_total++;
+                bool ok = false;
+                if (arg_count >= 2) {
+                    ok = values_equal(args[0], args[1]);
+                    if (!ok) {
+                        printf("  ❌ ASSERTION FAILED: ");
+                        if (arg_count >= 3 && args[2].type == VALUE_STRING) {
+                            printf("%s\n", args[2].as.string);
+                        } else {
+                            printf("Values not equal\n");
+                        }
+                        printf("     Expected: ");
+                        print_value(args[1]);
+                        printf("\n     Got:      ");
+                        print_value(args[0]);
+                        printf("\n");
+                    }
+                }
+                if (!ok) vm->assertions_failed++;
+                vm->stack_top -= arg_count + 1;
+                Value result = (Value){VALUE_BOOL, {.boolean = ok}};
+                vm_push(vm, result);
+                return true;
+            }
+            // assert_nil(value, message)
+            if (strcmp(callee.as.string, "assert_nil") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                vm->assertions_total++;
+                bool ok = (arg_count >= 1 && args[0].type == VALUE_NIL);
+                if (!ok) {
+                    printf("  ❌ ASSERTION FAILED: ");
+                    if (arg_count >= 2 && args[1].type == VALUE_STRING) {
+                        printf("%s\n", args[1].as.string);
+                    } else {
+                        printf("Expected nil\n");
+                    }
+                    printf("     Got: ");
+                    print_value(args[0]);
+                    printf("\n");
+                    vm->assertions_failed++;
+                }
+                vm->stack_top -= arg_count + 1;
+                Value result = (Value){VALUE_BOOL, {.boolean = ok}};
+                vm_push(vm, result);
+                return true;
+            }
+            // assert_not_nil(value, message)
+            if (strcmp(callee.as.string, "assert_not_nil") == 0) {
+                Value* args = vm->stack_top - arg_count - 1;
+                vm->assertions_total++;
+                bool ok = (arg_count >= 1 && args[0].type != VALUE_NIL);
+                if (!ok) {
+                    printf("  ❌ ASSERTION FAILED: ");
+                    if (arg_count >= 2 && args[1].type == VALUE_STRING) {
+                        printf("%s\n", args[1].as.string);
+                    } else {
+                        printf("Expected non-nil value\n");
+                    }
+                    vm->assertions_failed++;
+                }
+                vm->stack_top -= arg_count + 1;
+                Value result = (Value){VALUE_BOOL, {.boolean = ok}};
+                vm_push(vm, result);
+                return true;
+            }
+        }
+        
+        // Route registration: route_register(method, path, handler, async?, bridge?)
+        // These are available in ALL modes, not just test mode
+        if (strcmp(callee.as.string, "route_register") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_route_register(int, Value*);
+            Value result = builtin_route_register(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Route lookup: route_find(method, path)
+        if (strcmp(callee.as.string, "route_find") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_route_find(int, Value*);
+            Value result = builtin_route_find(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // List all routes: route_list()
+        if (strcmp(callee.as.string, "route_list") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_route_list(int, Value*);
+            Value result = builtin_route_list(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Extract path parameters: route_extract_params("/users/:id", "/users/123")
+        if (strcmp(callee.as.string, "route_extract_params") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_route_extract_params(int, Value*);
+            Value result = builtin_route_extract_params(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Bridge invoke: route_bridge_invoke(handler_name, arg1, arg2, ...)
+        if (strcmp(callee.as.string, "route_bridge_invoke") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_route_bridge_invoke(int, Value*, VM*);
+            Value result = builtin_route_bridge_invoke(arg_count, args, vm);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Request object constructor
+        if (strcmp(callee.as.string, "Request") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_Request(int, Value*);
+            Value result = builtin_Request(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Response object constructor
+        if (strcmp(callee.as.string, "Response") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_Response(int, Value*);
+            Value result = builtin_Response(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // aio_response_setStatus - using kyl_aio registry
+        if (strcmp(callee.as.string, "aio_response_setStatus") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value kyl_aio_response_set_status(int, Value*);
+            Value result = kyl_aio_response_set_status(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // aio_response_addHeader - using kyl_aio registry
+        if (strcmp(callee.as.string, "aio_response_addHeader") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value kyl_aio_response_add_header(int, Value*);
+            Value result = kyl_aio_response_add_header(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // aio_response_setBody - using kyl_aio registry
+        if (strcmp(callee.as.string, "aio_response_setBody") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value kyl_aio_response_set_body(int, Value*);
+            Value result = kyl_aio_response_set_body(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Mutex primitives
+        if (strcmp(callee.as.string, "mutex_create") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_mutex_create(int, Value*);
+            Value result = builtin_mutex_create(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        if (strcmp(callee.as.string, "mutex_lock") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_mutex_lock(int, Value*);
+            Value result = builtin_mutex_lock(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        if (strcmp(callee.as.string, "mutex_unlock") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_mutex_unlock(int, Value*);
+            Value result = builtin_mutex_unlock(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // AIO request/response constructors
+        if (strcmp(callee.as.string, "aio_request") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_aio_request(int, Value*);
+            Value result = builtin_aio_request(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        if (strcmp(callee.as.string, "aio_response") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_aio_response(int, Value*);
+            Value result = builtin_aio_response(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        if (strcmp(callee.as.string, "aio_response_get_body") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_aio_response_get_body(int, Value*);
+            Value result = builtin_aio_response_get_body(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        if (strcmp(callee.as.string, "mutex_try_lock") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_mutex_try_lock(int, Value*);
+            Value result = builtin_mutex_try_lock(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        if (strcmp(callee.as.string, "mutex_destroy") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_mutex_destroy(int, Value*);
+            Value result = builtin_mutex_destroy(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Start HTTP server
+        if (strcmp(callee.as.string, "http_start_server") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_http_start_server(int, Value*);
+            Value result = builtin_http_start_server(arg_count, args);
+            // Set VM on server for handler callbacks
+            extern AsyncHttpServer* async_http_server_get_global();
+            AsyncHttpServer* server = async_http_server_get_global();
+            if (server) {
+                async_http_server_set_vm(server, vm);
+            }
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Stop HTTP server
+        if (strcmp(callee.as.string, "http_stop_server") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_http_stop_server(int, Value*);
+            Value result = builtin_http_stop_server(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
+        // Wait for HTTP server (blocks without using VM)
+        if (strcmp(callee.as.string, "http_server_wait") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_http_server_wait(int, Value*);
+            Value result = builtin_http_server_wait(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
         }
 
         // Resolve user-defined function by exact name if exists
@@ -2231,6 +2629,14 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
     return false;
 }
 
+// Public wrapper for external code to call functions
+// Arguments must already be on the stack: [arg0, arg1, ..., argN, callee]
+// Returns true on success, false on error
+// Result will be on top of stack after successful call
+bool vm_call_function(VM* vm, Value callee, int arg_count) {
+    return call_value(vm, callee, arg_count);
+}
+
 static uint8_t read_byte(VM* vm) {
     return *vm->frames[vm->frame_count - 1].ip++;
 }
@@ -2279,6 +2685,27 @@ InterpretResult vm_run(VM* vm) {
     };
     
     for (;;) {
+        // CRITICAL: If no frames, execution is complete - this can happen in nested vm_run calls
+        if (vm->frame_count == 0) {
+            // This is actually expected when call_kuyil_function creates nested vm_run calls
+            // The inner vm_run completes (frame_count=0), returns, then outer call_kuyil_function
+            // restores frame_count. No error needed, just return cleanly.
+            return INTERPRET_OK;
+        }
+        
+        // CRITICAL: Validate IP before reading to prevent executing data as opcodes
+        CallFrame* frame = &vm->frames[vm->frame_count - 1];
+        if (frame->ip < frame->function->chunk.code || 
+            frame->ip >= frame->function->chunk.code + frame->function->chunk.count) {
+            fprintf(stderr, "[VM] FATAL: IP=%p outside bytecode [%p, %p), would read opcode %d\n",
+                    (void*)frame->ip,
+                    (void*)frame->function->chunk.code,
+                    (void*)(frame->function->chunk.code + frame->function->chunk.count),
+                    (int)*frame->ip);
+            runtime_error(vm, "Instruction pointer corruption detected");
+            return INTERPRET_RUNTIME_ERROR;
+        }
+        
         uint8_t instruction = READ_BYTE();
         // Coverage instrumentation: increment hit for current instruction
         if (vm->coverage_enabled && vm->frame_count > 0) {
@@ -2636,6 +3063,52 @@ InterpretResult vm_run(VM* vm) {
             }
             case OP_RETURN: {
                 Value result = vm_pop(vm);
+                
+                // Execute deferred functions in LIFO order before returning
+                CallFrame* frame = &vm->frames[vm->frame_count - 1];
+                for (int i = frame->defer_count - 1; i >= 0; i--) {
+                    Value defer_call = frame->defers[i];
+                    
+                    if (defer_call.type != VALUE_ARRAY) {
+                        kuyil_log_error("[DEFER] Invalid defer call structure");
+                        continue;
+                    }
+                    
+                    // Extract function and arguments from array
+                    Value function_val = defer_call.as.array.values[0];
+                    int arg_count = defer_call.as.array.count - 1;
+                    
+                    // Push arguments and function onto stack in correct order for call_value
+                    // Stack layout for OP_CALL: [arg1, arg2, ..., argN, function]
+                    // Push args first
+                    for (int j = 0; j < arg_count; j++) {
+                        vm_push(vm, defer_call.as.array.values[j + 1]);
+                    }
+                    
+                    // Push function last (on top)
+                    vm_push(vm, function_val);
+                    
+                    // Call the deferred function (function is at peek(0))
+                    Value callee = vm_peek(vm, 0);
+                    if (!call_value(vm, callee, arg_count)) {
+                        kuyil_log_error("[DEFER] Failed to execute deferred function");
+                        // Clean up stack on error
+                        vm->stack_top -= arg_count + 1;
+                        // Continue with other defers even if one fails
+                    } else {
+                        // Pop the result of the deferred call (call_value leaves result on stack)
+                        vm_pop(vm);
+                    }
+                    
+                    // Free the defer call array
+                    free(defer_call.as.array.values);
+                    
+                    kuyil_log_info("[DEFER] Executed deferred function (remaining: %d)", i);
+                }
+                
+                // Reset defer count for this frame
+                frame->defer_count = 0;
+                
                 vm->frame_count--;
                 if (vm->frame_count == 0) {
                     vm_pop(vm);
@@ -2703,6 +3176,51 @@ InterpretResult vm_run(VM* vm) {
                     
                     kuyil_log_info("[AVATAR] Function submitted to thread pool");
                 }
+                break;
+            }
+            case OP_DEFER: {
+                // OP_DEFER registers a function call for execution at scope exit
+                // Stack layout: [function, arg1, arg2, ..., argN]
+                // Store function + args in current frame's defer stack (LIFO)
+                
+                int arg_count = READ_BYTE();
+                CallFrame* frame = &vm->frames[vm->frame_count - 1];
+                
+                if (frame->defer_count >= DEFERS_MAX) {
+                    runtime_error(vm, "Too many defer statements in function (max %d)", DEFERS_MAX);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                // Stack layout: [arg1, arg2, ..., argN, function]
+                // Create a deferred call value structure
+                // We'll store it as an array: [function, arg1, arg2, ..., argN]
+                Value defer_call = {VALUE_ARRAY};
+                defer_call.as.array.count = arg_count + 1;
+                defer_call.as.array.values = malloc(sizeof(Value) * (arg_count + 1));
+                
+                // Pop function (on top)
+                defer_call.as.array.values[0] = vm_pop(vm);
+                
+                // Pop args in reverse order (last arg is now on top)
+                for (int i = arg_count - 1; i >= 0; i--) {
+                    defer_call.as.array.values[i + 1] = vm_pop(vm);
+                }
+                
+                // Debug: Log what was captured
+                Value func_val = defer_call.as.array.values[0];
+                if (func_val.type == VALUE_STRING) {
+                    kuyil_log_info("[DEFER] Captured VALUE_STRING: %s", func_val.as.string);
+                } else if (func_val.type == VALUE_FUNCTION) {
+                    kuyil_log_info("[DEFER] Captured VALUE_FUNCTION");
+                } else {
+                    kuyil_log_info("[DEFER] Captured type: %d", func_val.type);
+                }
+                
+                // Push onto defer stack
+                frame->defers[frame->defer_count++] = defer_call;
+                
+                kuyil_log_info("[DEFER] Registered function with %d args (defer stack size: %d)", 
+                              arg_count, frame->defer_count);
                 break;
             }
             case OP_AWAIT: {
@@ -2829,10 +3347,29 @@ InterpretResult vm_run(VM* vm) {
             }
             case OP_ARRAY_GET: {
                 Value index = vm_pop(vm);
-                Value array = vm_pop(vm);
+                Value container = vm_pop(vm);
                 
-                if (array.type != VALUE_ARRAY) {
-                    runtime_error(vm, "Can only index arrays.");
+                // Handle object access with string index
+                if (container.type == VALUE_OBJECT && index.type == VALUE_STRING) {
+                    // Search for key in object
+                    bool found = false;
+                    for (int i = 0; i < container.as.object.count; i++) {
+                        if (strcmp(container.as.object.keys[i], index.as.string) == 0) {
+                            vm_push(vm, container.as.object.values[i]);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        Value nilv = {VALUE_NIL};
+                        vm_push(vm, nilv);
+                    }
+                    break;
+                }
+                
+                // Handle array access
+                if (container.type != VALUE_ARRAY) {
+                    runtime_error(vm, "Can only index arrays or objects with string keys.");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
@@ -2842,12 +3379,12 @@ InterpretResult vm_run(VM* vm) {
                 }
                 
                 int idx = (int)index.as.number;
-                if (idx < 0 || idx >= array.as.array.count) {
+                if (idx < 0 || idx >= container.as.array.count) {
                     runtime_error(vm, "Array index out of bounds.");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                vm_push(vm, array.as.array.values[idx]);
+                vm_push(vm, container.as.array.values[idx]);
                 break;
             }
             case OP_ARRAY_SET: {
@@ -3488,6 +4025,20 @@ void vm_init(VM* vm) {
         g_vm_task_queue = task_queue_create(1024);  // Queue capacity: 1024 tasks
     }
     
+    // Register response helper functions as globals (STRING sentinel values)
+    // These will be caught by the STRING call handler in call_value
+    Value response_sentinel;
+    response_sentinel.type = VALUE_STRING;
+    
+    response_sentinel.as.string = "response_setStatus";
+    set_global(vm, "response_setStatus", response_sentinel);
+    
+    response_sentinel.as.string = "response_addHeader";
+    set_global(vm, "response_addHeader", response_sentinel);
+    
+    response_sentinel.as.string = "response_setBody";
+    set_global(vm, "response_setBody", response_sentinel);
+    
 #ifndef _WIN32
     // Install basic crash handlers to improve diagnostics on segfaults
     struct sigaction sa;
@@ -3519,6 +4070,25 @@ void vm_init(VM* vm) {
     Value array_length_val = (Value){VALUE_STRING, {.string = strdup("array_length")}};
     define_global(vm, "array_length", array_length_val);
     
+    // Register AIO response functions (for route handlers)
+    Value aio_response_val = (Value){VALUE_STRING, {.string = strdup("aio_response")}};
+    define_global(vm, "aio_response", aio_response_val);
+    
+    Value aio_request_val = (Value){VALUE_STRING, {.string = strdup("aio_request")}};
+    define_global(vm, "aio_request", aio_request_val);
+    
+    Value aio_response_setStatus_val = (Value){VALUE_STRING, {.string = strdup("aio_response_setStatus")}};
+    define_global(vm, "aio_response_setStatus", aio_response_setStatus_val);
+    
+    Value aio_response_setBody_val = (Value){VALUE_STRING, {.string = strdup("aio_response_setBody")}};
+    define_global(vm, "aio_response_setBody", aio_response_setBody_val);
+    
+    Value aio_response_addHeader_val = (Value){VALUE_STRING, {.string = strdup("aio_response_addHeader")}};
+    define_global(vm, "aio_response_addHeader", aio_response_addHeader_val);
+    
+    Value aio_response_get_body_val = (Value){VALUE_STRING, {.string = strdup("aio_response_get_body")}};
+    define_global(vm, "aio_response_get_body", aio_response_get_body_val);
+    
     // Register logging functions
     Value log_fatal_val = {VALUE_STRING, {.string = strdup("log_fatal")}};
     Value log_error_val = {VALUE_STRING, {.string = strdup("log_error")}};
@@ -3537,17 +4107,66 @@ void vm_init(VM* vm) {
     Value assert_eq_val = {VALUE_STRING, {.string = strdup("assert_eq")}};
     Value assert_neq_val = {VALUE_STRING, {.string = strdup("assert_neq")}};
     Value assert_called_val = {VALUE_STRING, {.string = strdup("assert_called")}};
+    Value assert_equals_val = {VALUE_STRING, {.string = strdup("assert_equals")}};
+    Value assert_nil_val = {VALUE_STRING, {.string = strdup("assert_nil")}};
+    Value assert_not_nil_val = {VALUE_STRING, {.string = strdup("assert_not_nil")}};
     Value mock_return_val = {VALUE_STRING, {.string = strdup("mock_return")}};
+    Value mock_function_val = {VALUE_STRING, {.string = strdup("mock_function")}};
     Value mock_clear_val = {VALUE_STRING, {.string = strdup("mock_clear")}};
     Value mock_calls_val = {VALUE_STRING, {.string = strdup("mock_calls")}};
-
+    
     define_global(vm, "assert_true", assert_true_val);
     define_global(vm, "assert_eq", assert_eq_val);
     define_global(vm, "assert_neq", assert_neq_val);
     define_global(vm, "assert_called", assert_called_val);
+    define_global(vm, "assert_equals", assert_equals_val);
+    define_global(vm, "assert_nil", assert_nil_val);
+    define_global(vm, "assert_not_nil", assert_not_nil_val);
     define_global(vm, "mock_return", mock_return_val);
+    define_global(vm, "mock_function", mock_function_val);
     define_global(vm, "mock_clear", mock_clear_val);
     define_global(vm, "mock_calls", mock_calls_val);
+    
+    // Register route decorator functions
+    Value route_register_val = {VALUE_STRING, {.string = strdup("route_register")}};
+    Value route_find_val = {VALUE_STRING, {.string = strdup("route_find")}};
+    Value route_list_val = {VALUE_STRING, {.string = strdup("route_list")}};
+    Value route_extract_params_val = {VALUE_STRING, {.string = strdup("route_extract_params")}};
+    
+    define_global(vm, "route_register", route_register_val);
+    define_global(vm, "route_find", route_find_val);
+    define_global(vm, "route_list", route_list_val);
+    define_global(vm, "route_extract_params", route_extract_params_val);
+    
+    // Register bridge invoke function
+    Value route_bridge_invoke_val = {VALUE_STRING, {.string = strdup("route_bridge_invoke")}};
+    define_global(vm, "route_bridge_invoke", route_bridge_invoke_val);
+    
+    // Register request/response helper functions
+    Value request_val = {VALUE_STRING, {.string = strdup("Request")}};
+    Value response_val = {VALUE_STRING, {.string = strdup("Response")}};
+    define_global(vm, "Request", request_val);
+    define_global(vm, "Response", response_val);
+    
+    // Register async HTTP server functions
+    Value http_start_server_val = {VALUE_STRING, {.string = strdup("http_start_server")}};
+    Value http_stop_server_val = {VALUE_STRING, {.string = strdup("http_stop_server")}};
+    Value http_server_wait_val = {VALUE_STRING, {.string = strdup("http_server_wait")}};
+    define_global(vm, "http_start_server", http_start_server_val);
+    define_global(vm, "http_stop_server", http_stop_server_val);
+    define_global(vm, "http_server_wait", http_server_wait_val);
+    
+    // Register mutex primitives
+    Value mutex_create_val = {VALUE_STRING, {.string = strdup("mutex_create")}};
+    Value mutex_lock_val = {VALUE_STRING, {.string = strdup("mutex_lock")}};
+    Value mutex_unlock_val = {VALUE_STRING, {.string = strdup("mutex_unlock")}};
+    Value mutex_try_lock_val = {VALUE_STRING, {.string = strdup("mutex_try_lock")}};
+    Value mutex_destroy_val = {VALUE_STRING, {.string = strdup("mutex_destroy")}};
+    define_global(vm, "mutex_create", mutex_create_val);
+    define_global(vm, "mutex_lock", mutex_lock_val);
+    define_global(vm, "mutex_unlock", mutex_unlock_val);
+    define_global(vm, "mutex_try_lock", mutex_try_lock_val);
+    define_global(vm, "mutex_destroy", mutex_destroy_val);
     
     // Register __range as a built-in (will be handled specially in OP_CALL)
     Value range_val = {VALUE_STRING, {.string = strdup("__range")}};

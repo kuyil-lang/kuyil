@@ -19,12 +19,13 @@ const char* kyl_interface_signature_text =
     "str contains(haystack: string, needle: string) -> bool\n"
     "str indexOf(haystack: string, needle: string) -> int32\n"
     "str replace(input: string, from: string, to: string) -> string\n"
-    "str split(input: string, delimiter: string) -> string\n"
+    "str split(input: string, delimiter: string) -> array\n"
     "str toNumber(input: string) -> float64\n"
     "str toString(value: number|bool|string|nil) -> string\n"
     "str slice(input: string, start: int32, end: int32) -> string\n"
     "str regexMatch(input: string, pattern: string) -> bool\n"
     "str regexExtract(input: string, pattern: string) -> string\n"
+    "str regexReplace(input: string, pattern: string, replacement: string) -> string\n"
     "str bytesToString(bytes: array) -> string\n";
 
 // String length function
@@ -524,6 +525,85 @@ Value kyl_str_regexExtract(int arg_count, Value* args) {
     }
     
     regfree(&regex);
+    return result;
+}
+
+// Regex replace function (replaces all matches)
+Value kyl_str_regexReplace(int arg_count, Value* args) {
+    if (arg_count != 3 || args[0].type != VALUE_STRING || 
+        args[1].type != VALUE_STRING || args[2].type != VALUE_STRING) {
+        Value result;
+        memset(&result, 0, sizeof(Value));
+        result.type = VALUE_STRING;
+        result.as.string = (arg_count > 0 && args[0].type == VALUE_STRING) ? strdup(args[0].as.string) : strdup("");
+        return result;
+    }
+    
+    const char* input = args[0].as.string;
+    const char* pattern = args[1].as.string;
+    const char* replacement = args[2].as.string;
+    
+    regex_t regex;
+    int ret = regcomp(&regex, pattern, REG_EXTENDED);
+    
+    if (ret != 0) {
+        // Regex compilation failed - return original string
+        Value result;
+        memset(&result, 0, sizeof(Value));
+        result.type = VALUE_STRING;
+        result.as.string = strdup(input);
+        return result;
+    }
+    
+    // Build result string by finding and replacing all matches
+    char* result_str = malloc(1);
+    result_str[0] = '\0';
+    int result_len = 0;
+    
+    const char* pos = input;
+    regmatch_t match;
+    
+    while (regexec(&regex, pos, 1, &match, 0) == 0) {
+        // Add text before match
+        int before_len = match.rm_so;
+        result_str = realloc(result_str, result_len + before_len + 1);
+        strncat(result_str, pos, before_len);
+        result_len += before_len;
+        
+        // Add replacement text
+        int repl_len = strlen(replacement);
+        result_str = realloc(result_str, result_len + repl_len + 1);
+        strcat(result_str, replacement);
+        result_len += repl_len;
+        
+        // Move past this match
+        pos += match.rm_eo;
+        
+        // Prevent infinite loop on zero-length matches
+        if (match.rm_so == match.rm_eo) {
+            if (*pos != '\0') {
+                result_str = realloc(result_str, result_len + 2);
+                result_str[result_len] = *pos;
+                result_str[result_len + 1] = '\0';
+                result_len++;
+                pos++;
+            } else {
+                break;
+            }
+        }
+    }
+    
+    // Add remaining text
+    int remaining_len = strlen(pos);
+    result_str = realloc(result_str, result_len + remaining_len + 1);
+    strcat(result_str, pos);
+    
+    regfree(&regex);
+    
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_STRING;
+    result.as.string = result_str;
     return result;
 }
 

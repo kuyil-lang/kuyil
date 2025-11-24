@@ -31,7 +31,7 @@ interface str from "libs/libkylstr.so" {
   string str_replace(input: string, from: string, to: string)
   
   @alias("split")
-  string str_split(input: string, delimiter: string)
+  array str_split(input: string, delimiter: string)
   
   @alias("toNumber")
   float64 str_toNumber(input: string)
@@ -47,6 +47,9 @@ interface str from "libs/libkylstr.so" {
   
   @alias("regexExtract")
   string str_regexExtract(input: string, pattern: string)
+  
+  @alias("regexReplace")
+  string str_regexReplace(input: string, pattern: string, replacement: string)
   
   @alias("bytesToString")
   string str_bytesToString(bytes: array)

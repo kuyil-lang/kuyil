@@ -188,7 +188,17 @@ static KuyilTokenType identifier_type(Lexer* lexer) {
                 }
             }
             break;
-        case 'd': return check_keyword(1, 6, "efault", TOKEN_DEFAULT, lexer);
+        case 'd':
+            if (lexer->current - lexer->start > 1) {
+                switch (lexer->start[1]) {
+                    case 'e':
+                        if (lexer->current - lexer->start == 5) {
+                            return check_keyword(1, 4, "efer", TOKEN_DEFER, lexer);
+                        }
+                        return check_keyword(1, 6, "efault", TOKEN_DEFAULT, lexer);
+                }
+            }
+            break;
         case 'e': 
             if (lexer->current - lexer->start > 1) {
                 switch (lexer->start[1]) {
@@ -484,6 +494,7 @@ const char* token_type_string(KuyilTokenType type) {
         case TOKEN_AS: return "AS";
         case TOKEN_AVATAR: return "AVATAR";
         case TOKEN_AWAIT: return "AWAIT";
+        case TOKEN_DEFER: return "DEFER";
         case TOKEN_EXPORT: return "EXPORT";
         case TOKEN_IMPORT: return "IMPORT";
         case TOKEN_PLUS: return "PLUS";

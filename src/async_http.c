@@ -6,6 +6,31 @@
 #include <stdio.h>
 #include <event2/event.h>
 
+// ============================================================================
+// Pointer Registry for Response/Request Objects
+// Simple pointer registry to safely pass C pointers to Kuyil (avoid double precision loss)
+// ============================================================================
+#define KYL_AIO_MAX_POINTERS 2048
+static void* g_kyl_aio_ptrs[KYL_AIO_MAX_POINTERS];
+static int g_kyl_aio_next = 1;
+
+int kyl_aio_register_ptr(void* p) {
+    if (!p) return 0;
+    if (g_kyl_aio_next >= KYL_AIO_MAX_POINTERS) return 0;
+    int h = g_kyl_aio_next++;
+    g_kyl_aio_ptrs[h] = p;
+    return h;
+}
+
+void* kyl_aio_get_ptr(int h) {
+    if (h <= 0 || h >= KYL_AIO_MAX_POINTERS) return NULL;
+    return g_kyl_aio_ptrs[h];
+}
+
+void kyl_aio_unregister_ptr(int h) {
+    if (h > 0 && h < KYL_AIO_MAX_POINTERS) g_kyl_aio_ptrs[h] = NULL;
+}
+
 // Per-request state
 struct AsyncHttpRequest {
     CURL* easy_handle;

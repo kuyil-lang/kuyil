@@ -46,6 +46,12 @@ interface transcode {
   @alias("compressionRatio")
   float64 transcode_compressionRatio(original: int32, compressed: int32)
   
+  @alias("parse")
+  object transcode_jsonParse(json: string)
+  
+  @alias("jsonStringify")
+  string transcode_jsonStringify(input: string)
+  
   @alias("jsonGetField")
   string transcode_jsonGetField(json: string, key: string)
 }

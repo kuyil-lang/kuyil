@@ -1,0 +1,396 @@
+// MySQL Backend Implementation for Generic ORM
+// Uses prepared statements with parameter binding to prevent SQL injection
+
+import "mysql"
+
+// ═══════════════════════════════════════════════════════════
+// MySQL Connection Management
+// ═══════════════════════════════════════════════════════════
+
+struct MySQLBackend {
+    handle,
+    connected,
+    last_error,
+    config
+}
+
+fn mysql_connect(config) {
+    let backend = MySQLBackend {
+        handle: -1,
+        connected: false,
+        last_error: "",
+        config: config
+    }
+    
+    let host = config.host or "localhost"
+    let port = config.port or 3306
+    let database = config.database or "test"
+    let username = config.username or "root"
+    let password = config.password or ""
+    
+    // MySQL connection string format
+    let conn_str = username + ":" + password + "@tcp(" + host + ":" + port + ")/" + database
+    
+    let handle = kyl_mysql_connect(conn_str)
+    if (handle >= 0) {
+        backend.handle = handle
+        backend.connected = true
+        print("✓ MySQL connected: " + host + ":" + port + "/" + database)
+    } else {
+        backend.last_error = "Failed to connect to MySQL"
+        print("✗ MySQL connection failed")
+    }
+    
+    return backend
+}
+
+fn mysql_disconnect(backend) {
+    if (backend.connected) {
+        kyl_mysql_close(backend.handle)
+        backend.connected = false
+        print("✓ MySQL disconnected")
+        return true
+    }
+    return false
+}
+
+fn mysql_execute_sql(backend, sql) {
+    if (!backend.connected) {
+        backend.last_error = "Not connected to database"
+        return false
+    }
+    
+    if (backend.config.log_queries) {
+        print("[MySQL] " + sql)
+    }
+    
+    let result = kyl_mysql_execute(backend.handle, sql)
+    return result >= 0
+}
+
+// ═══════════════════════════════════════════════════════════
+// Prepared Statement Operations (SQL Injection Safe)
+// ═══════════════════════════════════════════════════════════
+
+struct MySQLStatement {
+    handle,
+    backend_handle,
+    param_count,
+    params
+}
+
+fn mysql_prepare(backend, query) {
+    if (!backend.connected) {
+        return false
+    }
+    
+    let stmt_handle = kyl_mysql_prepare(backend.handle, query)
+    
+    if (stmt_handle >= 0) {
+        return MySQLStatement {
+            handle: stmt_handle,
+            backend_handle: backend.handle,
+            param_count: 0,
+            params: []
+        }
+    }
+    
+    return false
+}
+
+fn mysql_bind_param(stmt, index, value, type) {
+    if (!stmt.params) {
+        stmt.params = []
+    }
+    
+    stmt.params[index - 1] = {
+        value: value,
+        type: type
+    }
+    
+    // Bind to actual statement
+    if (type == "int") {
+        return kyl_mysql_bind_int(stmt.handle, index, value)
+    } else if (type == "float") {
+        return kyl_mysql_bind_float(stmt.handle, index, value)
+    } else if (type == "string") {
+        return kyl_mysql_bind_string(stmt.handle, index, value)
+    } else if (type == "bool") {
+        return kyl_mysql_bind_int(stmt.handle, index, value ? 1 : 0)
+    } else if (type == "null") {
+        return kyl_mysql_bind_null(stmt.handle, index)
+    }
+    
+    return false
+}
+
+fn mysql_execute_prepared(stmt) {
+    let result = kyl_mysql_execute_statement(stmt.handle)
+    return result
+}
+
+fn mysql_finalize(stmt) {
+    return kyl_mysql_finalize_statement(stmt.handle)
+}
+
+// ═══════════════════════════════════════════════════════════
+// ORM Entity Operations for MySQL
+// ═══════════════════════════════════════════════════════════
+
+fn mysql_create_table(backend, entity_name) {
+    let decorators = @get(entity_name)
+    if (!decorators) {
+        backend.last_error = "No decorators found for entity: " + entity_name
+        return false
+    }
+    
+    // Get table name from @table decorator
+    let table_name = entity_name
+    let i = 0
+    while (i < array_length(decorators)) {
+        let dec = decorators[i]
+        if (dec.name == "table" and dec.args and array_length(dec.args) > 0) {
+            table_name = dec.args[0]
+            break
+        }
+        i = i + 1
+    }
+    
+    // MySQL syntax (slightly different from SQLite)
+    if (entity_name == "User") {
+        let sql = "CREATE TABLE IF NOT EXISTS " + table_name + " (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            age INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        return mysql_execute_sql(backend, sql)
+    } else if (entity_name == "Post") {
+        let sql = "CREATE TABLE IF NOT EXISTS " + table_name + " (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(200) NOT NULL,
+            content TEXT NOT NULL,
+            user_id INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        return mysql_execute_sql(backend, sql)
+    }
+    
+    return false
+}
+
+fn mysql_insert(backend, table_name, data) {
+    if (!backend.connected) {
+        return -1
+    }
+    
+    // Build parameterized INSERT query
+    let columns = []
+    let placeholders = []
+    let values = []
+    
+    let keys = map_keys(data)
+    let i = 0
+    while (i < array_length(keys)) {
+        let key = keys[i]
+        let value = data[key]
+        
+        columns[i] = key
+        placeholders[i] = "?"
+        values[i] = value
+        i = i + 1
+    }
+    
+    let col_str = array_join(columns, ", ")
+    let ph_str = array_join(placeholders, ", ")
+    let query = "INSERT INTO " + table_name + " (" + col_str + ") VALUES (" + ph_str + ")"
+    
+    // Prepare and bind
+    let stmt = mysql_prepare(backend, query)
+    if (!stmt) {
+        return -1
+    }
+    
+    i = 0
+    while (i < array_length(values)) {
+        let value = values[i]
+        let type = type_of(value)
+        mysql_bind_param(stmt, i + 1, value, type)
+        i = i + 1
+    }
+    
+    // Execute
+    let result = mysql_execute_prepared(stmt)
+    mysql_finalize(stmt)
+    
+    if (result >= 0) {
+        print("✓ Inserted into " + table_name)
+        return kyl_mysql_last_insert_id(backend.handle)
+    }
+    
+    return -1
+}
+
+fn mysql_find_all(backend, table_name) {
+    if (!backend.connected) {
+        return []
+    }
+    
+    let query = "SELECT * FROM " + table_name
+    let result = kyl_mysql_query(backend.handle, query)
+    
+    if (result < 0) {
+        backend.last_error = "Query failed"
+        return []
+    }
+    
+    return result
+}
+
+fn mysql_find_by_id(backend, table_name, id) {
+    if (!backend.connected) {
+        return false
+    }
+    
+    let query = "SELECT * FROM " + table_name + " WHERE id = ?"
+    let stmt = mysql_prepare(backend, query)
+    
+    if (!stmt) {
+        return false
+    }
+    
+    mysql_bind_param(stmt, 1, id, "int")
+    let result = mysql_execute_prepared(stmt)
+    mysql_finalize(stmt)
+    
+    return result
+}
+
+fn mysql_find_where(backend, table_name, conditions) {
+    if (!backend.connected) {
+        return []
+    }
+    
+    // Build WHERE clause with parameters
+    let where_parts = []
+    let values = []
+    let keys = map_keys(conditions)
+    
+    let i = 0
+    while (i < array_length(keys)) {
+        let key = keys[i]
+        where_parts[i] = key + " = ?"
+        values[i] = conditions[key]
+        i = i + 1
+    }
+    
+    let where_str = array_join(where_parts, " AND ")
+    let query = "SELECT * FROM " + table_name + " WHERE " + where_str
+    
+    let stmt = mysql_prepare(backend, query)
+    if (!stmt) {
+        return []
+    }
+    
+    i = 0
+    while (i < array_length(values)) {
+        mysql_bind_param(stmt, i + 1, values[i], type_of(values[i]))
+        i = i + 1
+    }
+    
+    let result = mysql_execute_prepared(stmt)
+    mysql_finalize(stmt)
+    
+    return result
+}
+
+fn mysql_update(backend, table_name, id, data) {
+    if (!backend.connected) {
+        return false
+    }
+    
+    let set_parts = []
+    let values = []
+    let keys = map_keys(data)
+    
+    let i = 0
+    while (i < array_length(keys)) {
+        let key = keys[i]
+        set_parts[i] = key + " = ?"
+        values[i] = data[key]
+        i = i + 1
+    }
+    
+    let set_str = array_join(set_parts, ", ")
+    let query = "UPDATE " + table_name + " SET " + set_str + " WHERE id = ?"
+    
+    let stmt = mysql_prepare(backend, query)
+    if (!stmt) {
+        return false
+    }
+    
+    i = 0
+    while (i < array_length(values)) {
+        mysql_bind_param(stmt, i + 1, values[i], type_of(values[i]))
+        i = i + 1
+    }
+    mysql_bind_param(stmt, array_length(values) + 1, id, "int")
+    
+    let result = mysql_execute_prepared(stmt)
+    mysql_finalize(stmt)
+    
+    return result >= 0
+}
+
+fn mysql_delete(backend, table_name, id) {
+    if (!backend.connected) {
+        return false
+    }
+    
+    let query = "DELETE FROM " + table_name + " WHERE id = ?"
+    let stmt = mysql_prepare(backend, query)
+    
+    if (!stmt) {
+        return false
+    }
+    
+    mysql_bind_param(stmt, 1, id, "int")
+    let result = mysql_execute_prepared(stmt)
+    mysql_finalize(stmt)
+    
+    return result >= 0
+}
+
+fn mysql_count(backend, table_name) {
+    if (!backend.connected) {
+        return 0
+    }
+    
+    let query = "SELECT COUNT(*) as count FROM " + table_name
+    let result = kyl_mysql_query(backend.handle, query)
+    
+    if (result >= 0) {
+        // TODO: Extract count from result
+        return result
+    }
+    
+    return 0
+}
+
+// ═══════════════════════════════════════════════════════════
+// Transaction Support
+// ═══════════════════════════════════════════════════════════
+
+fn mysql_begin_transaction(backend) {
+    return mysql_execute_sql(backend, "START TRANSACTION")
+}
+
+fn mysql_commit(backend) {
+    return mysql_execute_sql(backend, "COMMIT")
+}
+
+fn mysql_rollback(backend) {
+    return mysql_execute_sql(backend, "ROLLBACK")
+}

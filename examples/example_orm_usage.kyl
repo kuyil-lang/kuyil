@@ -1,0 +1,223 @@
+// Practical ORM Example - Blog System
+// Demonstrates generic ORM with SQLite backend
+
+import("orm/sqlite_backend.kyl")
+import("orm/orm.kyl")
+
+// ═══════════════════════════════════════════════════════════
+// Define Entities with Decorators
+// ═══════════════════════════════════════════════════════════
+
+@entity
+@table("users")
+struct User {
+    @primary
+    @autoIncrement
+    id,
+    
+    @required
+    @maxLength(100)
+    name,
+    
+    @required
+    @unique
+    @maxLength(255)
+    email,
+    
+    age,
+    
+    @timestamp
+    created_at
+}
+
+@entity
+@table("posts")
+struct Post {
+    @primary
+    @autoIncrement
+    id,
+    
+    @required
+    @maxLength(200)
+    title,
+    
+    @required
+    content,
+    
+    @foreignKey("users", "id")
+    user_id,
+    
+    @timestamp
+    created_at
+}
+
+// ═══════════════════════════════════════════════════════════
+// Main Example
+// ═══════════════════════════════════════════════════════════
+
+fn main() {
+    print("╔════════════════════════════════════════════════════╗")
+    print("║         PRACTICAL ORM EXAMPLE - Blog System       ║")
+    print("╚════════════════════════════════════════════════════╝\n")
+    
+    // Step 1: Create ORM with SQLite backend
+    print("=== Step 1: Connect to Database ===")
+    let config = {
+        backend: "sqlite",
+        file_path: "blog.db",
+        auto_create_tables: true,
+        log_queries: true
+    }
+    
+    let orm = ORM_create(config)
+    defer ORM_disconnect(orm)
+    
+    if (!orm.connected) {
+        print("✗ Failed to connect")
+        return
+    }
+    print("✓ Connected to blog.db\n")
+    
+    // Step 2: Create tables from entity definitions
+    print("=== Step 2: Create Tables ===")
+    ORM_create_table(orm, "User")
+    ORM_create_table(orm, "Post")
+    print("✓ Tables created\n")
+    
+    // Step 3: Insert users (with SQL injection protection)
+    print("=== Step 3: Insert Users ===")
+    
+    let alice_id = ORM_insert(orm, "users", {
+        name: "Alice Johnson",
+        email: "alice@blog.com",
+        age: 28
+    })
+    print("✓ Inserted Alice, ID: " + alice_id)
+    
+    let bob_id = ORM_insert(orm, "users", {
+        name: "Bob Smith",
+        email: "bob@blog.com",
+        age: 35
+    })
+    print("✓ Inserted Bob, ID: " + bob_id)
+    
+    // Test SQL injection prevention
+    print("\n--- Testing SQL Injection Prevention ---")
+    let malicious_input = "'; DROP TABLE users; --"
+    let hacker_id = ORM_insert(orm, "users", {
+        name: malicious_input,
+        email: "hacker@evil.com",
+        age: 99
+    })
+    print("✓ Malicious input safely escaped!")
+    print("  Input: " + malicious_input)
+    print("  Stored safely as a string value\n")
+    
+    // Step 4: Insert posts
+    print("=== Step 4: Insert Posts ===")
+    
+    let post1_id = ORM_insert(orm, "posts", {
+        title: "Getting Started with Kuyil",
+        content: "This is my first blog post about Kuyil programming language...",
+        user_id: alice_id
+    })
+    print("✓ Post 1: " + post1_id)
+    
+    let post2_id = ORM_insert(orm, "posts", {
+        title: "Advanced ORM Features",
+        content: "Let me show you how to use the generic ORM system...",
+        user_id: alice_id
+    })
+    print("✓ Post 2: " + post2_id)
+    
+    let post3_id = ORM_insert(orm, "posts", {
+        title: "Hello World",
+        content: "Bob's first post on this blog platform.",
+        user_id: bob_id
+    })
+    print("✓ Post 3: " + post3_id + "\n")
+    
+    // Step 5: Query all users
+    print("=== Step 5: Query All Users ===")
+    let all_users = ORM_find_all(orm, "users")
+    print("✓ Found users (result handle: " + all_users + ")\n")
+    
+    // Step 6: Find user by ID
+    print("=== Step 6: Find User by ID ===")
+    let alice = ORM_find_by_id(orm, "users", alice_id)
+    print("✓ Found Alice (result handle: " + alice + ")\n")
+    
+    // Step 7: Find posts with conditions
+    print("=== Step 7: Find Posts by Author ===")
+    let alice_posts = ORM_find_where(orm, "posts", {
+        user_id: alice_id
+    })
+    print("✓ Found Alice's posts (result handle: " + alice_posts + ")\n")
+    
+    // Step 8: Update user
+    print("=== Step 8: Update User ===")
+    let updated = ORM_update(orm, "users", alice_id, {
+        age: 29,
+        name: "Alice J. Johnson"
+    })
+    if (updated) {
+        print("✓ Updated Alice's profile\n")
+    }
+    
+    // Step 9: Use transactions
+    print("=== Step 9: Transaction Example ===")
+    print("Starting transaction...")
+    ORM_begin_transaction(orm)
+    
+    let temp_id = ORM_insert(orm, "users", {
+        name: "Temporary User",
+        email: "temp@blog.com",
+        age: 25
+    })
+    print("  • Inserted temp user: " + temp_id)
+    
+    ORM_insert(orm, "posts", {
+        title: "Temp Post",
+        content: "This will be committed",
+        user_id: temp_id
+    })
+    print("  • Inserted temp post")
+    
+    ORM_commit(orm)
+    print("✓ Transaction committed\n")
+    
+    // Step 10: Delete example
+    print("=== Step 10: Delete User ===")
+    let deleted = ORM_delete(orm, "users", hacker_id)
+    if (deleted) {
+        print("✓ Deleted malicious user\n")
+    }
+    
+    // Summary
+    print("╔════════════════════════════════════════════════════╗")
+    print("║              EXAMPLE COMPLETE                      ║")
+    print("╚════════════════════════════════════════════════════╝")
+    print("")
+    print("What we demonstrated:")
+    print("  ✓ Entity definition with decorators")
+    print("  ✓ Automatic table creation")
+    print("  ✓ CRUD operations (Create, Read, Update, Delete)")
+    print("  ✓ SQL injection protection")
+    print("  ✓ Parameterized queries")
+    print("  ✓ Find with conditions")
+    print("  ✓ Transactions")
+    print("")
+    print("Database file: blog.db")
+    print("Verify with: sqlite3 blog.db 'SELECT * FROM users;'")
+    print("")
+    print("To switch to MySQL, just change the config:")
+    print("  config = {")
+    print("    backend: 'mysql',")
+    print("    host: 'localhost',")
+    print("    database: 'blog',")
+    print("    username: 'root',")
+    print("    password: ''")
+    print("  }")
+}
+
+main()

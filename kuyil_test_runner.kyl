@@ -1,0 +1,132 @@
+#!/usr/bin/env kuyil
+// Kuyil Test Framework
+// Scans for test_*.kyl files and executes @Test decorated functions
+
+import "io" as io
+import "file" as file
+
+print("╔════════════════════════════════════════════════════════╗")
+print("║           Kuyil Test Framework                         ║")
+print("╚════════════════════════════════════════════════════════╝")
+print("")
+
+// Test results
+let totalTests = 0
+let passedTests = 0
+let failedTests = 0
+let testResults = []
+
+// Find all test files
+fn findTestFiles(dir) {
+    let pattern = dir + "/test_*.kyl"
+    return file_glob(pattern)
+}
+
+// Extract @Test functions from a file
+fn extractTestFunctions(filePath) {
+    let content = file_readText(filePath)
+    let tests = []
+    
+    // Simple regex-like search for @Test decorated functions
+    // In real implementation, would use AST parsing
+    let lines = str_split(content, "\n")
+    let i = 0
+    let inTestBlock = false
+    let testName = ""
+    
+    while (i < array_length(lines)) {
+        let line = str_trim(lines[i])
+        
+        if (str_startsWith(line, "@Test") || str_startsWith(line, "@test")) {
+            inTestBlock = true
+        } else if (inTestBlock && str_startsWith(line, "fn ")) {
+            // Extract function name
+            let parts = str_split(line, "(")
+            if (array_length(parts) > 0) {
+                testName = str_trim(str_replace(parts[0], "fn ", ""))
+                array_push(tests, testName)
+            }
+            inTestBlock = false
+        }
+        
+        i = i + 1
+    }
+    
+    return tests
+}
+
+// Run a single test file
+fn runTestFile(filePath) {
+    print("┌────────────────────────────────────────────────────────┐")
+    print("│ Testing: " + filePath)
+    print("└────────────────────────────────────────────────────────┘")
+    
+    // Execute the file in isolated VM
+    let result = exec_isolated(filePath)
+    
+    if (result.success) {
+        print("  ✅ All tests passed in " + filePath)
+        passedTests = passedTests + result.passed
+        totalTests = totalTests + result.total
+    } else {
+        print("  ❌ " + result.failed + " test(s) failed in " + filePath)
+        failedTests = failedTests + result.failed
+        totalTests = totalTests + result.total
+    }
+    
+    array_push(testResults, {
+        file: filePath,
+        passed: result.passed,
+        failed: result.failed,
+        total: result.total
+    })
+    
+    print("")
+}
+
+// Main test execution
+fn runTests() {
+    let testFiles = findTestFiles(".")
+    
+    if (array_length(testFiles) == 0) {
+        testFiles = findTestFiles("tests")
+    }
+    
+    if (array_length(testFiles) == 0) {
+        testFiles = findTestFiles("unittests")
+    }
+    
+    if (array_length(testFiles) == 0) {
+        print("❌ No test files found matching pattern test_*.kyl")
+        print("   Searched in: ./  ./tests/  ./unittests/")
+        return
+    }
+    
+    print("Found " + array_length(testFiles) + " test file(s)")
+    print("")
+    
+    let i = 0
+    while (i < array_length(testFiles)) {
+        runTestFile(testFiles[i])
+        i = i + 1
+    }
+    
+    // Print summary
+    print("╔════════════════════════════════════════════════════════╗")
+    print("║                    TEST SUMMARY                        ║")
+    print("╚════════════════════════════════════════════════════════╝")
+    print("")
+    print("  Total Tests:  " + totalTests)
+    print("  Passed:       " + passedTests + " ✅")
+    print("  Failed:       " + failedTests + " ❌")
+    print("")
+    
+    if (failedTests == 0) {
+        print("🎉 All tests passed!")
+    } else {
+        print("⚠️  " + failedTests + " test(s) failed")
+    }
+}
+
+// Execute
+runTests()

@@ -45,7 +45,8 @@ typedef enum {
     AST_EXPRESSION_STMT,
     AST_ASSIGNMENT,
     AST_AVATAR_STMT,         // avatar functionName(args) or avatar func() {...}
-    AST_AWAIT_EXPR           // await avatar_handle
+    AST_AWAIT_EXPR,          // await avatar_handle
+    AST_DEFER_STMT           // defer functionCall() - execute on scope exit
 } ASTNodeType;
 
 typedef enum {
@@ -257,6 +258,10 @@ typedef struct {
     ASTNode* avatar_handle;  // Expression that evaluates to avatar handle (or nil for all)
 } AwaitExpr;
 
+typedef struct {
+    ASTNode* call_expr;      // The function call to defer (must be a call expression)
+} DeferStmt;
+
 struct ASTNode {
     ASTNodeType type;
     int line;
@@ -288,6 +293,7 @@ struct ASTNode {
         InterpolatedString interpolated_string;
         AvatarStmt avatar_stmt;
         AwaitExpr await_expr;
+        DeferStmt defer_stmt;
         ASTNode* expression; // For expression statements
     } as;
 };

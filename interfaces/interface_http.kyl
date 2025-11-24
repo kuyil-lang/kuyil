@@ -47,8 +47,8 @@ interface http from "libs/libkylhttp.so" {
   bool http_staticBypassClear()
 }
 
-// Response builder functions
-interface response {
+// Response builder functions - using kyl_aio registry
+interface response from "builtin" {
   @alias("setStatus")
   bool response_setStatus(response: int32, status: int32)
   

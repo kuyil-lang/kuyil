@@ -51,6 +51,7 @@ typedef enum {
     OP_CLOSURE,        // Create closure/anonymous function
     OP_AVATAR,         // Launch avatar (green thread)
     OP_AWAIT,          // Wait for avatar to complete
+    OP_DEFER,          // Register function for deferred execution at scope exit
     
     // Control flow
     OP_JUMP,           // Unconditional jump

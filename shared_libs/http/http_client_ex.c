@@ -129,11 +129,23 @@ void http_client_response_ex_free(HttpClientResponse* response) {
     free(response);
 }
 
+// Initialize curl globally (thread-safe, called once)
+static void ensure_curl_initialized(void) {
+    static int initialized = 0;
+    if (!initialized) {
+        curl_global_init(CURL_GLOBAL_ALL);
+        initialized = 1;
+    }
+}
+
 // Enhanced HTTP client request
 HttpClientResponse* http_client_request_ex(const HttpClientRequest* request) {
     if (!request || !request->url) {
         return NULL;
     }
+    
+    // Ensure curl is initialized before use (required for thread safety)
+    ensure_curl_initialized();
     
     HttpClientResponse* response = http_client_response_create();
     if (!response) return NULL;

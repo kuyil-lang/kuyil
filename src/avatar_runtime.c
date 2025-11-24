@@ -18,9 +18,19 @@
 struct AvatarHandle;
 struct AvatarRuntime;
 
+// Avatar execution context - separate stack, shared VM code/globals
+typedef struct AvatarContext {
+    VM* main_vm;              // Shared VM with code and globals (read-only)
+    Value stack[STACK_MAX];   // Separate stack for this avatar
+    Value* stack_top;         // Stack top pointer
+    CallFrame frames[FRAMES_MAX]; // Separate call frames
+    int frame_count;          // Frame count for this avatar
+    bool vm_executing;        // Reentrancy flag for this avatar
+} AvatarContext;
+
 // Avatar VM context for shared call operations
 typedef struct {
-    VM* avatar_vm;
+    AvatarContext* avatar_ctx;
     struct AvatarHandle* handle;
 } AvatarCallContext;
 
@@ -32,7 +42,8 @@ struct AvatarHandle {
     Value result;
     AvatarCompletionCallback callback;
     void* user_data;
-    void* vm_context;
+    VM* main_vm;              // Main VM for accessing globals
+    AvatarContext* avatar_ctx; // Avatar's execution context
     bool completed;
     bool has_error;
     char error_message[256];
@@ -53,39 +64,52 @@ struct AvatarRuntime {
 // Helper functions for CallContext
 static Value* avatar_peek(void* context, int distance) {
     AvatarCallContext* ctx = (AvatarCallContext*)context;
-    if (ctx->avatar_vm->stack_top - distance - 1 < ctx->avatar_vm->stack) {
+    if (ctx->avatar_ctx->stack_top - distance - 1 < ctx->avatar_ctx->stack) {
         return NULL;
     }
-    return ctx->avatar_vm->stack_top - distance - 1;
+    return ctx->avatar_ctx->stack_top - distance - 1;
 }
 
 static Value avatar_pop(void* context) {
     AvatarCallContext* ctx = (AvatarCallContext*)context;
-    if (ctx->avatar_vm->stack_top <= ctx->avatar_vm->stack) {
+    if (ctx->avatar_ctx->stack_top <= ctx->avatar_ctx->stack) {
         Value nilv = {VALUE_NIL};
         return nilv;
     }
-    return *--ctx->avatar_vm->stack_top;
+    return *--ctx->avatar_ctx->stack_top;
 }
 
 static void avatar_push(void* context, Value value) {
     AvatarCallContext* ctx = (AvatarCallContext*)context;
-    if (ctx->avatar_vm->stack_top < ctx->avatar_vm->stack + STACK_MAX) {
-        *ctx->avatar_vm->stack_top++ = value;
+    size_t stack_depth = ctx->avatar_ctx->stack_top - ctx->avatar_ctx->stack;
+    
+    if (value.type == VALUE_STRING && value.as.string) {
+        size_t str_len = strlen(value.as.string);
+        fprintf(stderr, "[AVATAR PUSH] Pushing string value, len=%zu, stack_depth=%zu/%d\n",
+                str_len, stack_depth, STACK_MAX);
+        fflush(stderr);
+    }
+    
+    if (ctx->avatar_ctx->stack_top < ctx->avatar_ctx->stack + STACK_MAX) {
+        *ctx->avatar_ctx->stack_top++ = value;
+    } else {
+        fprintf(stderr, "[AVATAR PUSH] ERROR: Stack overflow! depth=%zu, max=%d\n",
+                stack_depth, STACK_MAX);
+        fflush(stderr);
     }
 }
 
 static Value* avatar_get_args(void* context, int arg_count) {
     AvatarCallContext* ctx = (AvatarCallContext*)context;
     // Stack layout: [...] [arg0, arg1, ..., argN-1, callee] <- stack_top
-    return ctx->avatar_vm->stack_top - arg_count - 1;
+    return ctx->avatar_ctx->stack_top - arg_count - 1;
 }
 
 static void avatar_pop_n(void* context, int n) {
     AvatarCallContext* ctx = (AvatarCallContext*)context;
-    ctx->avatar_vm->stack_top -= n;
-    if (ctx->avatar_vm->stack_top < ctx->avatar_vm->stack) {
-        ctx->avatar_vm->stack_top = ctx->avatar_vm->stack;
+    ctx->avatar_ctx->stack_top -= n;
+    if (ctx->avatar_ctx->stack_top < ctx->avatar_ctx->stack) {
+        ctx->avatar_ctx->stack_top = ctx->avatar_ctx->stack;
     }
 }
 
@@ -111,16 +135,23 @@ static void avatar_set_error(AvatarHandle* handle, const char* format, ...) {
 
 static bool avatar_setup_frame(void* context, Function* function, int arg_count) {
     AvatarCallContext* ctx = (AvatarCallContext*)context;
-    CallFrame* frame = vm_setup_call_frame_ex(ctx->avatar_vm->frames, &ctx->avatar_vm->frame_count,
-                                                &ctx->avatar_vm->stack_top, function, arg_count, true);
+    CallFrame* frame = vm_setup_call_frame_ex(ctx->avatar_ctx->frames, &ctx->avatar_ctx->frame_count,
+                                                &ctx->avatar_ctx->stack_top, function, arg_count, true);
     return frame != NULL;
 }
 
 static bool avatar_get_global(void* context, const char* name, Value* out) {
-    // Avatars don't have direct global access in the current design
-    (void)context;
-    (void)name;
-    (void)out;
+    // Avatars access globals from main VM (read-only)
+    AvatarCallContext* ctx = (AvatarCallContext*)context;
+    VM* main_vm = ctx->avatar_ctx->main_vm;
+    
+    // Search main VM globals
+    for (int i = 0; i < main_vm->global_count; i++) {
+        if (strcmp(main_vm->globals[i].name, name) == 0) {
+            *out = main_vm->globals[i].value;
+            return true;
+        }
+    }
     return false;
 }
 
@@ -128,28 +159,17 @@ static bool avatar_get_global(void* context, const char* name, Value* out) {
 static void* avatar_task_func(void* user_data) {
     AvatarHandle* handle = (AvatarHandle*)user_data;
     
-    // Get main VM context for accessing globals
-    VM* main_vm = (VM*)handle->vm_context;
+    // Get avatar context - separate stack, shared VM
+    AvatarContext* avatar_ctx = handle->avatar_ctx;
+    VM* main_vm = handle->main_vm;
     
-    // Create isolated VM instance for this avatar
-    VM avatar_vm;
-    memset(&avatar_vm, 0, sizeof(VM));
-    
-    // Initialize minimal VM state with full call stack support
-    avatar_vm.stack_top = avatar_vm.stack;
-    avatar_vm.frame_count = 0;
-    avatar_vm.test_mode = false;
-    avatar_vm.avatar_runtime = NULL;  // Avatars don't spawn sub-avatars
-    avatar_vm.async_http = NULL;
-    avatar_vm.event_base = NULL;
-    avatar_vm.global_count = 0;
-    
-    // Note: We'll access main_vm->globals directly when needed (read-only)
+    // Avatar context already initialized with separate stack and frames
+    // We just execute using this context
     
     // Set up initial call frame for function execution
     // IMPORTANT: This must match how call_value() sets up frames in vm.c!
     // The main difference from top-level execution is that we have arguments.
-    if (avatar_vm.frame_count >= FRAMES_MAX) {
+    if (avatar_ctx->frame_count >= FRAMES_MAX) {
         avatar_set_error(handle, "Avatar stack overflow");
         handle->result.type = VALUE_NIL;
         return NULL;
@@ -157,20 +177,20 @@ static void* avatar_task_func(void* user_data) {
     
     // Push arguments onto stack first
     for (int i = 0; i < handle->arg_count; i++) {
-        if (avatar_vm.stack_top >= avatar_vm.stack + STACK_MAX) {
+        if (avatar_ctx->stack_top >= avatar_ctx->stack + STACK_MAX) {
             avatar_set_error(handle, "Avatar stack overflow (args)");
             handle->result.type = VALUE_NIL;
             return NULL;
         }
-        *avatar_vm.stack_top++ = handle->args[i];
+        *avatar_ctx->stack_top++ = handle->args[i];
     }
     
     // Set up initial frame - must match vm_setup_call_frame_ex logic!
     // Arguments are already on stack, now set up frame properly
-    avatar_vm.frames[0].function = handle->function;
-    avatar_vm.frames[0].ip = handle->function->chunk.code;
-    avatar_vm.frames[0].slots = avatar_vm.stack;  // Points to arg[0]
-    avatar_vm.frame_count = 1;
+    avatar_ctx->frames[0].function = handle->function;
+    avatar_ctx->frames[0].ip = handle->function->chunk.code;
+    avatar_ctx->frames[0].slots = avatar_ctx->stack;  // Points to arg[0]
+    avatar_ctx->frame_count = 1;
     
     // CRITICAL: With proper SET_LOCAL/GET_LOCAL implementation:
     // - frame->slots[0..arg_count-1] = parameters (already on stack)
@@ -178,14 +198,14 @@ static void* avatar_task_func(void* user_data) {
     // - Must allocate stack space for ALL locals, not just arguments
     // - Initialize local variable slots to NIL
     int local_count = handle->function->local_count;
-    avatar_vm.stack_top = avatar_vm.stack + handle->arg_count;
+    avatar_ctx->stack_top = avatar_ctx->stack + handle->arg_count;
     
     // printf("[AVATAR SETUP] Function has local_count=%d, arg_count=%d, allocating %d local slots\n",
     //        local_count, handle->arg_count, local_count - handle->arg_count);
     
     // Allocate and initialize local variable slots (beyond parameters)
     for (int i = handle->arg_count; i < local_count; i++) {
-        if (avatar_vm.stack_top >= avatar_vm.stack + STACK_MAX) {
+        if (avatar_ctx->stack_top >= avatar_ctx->stack + STACK_MAX) {
             snprintf(handle->error_message, sizeof(handle->error_message),
                     "Avatar stack overflow (locals)");
             handle->has_error = true;
@@ -193,11 +213,11 @@ static void* avatar_task_func(void* user_data) {
             return NULL;
         }
         Value nil_val = {VALUE_NIL};
-        *avatar_vm.stack_top++ = nil_val;
+        *avatar_ctx->stack_top++ = nil_val;
     }
     
     // printf("[AVATAR SETUP] Stack_top after locals = %ld (base=0, top=%ld)\n",
-    //        (long)(avatar_vm.stack_top - avatar_vm.stack), (long)(avatar_vm.stack_top - avatar_vm.stack));
+    //        (long)(avatar_ctx->stack_top - avatar_ctx->stack), (long)(avatar_ctx->stack_top - avatar_ctx->stack));
     
     // Now stack_top points after all locals - this is where expression evaluation starts
     // This matches vm_setup_call_frame_ex: *stack_top_ptr = frame->slots + arg_count;
@@ -220,8 +240,8 @@ static void* avatar_task_func(void* user_data) {
     
     // Set up execution context for shared opcode executor
     ExecContext exec_ctx = {
-        .stack = avatar_vm.stack,
-        .stack_top = &avatar_vm.stack_top,
+        .stack = avatar_ctx->stack,
+        .stack_top = &avatar_ctx->stack_top,
         .stack_capacity = STACK_MAX,
         .has_error = &handle->has_error,
         .error_message = handle->error_message,
@@ -230,17 +250,31 @@ static void* avatar_task_func(void* user_data) {
         .vm_ptr = handle
     };
     
-    while (running && avatar_vm.frame_count > 0) {
+    while (running && avatar_ctx->frame_count > 0) {
         // Get current frame (it may change due to calls/returns)
         // Disabled: Frame count tracking
         /*
         static int prev_frame_count = 0;
-        if (avatar_vm.frame_count != prev_frame_count) {
-            printf("[AVATAR] Frame count changed from %d to %d\n", prev_frame_count, avatar_vm.frame_count);
-            prev_frame_count = avatar_vm.frame_count;
+        if (avatar_ctx->frame_count != prev_frame_count) {
+            printf("[AVATAR] Frame count changed from %d to %d\n", prev_frame_count, avatar_ctx->frame_count);
+            prev_frame_count = avatar_ctx->frame_count;
         }
         */
-        frame = &avatar_vm.frames[avatar_vm.frame_count - 1];
+        frame = &avatar_ctx->frames[avatar_ctx->frame_count - 1];
+        
+        // CRITICAL: Validate IP is within bytecode bounds to prevent reading data as opcodes
+        if (frame->ip < frame->function->chunk.code || 
+            frame->ip >= frame->function->chunk.code + frame->function->chunk.count) {
+            fprintf(stderr, "[AVATAR] FATAL: IP corruption detected! IP=%p is outside bytecode range [%p, %p)\n",
+                    (void*)frame->ip, 
+                    (void*)frame->function->chunk.code,
+                    (void*)(frame->function->chunk.code + frame->function->chunk.count));
+            fprintf(stderr, "[AVATAR] IP points to: %02x %02x %02x %02x (would read as opcode %d)\n",
+                    frame->ip[0], frame->ip[1], frame->ip[2], frame->ip[3], (int)frame->ip[0]);
+            avatar_set_error(handle, "VM instruction pointer corruption - IP points outside bytecode");
+            handle->result.type = VALUE_NIL;
+            return NULL;
+        }
         
         // Update exec context with current frame slots
         exec_ctx.current_frame_slots = frame->slots;
@@ -248,8 +282,8 @@ static void* avatar_task_func(void* user_data) {
         if (frame->ip >= frame->function->chunk.code + frame->function->chunk.count) {
             // Reached end of function without explicit return - return nil
             handle->result.type = VALUE_NIL;
-            avatar_vm.frame_count--;
-            if (avatar_vm.frame_count == 0) {
+            avatar_ctx->frame_count--;
+            if (avatar_ctx->frame_count == 0) {
                 running = false;
             }
             continue;
@@ -261,12 +295,12 @@ static void* avatar_task_func(void* user_data) {
         
         // Track execution flow with slot[0] state (disabled for performance)
         /*
-        if (avatar_vm.frame_count == 2 || avatar_vm.frame_count == 3) {
+        if (avatar_ctx->frame_count == 2 || avatar_ctx->frame_count == 3) {
             long ip_offset = (frame->ip - 1) - frame->function->chunk.code;
             printf("[AVATAR F%d] IP=%ld op=%d, slot[0]=%g, stack_delta=%ld\n",
-                   avatar_vm.frame_count, ip_offset, instruction,
+                   avatar_ctx->frame_count, ip_offset, instruction,
                    frame->slots[0].type == VALUE_NUMBER ? frame->slots[0].as.number : -999.0,
-                   avatar_vm.stack_top - frame->slots);
+                   avatar_ctx->stack_top - frame->slots);
         }
         */
         
@@ -295,12 +329,12 @@ static void* avatar_task_func(void* user_data) {
                 // }
                 
                 // Decrement frame count
-                avatar_vm.frame_count--;
+                avatar_ctx->frame_count--;
                 
                 // Save slots pointer of returning frame for stack restoration
                 Value* returning_frame_slots = frame->slots;
                 
-                if (avatar_vm.frame_count == 0) {
+                if (avatar_ctx->frame_count == 0) {
                     // Top-level return - set result and exit
                     handle->result = result;
                     // if (result.type == VALUE_STRING && result.as.string) {
@@ -313,8 +347,8 @@ static void* avatar_task_func(void* user_data) {
                 } else {
                     // Returning from nested call - restore stack to where callee was
                     // This preserves values that were pushed before the CALL
-                    avatar_vm.stack_top = returning_frame_slots;
-                    *avatar_vm.stack_top++ = result;
+                    avatar_ctx->stack_top = returning_frame_slots;
+                    *avatar_ctx->stack_top++ = result;
                 }
                 break;
             }
@@ -329,7 +363,7 @@ static void* avatar_task_func(void* user_data) {
                     return NULL;
                 }
                 Value val = frame->function->chunk.constants[constant_idx];
-                *avatar_vm.stack_top++ = val;
+                *avatar_ctx->stack_top++ = val;
                 break;
             }
             
@@ -377,16 +411,16 @@ static void* avatar_task_func(void* user_data) {
 
             case OP_TO_STRING: {
                 // Convert top-of-stack value to string (mirror vm.c implementation)
-                if (avatar_vm.stack_top <= avatar_vm.stack) {
+                if (avatar_ctx->stack_top <= avatar_ctx->stack) {
                     handle->has_error = true;
                     snprintf(handle->error_message, sizeof(handle->error_message),
                              "Stack underflow in TO_STRING");
                     handle->result.type = VALUE_NIL;
                     return NULL;
                 }
-                Value value = *(avatar_vm.stack_top - 1);
+                Value value = *(avatar_ctx->stack_top - 1);
                 // Pop original value
-                avatar_vm.stack_top--;
+                avatar_ctx->stack_top--;
 
                 Value result;
                 result.type = VALUE_STRING;
@@ -411,7 +445,7 @@ static void* avatar_task_func(void* user_data) {
                         break;
                 }
                 // Push converted value
-                *avatar_vm.stack_top++ = result;
+                *avatar_ctx->stack_top++ = result;
                 break;
             }
             
@@ -485,7 +519,7 @@ static void* avatar_task_func(void* user_data) {
                 // - Expression stack can shrink to local_count, but NOT BELOW
                 // - If we allow stack to shrink below local_count, next push overwrites locals!
                 {
-                    int current_stack_pos = avatar_vm.stack_top - avatar_vm.stack;
+                    int current_stack_pos = avatar_ctx->stack_top - avatar_ctx->stack;
                     int min_stack_pos = handle->function->local_count;
                     
                     if (current_stack_pos <= min_stack_pos) {
@@ -501,20 +535,20 @@ static void* avatar_task_func(void* user_data) {
             
             case OP_DUP: {
                 // Duplicate the top value on the stack
-                if (avatar_vm.stack_top <= avatar_vm.stack) {
+                if (avatar_ctx->stack_top <= avatar_ctx->stack) {
                     handle->has_error = true;
                     snprintf(handle->error_message, sizeof(handle->error_message),
                             "Stack underflow in DUP");
                     handle->result.type = VALUE_NIL;
                     return NULL;
                 }
-                Value value = *(avatar_vm.stack_top - 1);  // Peek at top
-                *avatar_vm.stack_top++ = value;             // Push duplicate
+                Value value = *(avatar_ctx->stack_top - 1);  // Peek at top
+                *avatar_ctx->stack_top++ = value;             // Push duplicate
                 break;
             }
             
             case OP_PRINT: {
-                if (avatar_vm.stack_top < avatar_vm.stack + 1) {
+                if (avatar_ctx->stack_top < avatar_ctx->stack + 1) {
                     handle->has_error = true;
                     snprintf(handle->error_message, sizeof(handle->error_message),
                             "Stack underflow in PRINT");
@@ -523,8 +557,8 @@ static void* avatar_task_func(void* user_data) {
                 }
                 
                 // Print from avatar (thread-safe with mutex or just allow interleaving)
-                Value value = *(avatar_vm.stack_top - 1);
-                avatar_vm.stack_top--;
+                Value value = *(avatar_ctx->stack_top - 1);
+                avatar_ctx->stack_top--;
                 
                 // Simple printing - may interleave with other output
                 // printf("[AVATAR OUTPUT] ");
@@ -553,7 +587,7 @@ static void* avatar_task_func(void* user_data) {
                 exec_ctx.current_frame_slots = frame->slots;
                 // DEBUG: Log what we're loading
                 // Value local_val = frame->slots[slot];
-                // int stack_size = avatar_vm.stack_top - avatar_vm.stack;
+                // int stack_size = avatar_ctx->stack_top - avatar_ctx->stack;
                 // printf("[AVATAR GET_LOCAL] Slot %d, type: %d, stack_size: %d\n", slot, local_val.type, stack_size);
                 exec_get_local(&exec_ctx, slot);
                 if (*exec_ctx.has_error) {
@@ -567,11 +601,11 @@ static void* avatar_task_func(void* user_data) {
                 uint8_t slot = *frame->ip++;
                 exec_ctx.current_frame_slots = frame->slots;
                 // DEBUG: Log what we're setting
-                // Value top_val = avatar_vm.stack_top[-1];
-                // int stack_pos = avatar_vm.stack_top - avatar_vm.stack;
+                // Value top_val = avatar_ctx->stack_top[-1];
+                // int stack_pos = avatar_ctx->stack_top - avatar_ctx->stack;
                 // printf("[AVATAR SET_LOCAL] Slot %d = type %d, stack_pos=%d, slot_addr=%p, stack_addr=%p\n", 
                 //        slot, top_val.type, stack_pos, 
-                //        (void*)&frame->slots[slot], (void*)(avatar_vm.stack_top - 1));
+                //        (void*)&frame->slots[slot], (void*)(avatar_ctx->stack_top - 1));
                 exec_set_local(&exec_ctx, slot);
                 if (*exec_ctx.has_error) {
                     handle->result.type = VALUE_NIL;
@@ -626,7 +660,7 @@ static void* avatar_task_func(void* user_data) {
                     return NULL;
                 }
                 
-                *avatar_vm.stack_top++ = value;
+                *avatar_ctx->stack_top++ = value;
                 break;
             }
             
@@ -655,14 +689,14 @@ static void* avatar_task_func(void* user_data) {
                 const char* name = name_value.as.string;
                 
                 // Pop the value to set
-                if (avatar_vm.stack_top <= avatar_vm.stack) {
+                if (avatar_ctx->stack_top <= avatar_ctx->stack) {
                     snprintf(handle->error_message, sizeof(handle->error_message),
                             "Stack underflow in SET_GLOBAL");
                     handle->has_error = true;
                     handle->result.type = VALUE_NIL;
                     return NULL;
                 }
-                Value value = *(--avatar_vm.stack_top);
+                Value value = *(--avatar_ctx->stack_top);
                 
                 // Find the global in main VM and set it
                 int index = -1;
@@ -685,7 +719,7 @@ static void* avatar_task_func(void* user_data) {
                 main_vm->globals[index].value = value;
                 
                 // Push the value back (SET_GLOBAL returns the value)
-                *avatar_vm.stack_top++ = value;
+                *avatar_ctx->stack_top++ = value;
                 break;
             }
             
@@ -695,7 +729,7 @@ static void* avatar_task_func(void* user_data) {
                 
                 // Get callee from top of stack (peek at position 0)
                 // Stack layout: [... arg0, arg1, ..., argN, callee] <- stack_top
-                if (avatar_vm.stack_top < avatar_vm.stack + arg_count + 1) {
+                if (avatar_ctx->stack_top < avatar_ctx->stack + arg_count + 1) {
                     handle->has_error = true;
                     snprintf(handle->error_message, sizeof(handle->error_message),
                             "Stack underflow in CALL");
@@ -703,7 +737,7 @@ static void* avatar_task_func(void* user_data) {
                     return NULL;
                 }
                 
-                Value callee = *(avatar_vm.stack_top - 1);  // Peek at top of stack
+                Value callee = *(avatar_ctx->stack_top - 1);  // Peek at top of stack
                 
                 // Handle VALUE_FUNCTION (user-defined functions)
                 if (callee.type == VALUE_FUNCTION) {
@@ -719,7 +753,7 @@ static void* avatar_task_func(void* user_data) {
                     }
                     
                     // Check if we have room for another call frame
-                    if (avatar_vm.frame_count >= FRAMES_MAX) {
+                    if (avatar_ctx->frame_count >= FRAMES_MAX) {
                         handle->has_error = true;
                         snprintf(handle->error_message, sizeof(handle->error_message),
                                 "Avatar call stack overflow (max depth: %d)", FRAMES_MAX);
@@ -728,8 +762,8 @@ static void* avatar_task_func(void* user_data) {
                     }
                     
                     // Create new call frame using shared logic with stack reserve for avatars
-                    CallFrame* new_frame = vm_setup_call_frame_ex(avatar_vm.frames, &avatar_vm.frame_count,
-                                                                    &avatar_vm.stack_top, function, arg_count, true);
+                    CallFrame* new_frame = vm_setup_call_frame_ex(avatar_ctx->frames, &avatar_ctx->frame_count,
+                                                                    &avatar_ctx->stack_top, function, arg_count, true);
                     if (!new_frame) {
                         handle->has_error = true;
                         snprintf(handle->error_message, sizeof(handle->error_message),
@@ -744,8 +778,8 @@ static void* avatar_task_func(void* user_data) {
                 // Handle VALUE_STRING (library functions and special functions)
                 else if (callee.type == VALUE_STRING) {
                     // Set up call context for shared call handler
-                    AvatarCallContext avatar_ctx = {
-                        .avatar_vm = &avatar_vm,
+                    AvatarCallContext avatar_call_ctx = {
+                        .avatar_ctx = avatar_ctx,
                         .handle = handle
                     };
                     
@@ -757,13 +791,22 @@ static void* avatar_task_func(void* user_data) {
                         .pop_n = avatar_pop_n,
                         .report_error = avatar_report_error,
                         .setup_frame = avatar_setup_frame,
-                        .context = &avatar_ctx,
+                        .context = &avatar_call_ctx,
                         .get_global = avatar_get_global,
                         .test_mode = false
                     };
                     
                     
                     CallResult result = vm_call_string_shared(&ctx, callee.as.string, arg_count);
+                    
+                    // CRITICAL FIX: After library calls (especially route_bridge_invoke which uses call_kuyil_function),
+                    // the frame pointer MUST be refreshed because:
+                    // 1. Library functions may modify avatar_vm state
+                    // 2. Nested VM calls can invalidate cached frame pointers
+                    // 3. Stack modifications can move frame data
+                    // This prevents IP from pointing to string data instead of bytecode
+                    frame = &avatar_ctx->frames[avatar_ctx->frame_count - 1];
+                    fflush(stderr);
                     
                     if (result == CALL_RESULT_ERROR) {
                         // Error already set by shared handler (already prints via avatar_report_error)
@@ -803,7 +846,7 @@ static void* avatar_task_func(void* user_data) {
                 offset |= *frame->ip++;
                 
                 // Peek at top of stack (don't pop - let subsequent OP_POP handle cleanup)
-                if (avatar_vm.stack_top < avatar_vm.stack + 1) {
+                if (avatar_ctx->stack_top < avatar_ctx->stack + 1) {
                     handle->has_error = true;
                     snprintf(handle->error_message, sizeof(handle->error_message),
                             "Stack underflow in JUMP_IF_FALSE");
@@ -811,7 +854,7 @@ static void* avatar_task_func(void* user_data) {
                     return NULL;
                 }
                 
-                Value condition = *(avatar_vm.stack_top - 1);  // Peek only
+                Value condition = *(avatar_ctx->stack_top - 1);  // Peek only
                 
                 // Check if falsy (nil, false, or 0)
                 bool is_falsy = false;
@@ -826,7 +869,7 @@ static void* avatar_task_func(void* user_data) {
                 if (is_falsy) {
                     frame->ip += offset;
                     // When jumping, pop the condition value
-                    avatar_vm.stack_top--;
+                    avatar_ctx->stack_top--;
                 } 
                 // When not jumping, leave value for OP_POP to clean
                 break;
@@ -884,8 +927,8 @@ static void* avatar_task_func(void* user_data) {
                     return NULL;
                 }
                 // DEBUG: Check what's on stack after OBJECT_GET
-                // if (avatar_vm.stack_top > avatar_vm.stack) {
-                //     Value top = avatar_vm.stack_top[-1];
+                // if (avatar_ctx->stack_top > avatar_ctx->stack) {
+                //     Value top = avatar_ctx->stack_top[-1];
                 //     printf("[AVATAR POST-OBJECT_GET] Stack top type: %d\n", top.type);
                 //     if (top.type == VALUE_STRING && top.as.string) {
                 //         printf("[AVATAR POST-OBJECT_GET] String length: %zu\n", strlen(top.as.string));
@@ -902,6 +945,24 @@ static void* avatar_task_func(void* user_data) {
                     handle->result.type = VALUE_NIL;
                     return NULL;
                 }
+                break;
+            
+            // Logging opcodes
+            case OP_LOG_FATAL:
+            case OP_LOG_ERROR:
+            case OP_LOG_WARNING:
+            case OP_LOG_INFO:
+            case OP_LOG_DEBUG: {
+                // Pop the message and log it (for now just pop it silently)
+                if (avatar_ctx->stack_top > avatar_ctx->stack) {
+                    avatar_ctx->stack_top--;
+                }
+                break;
+            }
+            
+            case OP_LOG_PUSH_CTX:
+            case OP_LOG_POP_CTX:
+                // No-op for avatars
                 break;
             
             default:
@@ -995,11 +1056,25 @@ AvatarHandle* avatar_runtime_submit(
     AvatarHandle* handle = calloc(1, sizeof(AvatarHandle));
     if (!handle) return NULL;
     
+    // Allocate avatar context - separate stack, shared VM
+    AvatarContext* avatar_ctx = calloc(1, sizeof(AvatarContext));
+    if (!avatar_ctx) {
+        free(handle);
+        return NULL;
+    }
+    
+    // Initialize avatar context
+    avatar_ctx->main_vm = (VM*)vm_context;
+    avatar_ctx->stack_top = avatar_ctx->stack;
+    avatar_ctx->frame_count = 0;
+    avatar_ctx->vm_executing = false;
+    
     handle->function = function;
     handle->arg_count = arg_count;
     handle->callback = callback;
     handle->user_data = user_data;
-    handle->vm_context = vm_context;
+    handle->main_vm = (VM*)vm_context;
+    handle->avatar_ctx = avatar_ctx;
     handle->completed = false;
     handle->runtime = runtime;
     handle->result.type = VALUE_NIL;
@@ -1182,4 +1257,12 @@ Value avatar_runtime_get_result(AvatarHandle* handle) {
     pthread_mutex_unlock(&handle->mutex);
     
     return result;
+}
+
+// Get main VM context from avatar handle
+void* avatar_handle_get_main_vm(AvatarHandle* handle) {
+    if (!handle) {
+        return NULL;
+    }
+    return handle->main_vm;
 }

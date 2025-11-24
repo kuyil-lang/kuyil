@@ -1,8 +1,16 @@
 #include "vm_call_shared.h"
 #include "vm_library_integration.h"
 #include "logging.h"
+#include "avatar_runtime.h"
+#include "vm.h"
 #include <string.h>
 #include <stdlib.h>
+
+// Avatar VM context for shared call operations (from avatar_runtime.c)
+typedef struct {
+    VM* avatar_vm;
+    struct AvatarHandle* handle;
+} AvatarCallContext;
 
 // Shared implementation of OP_CALL for VALUE_STRING callees
 CallResult vm_call_string_shared(CallContext* ctx, const char* callee_str, int arg_count) {
@@ -220,6 +228,50 @@ CallResult vm_call_string_shared(CallContext* ctx, const char* callee_str, int a
         Value result;
         result.type = VALUE_STRING;
         result.as.string = strdup(type_names[arg.type < 7 ? arg.type : 0]);
+        ctx->push(ctx->context, result);
+        return CALL_RESULT_OK;
+    }
+    
+    // Bridge invoke: route_bridge_invoke(routePattern, requestJson)
+    if (strcmp(callee_str, "route_bridge_invoke") == 0) {
+        extern Value builtin_route_bridge_invoke_ctx(int, Value*, CallContext*);
+        
+        // Call with CallContext so avatar can execute handler directly on its own stack
+        Value result = builtin_route_bridge_invoke_ctx(arg_count, args, ctx);
+        ctx->pop_n(ctx->context, arg_count + 1);
+        ctx->push(ctx->context, result);
+        return CALL_RESULT_OK;
+    }
+    
+    // Response builder functions for async I/O
+    if (strcmp(callee_str, "aio_response_setStatus") == 0) {
+        extern Value kyl_aio_response_set_status(int, Value*);
+        Value result = kyl_aio_response_set_status(arg_count, args);
+        ctx->pop_n(ctx->context, arg_count + 1);
+        ctx->push(ctx->context, result);
+        return CALL_RESULT_OK;
+    }
+    
+    if (strcmp(callee_str, "aio_response_addHeader") == 0) {
+        extern Value kyl_aio_response_add_header(int, Value*);
+        Value result = kyl_aio_response_add_header(arg_count, args);
+        ctx->pop_n(ctx->context, arg_count + 1);
+        ctx->push(ctx->context, result);
+        return CALL_RESULT_OK;
+    }
+    
+    if (strcmp(callee_str, "aio_response_setBody") == 0) {
+        extern Value kyl_aio_response_set_body(int, Value*);
+        Value result = kyl_aio_response_set_body(arg_count, args);
+        ctx->pop_n(ctx->context, arg_count + 1);
+        ctx->push(ctx->context, result);
+        return CALL_RESULT_OK;
+    }
+    
+    if (strcmp(callee_str, "aio_response_get_body") == 0) {
+        extern Value builtin_aio_response_get_body(int, Value*);
+        Value result = builtin_aio_response_get_body(arg_count, args);
+        ctx->pop_n(ctx->context, arg_count + 1);
         ctx->push(ctx->context, result);
         return CALL_RESULT_OK;
     }

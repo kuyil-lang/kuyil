@@ -1,0 +1,64 @@
+// Minimal ORM Example - Quick Start Guide
+
+import("orm/sqlite_backend.kyl")
+import("orm/orm.kyl")
+
+// Define entity
+@entity
+@table("users")
+struct User {
+    @primary @autoIncrement id,
+    @required name,
+    @required @unique email,
+    age
+}
+
+fn main() {
+    print("=== Minimal ORM Example ===\n")
+    
+    // 1. Connect
+    let orm = ORM_create({ backend: "sqlite", file_path: "quick.db" })
+    defer ORM_disconnect(orm)
+    
+    // 2. Create table
+    ORM_create_table(orm, "User")
+    print("✓ Table created\n")
+    
+    // 3. Insert (SQL injection safe!)
+    print("Inserting users...")
+    let id1 = ORM_insert(orm, "users", {
+        name: "Alice",
+        email: "alice@test.com",
+        age: 30
+    })
+    print("✓ Inserted Alice, ID: " + id1)
+    
+    let id2 = ORM_insert(orm, "users", {
+        name: "Bob",
+        email: "bob@test.com",
+        age: 25
+    })
+    print("✓ Inserted Bob, ID: " + id2)
+    
+    // 4. Query
+    print("\nQuerying...")
+    let all = ORM_find_all(orm, "users")
+    print("✓ All users: " + all)
+    
+    let user = ORM_find_by_id(orm, "users", id1)
+    print("✓ Found user: " + user)
+    
+    // 5. Update
+    print("\nUpdating...")
+    ORM_update(orm, "users", id1, { age: 31 })
+    print("✓ Updated Alice's age")
+    
+    // 6. Delete
+    print("\nDeleting...")
+    ORM_delete(orm, "users", id2)
+    print("✓ Deleted Bob")
+    
+    print("\n✓ Done! Database: quick.db")
+}
+
+main()

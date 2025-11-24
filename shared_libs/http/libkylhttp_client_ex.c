@@ -85,33 +85,22 @@ Value kyl_http_clientPostEx(int arg_count, Value* args) {
         fprintf(stderr, "[C DEBUG] Error message: %s\n", response->error_message);
     }
     
-    // Create object result
-    result.type = VALUE_OBJECT;
-    result.as.object.count = 4;
-    result.as.object.keys = malloc(4 * sizeof(char*));
-    result.as.object.values = malloc(4 * sizeof(Value));
-    
-    // status field
-    result.as.object.keys[0] = strdup("status");
-    result.as.object.values[0].type = VALUE_NUMBER;
-    result.as.object.values[0].as.number = (double)response->status_code;
-    
-    // body field
-    result.as.object.keys[1] = strdup("body");
-    result.as.object.values[1].type = VALUE_STRING;
-    result.as.object.values[1].as.string = response->body ? strdup(response->body) : strdup("");
-    
-    // error field
-    result.as.object.keys[2] = strdup("error");
-    result.as.object.values[2].type = VALUE_STRING;
-    result.as.object.values[2].as.string = response->error_message ? strdup(response->error_message) : strdup("");
-    
-    // responseTime field
-    result.as.object.keys[3] = strdup("responseTime");
-    result.as.object.values[3].type = VALUE_NUMBER;
-    result.as.object.values[3].as.number = (double)response->response_time_ms;
+    // Return the response body as a string
+    if (response->body && strlen(response->body) > 0) {
+        result.type = VALUE_STRING;
+        result.as.string = strdup(response->body);
+        fprintf(stderr, "[HTTP C] SUCCESS: Returning response body, type=%d, length=%zu, ptr=%p\n", 
+                result.type, strlen(response->body), (void*)result.as.string);
+        fprintf(stderr, "[HTTP C] First 50 chars: %.50s\n", result.as.string);
+    } else {
+        // No body or error - return nil
+        result.type = VALUE_NIL;
+        result.as.string = NULL;
+        fprintf(stderr, "[HTTP C] FAIL: No response body, returning nil\n");
+    }
     
     http_client_response_ex_free(response);
+    fprintf(stderr, "[HTTP C] About to return, result.type=%d\n", result.type);
     return result;
 }
 

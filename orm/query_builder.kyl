@@ -1,0 +1,299 @@
+// Query Builder DSL
+// Provides fluent API for building SQL queries
+
+struct QueryBuilder {
+    db_handle,
+    select_columns,      // Array of column names or "*"
+    from_table,          // Table name
+    where_conditions,    // Array of WHERE conditions
+    order_by_clause,     // ORDER BY columns
+    limit_value,         // LIMIT value
+    offset_value,        // OFFSET value
+    join_clauses,        // Array of JOIN clauses
+    group_by_clause,     // GROUP BY columns
+    having_clause        // HAVING condition
+}
+
+// Create a new query builder
+fn QB_create(db_handle) {
+    return QueryBuilder {
+        db_handle: db_handle,
+        select_columns: ["*"],
+        from_table: "",
+        where_conditions: [],
+        order_by_clause: "",
+        limit_value: -1,
+        offset_value: -1,
+        join_clauses: [],
+        group_by_clause: "",
+        having_clause: ""
+    }
+}
+
+// SELECT columns
+fn QB_select(qb, columns) {
+    if (columns == "*") {
+        qb.select_columns = ["*"]
+    } else {
+        qb.select_columns = [columns]
+    }
+    return qb
+}
+
+// SELECT multiple columns
+fn QB_selectMultiple(qb, col1, col2, col3, col4) {
+    qb.select_columns = []
+    if (col1 != nil) { qb.select_columns[0] = col1 }
+    if (col2 != nil) { qb.select_columns[1] = col2 }
+    if (col3 != nil) { qb.select_columns[2] = col3 }
+    if (col4 != nil) { qb.select_columns[3] = col4 }
+    return qb
+}
+
+// FROM table
+fn QB_from(qb, table_name) {
+    qb.from_table = table_name
+    return qb
+}
+
+// WHERE condition
+fn QB_where(qb, column, operator, value) {
+    let condition = column + " " + operator + " "
+    
+    // Add quotes for strings
+    if (operator == "=" || operator == "!=" || operator == ">" || operator == "<" || operator == ">=" || operator == "<=") {
+        condition = condition + "'" + value + "'"
+    } else {
+        condition = condition + value
+    }
+    
+    qb.where_conditions[0] = condition
+    return qb
+}
+
+// AND WHERE condition
+fn QB_andWhere(qb, column, operator, value) {
+    let condition = column + " " + operator + " '" + value + "'"
+    
+    let count = 0
+    while (count < 10) {
+        if (qb.where_conditions[count] == nil) {
+            qb.where_conditions[count] = condition
+            return qb
+        }
+        count = count + 1
+    }
+    
+    return qb
+}
+
+// OR WHERE condition
+fn QB_orWhere(qb, column, operator, value) {
+    let condition = "OR " + column + " " + operator + " '" + value + "'"
+    
+    let count = 0
+    while (count < 10) {
+        if (qb.where_conditions[count] == nil) {
+            qb.where_conditions[count] = condition
+            return qb
+        }
+        count = count + 1
+    }
+    
+    return qb
+}
+
+// ORDER BY
+fn QB_orderBy(qb, column, direction) {
+    if (direction == nil) {
+        direction = "ASC"
+    }
+    qb.order_by_clause = column + " " + direction
+    return qb
+}
+
+// LIMIT
+fn QB_limit(qb, limit) {
+    qb.limit_value = limit
+    return qb
+}
+
+// OFFSET
+fn QB_offset(qb, offset) {
+    qb.offset_value = offset
+    return qb
+}
+
+// INNER JOIN
+fn QB_innerJoin(qb, table, on_condition) {
+    let join = "INNER JOIN " + table + " ON " + on_condition
+    
+    let count = 0
+    while (count < 5) {
+        if (qb.join_clauses[count] == nil) {
+            qb.join_clauses[count] = join
+            return qb
+        }
+        count = count + 1
+    }
+    
+    return qb
+}
+
+// LEFT JOIN
+fn QB_leftJoin(qb, table, on_condition) {
+    let join = "LEFT JOIN " + table + " ON " + on_condition
+    
+    let count = 0
+    while (count < 5) {
+        if (qb.join_clauses[count] == nil) {
+            qb.join_clauses[count] = join
+            return qb
+        }
+        count = count + 1
+    }
+    
+    return qb
+}
+
+// GROUP BY
+fn QB_groupBy(qb, columns) {
+    qb.group_by_clause = columns
+    return qb
+}
+
+// HAVING
+fn QB_having(qb, condition) {
+    qb.having_clause = condition
+    return qb
+}
+
+// Build the SQL query
+fn QB_toSQL(qb) {
+    let sql = "SELECT "
+    
+    // Add columns
+    let i = 0
+    while (i < 10) {
+        let col = qb.select_columns[i]
+        if (col == nil) {
+            if (i == 0) {
+                sql = sql + "*"
+            }
+            i = 999  // Break
+        } else {
+            if (i > 0) {
+                sql = sql + ", "
+            }
+            sql = sql + col
+            i = i + 1
+        }
+    }
+    
+    // FROM clause
+    sql = sql + " FROM " + qb.from_table
+    
+    // JOIN clauses
+    i = 0
+    while (i < 5) {
+        let join = qb.join_clauses[i]
+        if (join == nil) {
+            i = 999  // Break
+        } else {
+            sql = sql + " " + join
+            i = i + 1
+        }
+    }
+    
+    // WHERE clause
+    i = 0
+    let first_where = true
+    while (i < 10) {
+        let condition = qb.where_conditions[i]
+        if (condition == nil) {
+            i = 999  // Break
+        } else {
+            if (first_where) {
+                sql = sql + " WHERE " + condition
+                first_where = false
+            } else {
+                sql = sql + " AND " + condition
+            }
+            i = i + 1
+        }
+    }
+    
+    // GROUP BY clause
+    if (qb.group_by_clause != "") {
+        sql = sql + " GROUP BY " + qb.group_by_clause
+    }
+    
+    // HAVING clause
+    if (qb.having_clause != "") {
+        sql = sql + " HAVING " + qb.having_clause
+    }
+    
+    // ORDER BY clause
+    if (qb.order_by_clause != "") {
+        sql = sql + " ORDER BY " + qb.order_by_clause
+    }
+    
+    // LIMIT clause
+    if (qb.limit_value >= 0) {
+        sql = sql + " LIMIT " + qb.limit_value
+    }
+    
+    // OFFSET clause
+    if (qb.offset_value >= 0) {
+        sql = sql + " OFFSET " + qb.offset_value
+    }
+    
+    return sql
+}
+
+// Execute the query
+fn QB_execute(qb) {
+    import("interfaces/interface_sqlite.kyl") as db
+    let sql = QB_toSQL(qb)
+    return db.executeQuery(qb.db_handle, sql)
+}
+
+// Get first result
+fn QB_first(qb) {
+    import("interfaces/interface_sqlite.kyl") as db
+    QB_limit(qb, 1)
+    let result = QB_execute(qb)
+    if (result >= 0) {
+        return db.firstRow(result)
+    }
+    return nil
+}
+
+// Count results
+fn QB_count(qb) {
+    import("interfaces/interface_sqlite.kyl") as db
+    let original_columns = qb.select_columns
+    qb.select_columns = ["COUNT(*) as count"]
+    let sql = QB_toSQL(qb)
+    qb.select_columns = original_columns
+    
+    let result = db.executeQuery(qb.db_handle, sql)
+    if (result >= 0) {
+        let row = db.firstRow(result)
+        if (row != nil) {
+            let count = db.getInt(row, 0)
+            db.freeResult(result)
+            return count
+        }
+    }
+    return 0
+}
+
+// Example usage:
+// let qb = QB_create(db_handle)
+// QB_select(qb, "*")
+// QB_from(qb, "users")
+// QB_where(qb, "age", ">", "25")
+// QB_orderBy(qb, "name", "ASC")
+// QB_limit(qb, 10)
+// let result = QB_execute(qb)

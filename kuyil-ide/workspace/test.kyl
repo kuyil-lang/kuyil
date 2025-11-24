@@ -1,0 +1,11 @@
+// Test program for IDE
+print("Hello from Kuyil!")
+print("Testing the Run button")
+
+let x = 10
+let y = 20
+let sum = x + y
+
+print("x = " + x)
+print("y = " + y)
+print("sum = " + sum)

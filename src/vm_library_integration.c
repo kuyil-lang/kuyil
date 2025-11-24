@@ -200,6 +200,12 @@ typedef struct {
     int call_count;
     int has_return;
     Value return_value;
+    // Conditional mocking support
+    Value* when_args;
+    int when_arg_count;
+    Value* call_history;     // Store args from each call
+    int history_count;
+    int history_capacity;
 } MockEntry;
 
 static MockEntry g_mocks[256];
@@ -212,6 +218,18 @@ static int find_mock(const char* name) {
     return -1;
 }
 
+// Helper: Compare two values for equality
+static bool values_equal_mock(Value a, Value b) {
+    if (a.type != b.type) return false;
+    switch (a.type) {
+        case VALUE_NIL: return true;
+        case VALUE_BOOL: return a.as.boolean == b.as.boolean;
+        case VALUE_NUMBER: return a.as.number == b.as.number;
+        case VALUE_STRING: return strcmp(a.as.string, b.as.string) == 0;
+        default: return false;
+    }
+}
+
 void mock_set_return_value(const char* name, Value v) {
     int idx = find_mock(name);
     if (idx == -1) {
@@ -219,9 +237,82 @@ void mock_set_return_value(const char* name, Value v) {
         idx = g_mock_count++;
         g_mocks[idx].name = strdup(name);
         g_mocks[idx].call_count = 0;
+        g_mocks[idx].has_return = 0;
+        g_mocks[idx].when_args = NULL;
+        g_mocks[idx].when_arg_count = 0;
+        g_mocks[idx].call_history = NULL;
+        g_mocks[idx].history_count = 0;
+        g_mocks[idx].history_capacity = 0;
     }
     g_mocks[idx].has_return = 1;
     g_mocks[idx].return_value = v;
+}
+
+// New: Set mock with conditional arguments
+void mock_set_return_when(const char* name, Value v, Value* when_args, int when_arg_count) {
+    int idx = find_mock(name);
+    if (idx == -1) {
+        if (g_mock_count >= 256) return;
+        idx = g_mock_count++;
+        g_mocks[idx].name = strdup(name);
+        g_mocks[idx].call_count = 0;
+        g_mocks[idx].when_args = NULL;
+        g_mocks[idx].when_arg_count = 0;
+        g_mocks[idx].call_history = NULL;
+        g_mocks[idx].history_count = 0;
+        g_mocks[idx].history_capacity = 0;
+    }
+    g_mocks[idx].has_return = 1;
+    g_mocks[idx].return_value = v;
+    
+    // Store conditional arguments
+    if (g_mocks[idx].when_args) {
+        free(g_mocks[idx].when_args);
+        g_mocks[idx].when_args = NULL;
+        g_mocks[idx].when_arg_count = 0;
+    }
+    if (when_args && when_arg_count > 0) {
+        g_mocks[idx].when_args = malloc(sizeof(Value) * when_arg_count);
+        memcpy(g_mocks[idx].when_args, when_args, sizeof(Value) * when_arg_count);
+        g_mocks[idx].when_arg_count = when_arg_count;
+    } else {
+        g_mocks[idx].when_args = NULL;
+        g_mocks[idx].when_arg_count = 0;
+    }
+}
+
+// Check if mock matches call arguments
+bool mock_matches_call(const char* name, Value* args, int arg_count, Value* out_value) {
+    int idx = find_mock(name);
+    if (idx == -1 || !g_mocks[idx].has_return) return false;
+    
+    MockEntry* mock = &g_mocks[idx];
+    
+    // Check conditional matching FIRST (before recording call)
+    if (mock->when_args && mock->when_arg_count > 0) {
+        // Conditional mock: only match if args match exactly
+        if (arg_count != mock->when_arg_count) return false;
+        
+        for (int i = 0; i < arg_count; i++) {
+            if (!values_equal_mock(args[i], mock->when_args[i])) {
+                return false;  // Args don't match, let real function run
+            }
+        }
+    }
+    
+    // Record call in history
+    mock->call_count++;
+    if (mock->call_history == NULL) {
+        mock->history_capacity = 16;
+        mock->call_history = malloc(sizeof(Value) * mock->history_capacity);
+    }
+    if (mock->history_count < mock->history_capacity && arg_count > 0) {
+        mock->call_history[mock->history_count++] = args[0];
+    }
+    
+    // Match! Return mocked value
+    *out_value = mock->return_value;
+    return true;
 }
 
 void mock_clear(const char* name) {
@@ -229,6 +320,8 @@ void mock_clear(const char* name) {
         // Clear all
         for (int i = 0; i < g_mock_count; i++) {
             free(g_mocks[i].name);
+            if (g_mocks[i].when_args) free(g_mocks[i].when_args);
+            if (g_mocks[i].call_history) free(g_mocks[i].call_history);
         }
         g_mock_count = 0;
         return;
@@ -236,6 +329,8 @@ void mock_clear(const char* name) {
     int idx = find_mock(name);
     if (idx != -1) {
         free(g_mocks[idx].name);
+        if (g_mocks[idx].when_args) free(g_mocks[idx].when_args);
+        if (g_mocks[idx].call_history) free(g_mocks[idx].call_history);
         // shift down
         for (int i = idx; i < g_mock_count - 1; i++) {
             g_mocks[i] = g_mocks[i + 1];
@@ -958,9 +1053,9 @@ bool call_kuyil_function(Value function_value, int arg_count, Value* args, Value
         return true;
     }
 
-    // Save current VM execution state
-    // CRITICAL FIX: For nested calls (webview JS callbacks during execution),
-    // we must preserve the ENTIRE stack to avoid corrupting caller's local variables
+    // REDESIGNED: For nested calls (already executing in vm_run), 
+    // DON'T reset the VM state. Just add a new frame on the existing stack.
+    // This allows handlers called from library code to work correctly.
     int saved_frame_count = vm->frame_count;
     Value* saved_stack_top = vm->stack_top;
     
@@ -1001,6 +1096,9 @@ bool call_kuyil_function(Value function_value, int arg_count, Value* args, Value
         LOG_ERROR("VM frame overflow during callback");
         vm->stack_top = saved_stack_top;
         vm->frame_count = saved_frame_count;
+        if (is_nested && saved_stack) {
+            free(saved_stack);
+        }
         pthread_mutex_unlock(&g_vm_call_mutex);
         return false;
     }
@@ -1044,7 +1142,7 @@ bool call_kuyil_function(Value function_value, int arg_count, Value* args, Value
 
     bool ok = (r == INTERPRET_OK);
     if (ok && result_out) {
-        // The result should be on the stack
+        // After vm_run completes, the return value should be on top of the stack
         if (vm->stack_top > vm->stack) {
             *result_out = *(vm->stack_top - 1);
         } else {

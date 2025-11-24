@@ -1,0 +1,132 @@
+# Kuyil IDE - AI Assistant Configuration
+# This file defines AI actions, prompts, and model settings
+
+# Default AI model
+default_model: "qwen2.5-coder:32b"
+
+# Available models
+models:
+  - qwen2.5-coder:32b
+  - llama3.1:8b
+  - llava:7b
+  - deepseek-coder:6.7b
+
+# AI Actions and Default Prompts
+actions:
+  explain_code:
+    label: "Explain Code"
+    prompt_template: |
+      You are a Kuyil programming language expert. Explain this code clearly and concisely:
+      
+      ```kuyil
+      {{CODE}}
+      ```
+      
+      Provide:
+      1. What the code does
+      2. Key language features used
+      3. Any potential improvements
+
+  fix_error:
+    label: "Fix Error"
+    prompt_template: |
+      You are a Kuyil programming language expert. This code has an error:
+      
+      ```kuyil
+      {{CODE}}
+      ```
+      
+      Error: {{ERROR}}
+      
+      Please:
+      1. Identify the problem
+      2. Explain why it's wrong
+      3. Provide the corrected code
+
+  optimize_code:
+    label: "Optimize Code"
+    prompt_template: |
+      You are a Kuyil programming language expert. Optimize this code for better performance:
+      
+      ```kuyil
+      {{CODE}}
+      ```
+      
+      Suggest optimizations and provide improved code.
+
+  add_comments:
+    label: "Add Comments"
+    prompt_template: |
+      You are a Kuyil programming language expert. Add clear, helpful comments to this code:
+      
+      ```kuyil
+      {{CODE}}
+      ```
+      
+      Return the code with inline comments explaining each section.
+
+  generate_code:
+    label: "Generate Code"
+    prompt_template: |
+      You are a Kuyil programming language expert. Generate Kuyil code for:
+      
+      {{USER_REQUEST}}
+      
+      Use proper Kuyil syntax with let, fn, and appropriate data structures.
+      Provide complete, runnable code.
+
+  debug_help:
+    label: "Debug Help"
+    prompt_template: |
+      You are a Kuyil programming language expert. Help debug this code:
+      
+      ```kuyil
+      {{CODE}}
+      ```
+      
+      Output:
+      {{OUTPUT}}
+      
+      Exit Code: {{EXIT_CODE}}
+      
+      Identify issues and suggest fixes.
+
+# Default system message for all AI interactions
+system_message: |
+  You are an expert Kuyil programming language assistant. Kuyil is a modern language with:
+  - Dynamic typing (let keyword for variables)
+  - Functions (fn keyword)
+  - Async programming (avatar keyword for concurrent execution)
+  - Built-in data structures (arrays, objects/maps)
+  - Import system for modules
+  - HTTP, WebView, File I/O, SQLite support
+  
+  Provide clear, accurate, and helpful responses about Kuyil code.
+
+# Quick actions available in the IDE
+quick_actions:
+  - action: explain_code
+    icon: "💡"
+    shortcut: "Ctrl+E"
+  
+  - action: fix_error
+    icon: "🔧"
+    shortcut: "Ctrl+F"
+  
+  - action: optimize_code
+    icon: "⚡"
+    shortcut: "Ctrl+O"
+  
+  - action: add_comments
+    icon: "📝"
+    shortcut: "Ctrl+/"
+
+# Temperature settings for different actions
+temperature:
+  explain_code: 0.3
+  fix_error: 0.2
+  optimize_code: 0.4
+  add_comments: 0.3
+  generate_code: 0.5
+  debug_help: 0.2
+  default: 0.4

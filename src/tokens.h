@@ -34,6 +34,7 @@ typedef enum {
     TOKEN_AS,
     TOKEN_AVATAR,
     TOKEN_AWAIT,
+    TOKEN_DEFER,
     TOKEN_EXPORT,
     TOKEN_IMPORT,
 

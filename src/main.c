@@ -1550,6 +1550,86 @@ int main(int argc, char* argv[]) {
     
     // Now execute based on command
     if (strcmp(command, "run") == 0 || strcmp(command, "test") == 0) {
+        // For test mode without file, scan for test_*.kyl files
+        if (!input_file && strcmp(command, "test") == 0) {
+            // Scan current directory for test files
+            printf("Scanning for test_*.kyl files...\n");
+            fflush(stdout);
+            
+            char temp_file[128];
+            snprintf(temp_file, sizeof(temp_file), "/tmp/kuyil_test_files_%d.txt", getpid());
+            
+            char find_cmd[256];
+            snprintf(find_cmd, sizeof(find_cmd), "find . -maxdepth 2 -name 'test_*.kyl' 2>/dev/null | sort > %s", temp_file);
+            system(find_cmd);
+            
+            FILE* test_list = fopen(temp_file, "r");
+            if (!test_list) {
+                fprintf(stderr, "Error: Could not create test file list\n");
+                exit(1);
+            }
+            
+            // Check if file is empty
+            fseek(test_list, 0, SEEK_END);
+            long file_size = ftell(test_list);
+            fseek(test_list, 0, SEEK_SET);
+            
+            if (file_size == 0) {
+                fprintf(stderr, "Error: No test files found\n");
+                fclose(test_list);
+                unlink(temp_file);
+                exit(1);
+            }
+            
+            char test_file[512];
+            int total_tests = 0, passed_tests = 0, failed_tests = 0;
+            
+            printf("\n");
+            while (fgets(test_file, sizeof(test_file), test_list)) {
+                // Remove newline
+                test_file[strcspn(test_file, "\n")] = 0;
+                if (strlen(test_file) == 0) continue;
+                
+                printf("Running: %s\n", test_file);
+                total_tests++;
+                
+                VM vm;
+                vm_init(&vm);
+                vm_enable_test_mode(&vm, true);
+                
+                char* source = read_file(test_file);
+                InterpretResult result = vm_interpret(&vm, source);
+                free(source);
+                
+                if (result == INTERPRET_OK && vm.assertions_failed == 0) {
+                    printf("  ✅ PASSED\n");
+                    passed_tests++;
+                } else {
+                    printf("  ❌ FAILED (%d assertion failures)\n", vm.assertions_failed);
+                    failed_tests++;
+                }
+                
+                vm_free(&vm);
+                printf("\n");
+            }
+            
+            fclose(test_list);
+            unlink(temp_file);
+            
+            printf("═══════════════════════════════════════\n");
+            printf("TEST SUMMARY\n");
+            printf("═══════════════════════════════════════\n");
+            printf("Total:  %d\n", total_tests);
+            printf("Passed: %d ✅\n", passed_tests);
+            printf("Failed: %d ❌\n", failed_tests);
+            printf("\n");
+            
+            if (failed_tests > 0) {
+                exit(1);
+            }
+            exit(0);
+        }
+        
         if (!input_file) {
             fprintf(stderr, "Error: No input file specified\n");
             print_usage();

@@ -46,6 +46,8 @@ void vm_register_dynamic_function(const char* name, void* func_ptr, FunctionSign
 
 // Test/mocking support for dynamic functions (used in --test mode)
 void mock_set_return_value(const char* name, Value v);
+void mock_set_return_when(const char* name, Value v, Value* when_args, int when_arg_count);
+bool mock_matches_call(const char* name, Value* args, int arg_count, Value* out_value);
 void mock_clear(const char* name);
 int mock_get_call_count(const char* name);
 

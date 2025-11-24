@@ -306,6 +306,7 @@ static void compile_for_stmt(ASTNode* node);
 static void compile_switch_stmt(ASTNode* node);
 static void compile_return_stmt(ASTNode* node);
 static void compile_avatar_stmt(ASTNode* node);
+static void compile_defer_stmt(ASTNode* node);
 static void compile_await_expr(ASTNode* node);
 
 static void compile_literal(ASTNode* node) {
@@ -805,6 +806,9 @@ static void compile_expression(ASTNode* node) {
             break;
         case AST_AVATAR_STMT:
             compile_avatar_stmt(node);
+            break;
+        case AST_DEFER_STMT:
+            compile_defer_stmt(node);
             break;
         default:
             error_at_node(node, "Unknown expression type.");
@@ -1652,6 +1656,32 @@ static void compile_await_expr(ASTNode* node) {
     }
 }
 
+static void compile_defer_stmt(ASTNode* node) {
+    // Defer statement: registers a function call for execution at scope exit
+    // The call_expr must be a function call (AST_CALL)
+    // We need to capture the function and arguments at defer time
+    
+    ASTNode* call_expr = node->as.defer_stmt.call_expr;
+    if (call_expr->type != AST_CALL) {
+        error_at_node(node, "defer requires a function call");
+        return;
+    }
+    
+    // Stack layout must match OP_CALL: [arg1, arg2, ..., function]
+    // Push arguments first
+    for (int i = 0; i < call_expr->as.call.arg_count; i++) {
+        compile_expression(call_expr->as.call.args[i]);
+    }
+    
+    // Push the function last (on top of stack)
+    compile_expression(call_expr->as.call.function);
+    
+    // Emit OP_DEFER with argument count
+    // VM will pop function + args and store them in defer stack
+    emit_byte(OP_DEFER);
+    emit_byte(call_expr->as.call.arg_count);
+}
+
 // Top-level statement dispatcher
 static void compile_statement(ASTNode* node) {
     if (node == NULL) return;
@@ -1696,6 +1726,9 @@ static void compile_statement(ASTNode* node) {
             break;
         case AST_AVATAR_STMT:
             compile_avatar_stmt(node);
+            break;
+        case AST_DEFER_STMT:
+            compile_defer_stmt(node);
             break;
         case AST_EXPRESSION_STMT:
             compile_expression(node->as.expression);
@@ -2083,6 +2116,85 @@ void compiler_register_all_decorators(void* vm_ptr) {
         }
         
         vm_register_decorators(vm, meta->entity_name, decorators_array, param_decorators);
+        
+        // Process @route decorators automatically
+        for (int j = 0; j < meta->decorators.count; j++) {
+            Decorator* dec = &meta->decorators.decorators[j];
+            if (strcmp(dec->name, "route") == 0) {
+                // Extract route parameters: method, path, async, bridge
+                const char* method = "GET";  // default
+                const char* path = NULL;
+                bool is_async = false;
+                bool bridge = false;
+                
+                // Parse decorator arguments
+                int positional_string_count = 0;
+                const char* first_positional = NULL;
+                const char* second_positional = NULL;
+                
+                for (int k = 0; k < dec->arg_count; k++) {
+                    ASTNode* arg = dec->args[k];
+                    if (!arg) continue;
+                    
+                    if (arg->type == AST_ASSIGNMENT) {
+                        // Named argument: method="POST", path="/users"
+                        if (arg->as.assignment.target->type != AST_IDENTIFIER) continue;
+                        const char* key = arg->as.assignment.target->as.identifier;
+                        ASTNode* val = arg->as.assignment.value;
+                        
+                        if (val->type == AST_LITERAL && val->as.literal.type == VALUE_STRING) {
+                            if (strcmp(key, "method") == 0) {
+                                method = val->as.literal.as.string;
+                            } else if (strcmp(key, "path") == 0) {
+                                path = val->as.literal.as.string;
+                            }
+                        } else if (val->type == AST_LITERAL && val->as.literal.type == VALUE_BOOL) {
+                            if (strcmp(key, "async") == 0) {
+                                is_async = val->as.literal.as.boolean;
+                            } else if (strcmp(key, "bridge") == 0) {
+                                bridge = val->as.literal.as.boolean;
+                            }
+                        }
+                    } else if (arg->type == AST_LITERAL && arg->as.literal.type == VALUE_STRING) {
+                        // Positional argument: first string is method, second is path
+                        if (positional_string_count == 0) {
+                            first_positional = arg->as.literal.as.string;
+                        } else if (positional_string_count == 1) {
+                            second_positional = arg->as.literal.as.string;
+                        }
+                        positional_string_count++;
+                    }
+                }
+                
+                // Apply positional arguments
+                if (positional_string_count >= 2) {
+                    // Both method and path provided
+                    method = first_positional;
+                    path = second_positional;
+                } else if (positional_string_count == 1) {
+                    // Only one arg - treat as path with default GET
+                    path = first_positional;
+                }
+                
+                if (path) {
+                    // Call route_register automatically
+                    extern Value builtin_route_register(int arg_count, Value* args);
+                    Value route_args[5];
+                    route_args[0].type = VALUE_STRING;
+                    route_args[0].as.string = (char*)method;
+                    route_args[1].type = VALUE_STRING;
+                    route_args[1].as.string = (char*)path;
+                    route_args[2].type = VALUE_STRING;
+                    route_args[2].as.string = (char*)meta->entity_name;
+                    route_args[3].type = VALUE_BOOL;
+                    route_args[3].as.boolean = is_async;
+                    route_args[4].type = VALUE_BOOL;
+                    route_args[4].as.boolean = bridge;
+                    
+                    builtin_route_register(5, route_args);
+                }
+            }
+        }
     }
 }
 

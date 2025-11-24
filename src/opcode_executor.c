@@ -529,12 +529,21 @@ bool exec_array_get(ExecContext* ctx) {
     }
     
     Value index = exec_pop(ctx);
-    Value array = exec_pop(ctx);
+    Value container = exec_pop(ctx);
     
-    if (array.type != VALUE_ARRAY) {
+    // Handle object access with string index
+    if (container.type == VALUE_OBJECT && index.type == VALUE_STRING) {
+        // Delegate to object_get logic
+        exec_push(ctx, container);
+        exec_push(ctx, index);
+        return exec_object_get(ctx);
+    }
+    
+    // Handle array access
+    if (container.type != VALUE_ARRAY) {
         *ctx->has_error = true;
         snprintf(ctx->error_message, ctx->error_msg_size, 
-                "ARRAY_GET requires array type, got %d", array.type);
+                "Can only index arrays or objects with string keys, got type %d", container.type);
         return false;
     }
     
@@ -546,14 +555,14 @@ bool exec_array_get(ExecContext* ctx) {
     }
     
     int idx = (int)index.as.number;
-    if (idx < 0 || idx >= array.as.array.count) {
+    if (idx < 0 || idx >= container.as.array.count) {
         *ctx->has_error = true;
         snprintf(ctx->error_message, ctx->error_msg_size, 
-                "Array index out of bounds: %d (size: %d)", idx, array.as.array.count);
+                "Array index out of bounds: %d (size: %d)", idx, container.as.array.count);
         return false;
     }
     
-    Value result = array.as.array.values[idx];
+    Value result = container.as.array.values[idx];
     exec_push(ctx, result);
     return true;
 }
@@ -674,19 +683,19 @@ bool exec_object_get(ExecContext* ctx) {
     }
     
     // DEBUG: Log object access in avatars
-    // printf("[OBJECT_GET] Accessing key '%s' on object with %d properties\n", 
+    // fprintf(stderr, "[OBJECT_GET] Accessing key '%s' on object with %d properties\n", 
     //        key.as.string, object.as.object.count);
     
     // Search for the key in the map
     bool found = false;
     for (int i = 0; i < object.as.object.count; i++) {
-        // printf("[OBJECT_GET] Checking key[%d] = '%s'\n", i, object.as.object.keys[i]);
+        // fprintf(stderr, "[OBJECT_GET] Checking key[%d] = '%s'\n", i, object.as.object.keys[i]);
         if (strcmp(object.as.object.keys[i], key.as.string) == 0) {
             Value val = object.as.object.values[i];
-            // printf("[OBJECT_GET] FOUND! Type: %d\n", val.type);
+            // fprintf(stderr, "[OBJECT_GET] FOUND! Type: %d\n", val.type);
             // if (val.type == VALUE_STRING) {
             //     size_t len = val.as.string ? strlen(val.as.string) : 0;
-            //     printf("[OBJECT_GET] String ptr: %p, length: %zu\n", (void*)val.as.string, len);
+            //     fprintf(stderr, "[OBJECT_GET] String ptr: %p, length: %zu\n", (void*)val.as.string, len);
             // }
             exec_push(ctx, val);
             found = true;
@@ -695,7 +704,7 @@ bool exec_object_get(ExecContext* ctx) {
     }
     
     if (!found) {
-        // printf("[OBJECT_GET] Key '%s' NOT FOUND, returning nil\n", key.as.string);
+        // fprintf(stderr, "[OBJECT_GET] Key '%s' NOT FOUND, returning nil\n", key.as.string);
         // Return nil for missing keys (like Go maps)
         Value nilv = {VALUE_NIL};
         exec_push(ctx, nilv);

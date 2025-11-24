@@ -13,10 +13,14 @@ typedef struct AsyncRequestQueue AsyncRequestQueue;
 #define STACK_MAX 2048
 #define GLOBALS_MAX 2048
 
+#define DEFERS_MAX 16
+
 typedef struct {
     Function* function;
     uint8_t* ip;  // instruction pointer
     Value* slots; // local variables and stack for this frame
+    Value defers[DEFERS_MAX];  // Stack of deferred functions (LIFO)
+    int defer_count;           // Number of deferred functions
 } CallFrame;
 
 #define FRAMES_MAX 64
@@ -103,6 +107,9 @@ void vm_push(VM* vm, Value value);
 Value vm_pop(VM* vm);
 Value vm_peek(VM* vm, int distance);
 
+// Function calling
+bool vm_call_function(VM* vm, Value callee, int arg_count);
+
 // Global variable management
 void define_global(VM* vm, const char* name, Value value);
 bool vm_get_global_value(VM* vm, const char* name, Value* out_value);
@@ -117,6 +124,12 @@ Value call_dynamic_function(const char* name, int arg_count, Value* args);
 
 // Built-in functions
 void vm_register_natives(VM* vm);
+
+// Object field manipulation utilities
+Value* vm_object_get_field(Value* object, const char* key);
+void vm_object_set_field(Value* object, const char* key, Value value);
+Value vm_object_create(void);
+Value vm_object_create_with_field(const char* key, Value value);
 
 // Test/assert helpers
 void vm_enable_test_mode(VM* vm, bool enabled);

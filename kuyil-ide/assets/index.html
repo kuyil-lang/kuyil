@@ -74,6 +74,7 @@ select option { background: #ffffff; color: #000000; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/mode/simple.min.js"></script>
 <style id="kuyilTheme">
+/* Kuyil Dark Theme */
 .cm-s-kuyilDark { background:#1e1e1e; color:#d4d4d4; }
 .cm-s-kuyilDark .CodeMirror-gutters { background:#252526; border-right:1px solid #3e3e42; }
 .cm-s-kuyilDark .cm-keyword { color:#c586c0; font-weight:bold; }
@@ -85,6 +86,32 @@ select option { background: #ffffff; color: #000000; }
 .cm-s-kuyilDark .cm-bracket { color:#d4d4d4; }
 .cm-s-kuyilDark .CodeMirror-cursor { border-left:1px solid #aeafad; }
 .cm-s-kuyilDark .CodeMirror-selected { background:#264f78; }
+
+/* Monokai Theme */
+.cm-s-monokai { background:#272822; color:#f8f8f2; }
+.cm-s-monokai .CodeMirror-gutters { background:#272822; border-right:1px solid #3e3d32; }
+.cm-s-monokai .cm-keyword { color:#f92672; font-weight:bold; }
+.cm-s-monokai .cm-atom { color:#ae81ff; }
+.cm-s-monokai .cm-number { color:#ae81ff; }
+.cm-s-monokai .cm-string { color:#e6db74; }
+.cm-s-monokai .cm-comment { color:#75715e; font-style:italic; }
+.cm-s-monokai .cm-operator { color:#f92672; }
+.cm-s-monokai .cm-bracket { color:#f8f8f2; }
+.cm-s-monokai .CodeMirror-cursor { border-left:1px solid #f8f8f0; }
+.cm-s-monokai .CodeMirror-selected { background:#49483e; }
+
+/* Dracula Theme */
+.cm-s-dracula { background:#282a36; color:#f8f8f2; }
+.cm-s-dracula .CodeMirror-gutters { background:#282a36; border-right:1px solid #44475a; }
+.cm-s-dracula .cm-keyword { color:#ff79c6; font-weight:bold; }
+.cm-s-dracula .cm-atom { color:#bd93f9; }
+.cm-s-dracula .cm-number { color:#bd93f9; }
+.cm-s-dracula .cm-string { color:#f1fa8c; }
+.cm-s-dracula .cm-comment { color:#6272a4; font-style:italic; }
+.cm-s-dracula .cm-operator { color:#ff79c6; }
+.cm-s-dracula .cm-bracket { color:#f8f8f2; }
+.cm-s-dracula .CodeMirror-cursor { border-left:1px solid #f8f8f0; }
+.cm-s-dracula .CodeMirror-selected { background:#44475a; }
 </style>
 </head>
 <body>
@@ -203,10 +230,10 @@ select option { background: #ffffff; color: #000000; }
 <input type="checkbox"> Word Wrap
 </label>
 <h3 style="margin-top: 16px;">Theme</h3>
-<select style="width: 100%; margin-top: 8px; background: #ffffff; color: #000000; border: 1px solid #3e3e42; padding: 6px; border-radius: 3px;">
-<option selected>Kuyil Dark</option>
-<option>Monokai</option>
-<option>Dracula</option>
+<select id="themeSelect" onchange="changeTheme(this.value)" style="width: 100%; margin-top: 8px; background: #ffffff; color: #000000; border: 1px solid #3e3e42; padding: 6px; border-radius: 3px;">
+<option value="kuyilDark" selected>Kuyil Dark</option>
+<option value="monokai">Monokai</option>
+<option value="dracula">Dracula</option>
 </select>
 <h3 style="margin-top: 16px;">AI Model</h3>
 <select id="settingsAiModel" style="width: 100%; margin-top: 8px; background: #ffffff; color: #000000; border: 1px solid #3e3e42; padding: 6px; border-radius: 3px;">
@@ -247,8 +274,19 @@ print("Welcome to Kuyil IDE!")
 <option value="llama3.1:8b">llama3.1:8b</option>
 </select>
 </div>
+<div style="padding: 8px; background: #2d2d30; border-bottom: 1px solid #3e3e42;">
+<div style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Quick Actions:</div>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+<button class="btn btn-small" onclick="quickAction('generate_code')" title="Generate code from description">✨ Generate</button>
+<button class="btn btn-small" onclick="quickAction('explain_code')" title="Explain current code">💡 Explain</button>
+<button class="btn btn-small" onclick="quickAction('fix_error')" title="Fix errors in code">🔧 Fix</button>
+<button class="btn btn-small" onclick="quickAction('optimize_code')" title="Optimize performance">⚡ Optimize</button>
+<button class="btn btn-small" onclick="quickAction('review_code')" title="Review code quality">👀 Review</button>
+<button class="btn btn-small" onclick="quickAction('add_comments')" title="Add documentation">📝 Document</button>
+</div>
+</div>
 <div class="ai-messages" id="messages">
-<div class="message system">✅ Kuyil AI Ready! Click docs in sidebar.</div>
+<div class="message system">✅ Kuyil AI Ready! Use quick actions or ask questions.</div>
 </div>
 <div class="ai-input-area">
 <textarea id="aiInput" class="ai-input" placeholder="Ask AI about Kuyil..."></textarea>
@@ -258,64 +296,10 @@ print("Welcome to Kuyil IDE!")
 </div>
 
 <script>
-// Kuyil Framework Bridge Compatibility Layer
-// This wraps the new framework API (window.kuyil.call) to provide backwards compatibility
+// Kuyil IDE - Using fetch() API with @route backend
+// All API calls use standard fetch() which is intercepted by Kuyil's @route handlers
 
-// Wait for Kuyil bridge to be ready
-function waitForKuyilBridge(callback) {
-    if (window.kuyil && window.kuyil.call) {
-        // Framework is ready
-        window.kuyilReady = true;
-        callback();
-    } else {
-        console.log('[IDE] Waiting for Kuyil framework...');
-        setTimeout(function() { waitForKuyilBridge(callback); }, 50);
-    }
-}
-
-// Create wrapper functions for backwards compatibility
-window.setupBridgeWrappers = function() {
-    console.log('[IDE] Setting up bridge wrappers...');
-    
-    // Wrap fetchBridge - returns Promise
-    window.fetchBridge = async function(params) {
-        console.log('[fetchBridge] Calling via framework:', params);
-        return await window.kuyil.call('fetchBridge', params);
-    };
-    
-    // Wrap readDocumentation - returns Promise  
-    window.readDocumentation = async function(docName) {
-        console.log('[readDocumentation] Calling via framework:', docName);
-        return await window.kuyil.call('readDocumentation', docName);
-    };
-    
-    // Wrap listDocs - returns Promise
-    window.listDocs = async function() {
-        console.log('[listDocs] Calling via framework');
-        return await window.kuyil.call('listDocs', '');
-    };
-    
-    // Wrap kuyilReadFile - returns Promise
-    window.kuyilReadFile = async function(path) {
-        console.log('[kuyilReadFile] Calling via framework:', path);
-        return await window.kuyil.call('kuyilReadFile', path);
-    };
-    
-    // Wrap aiGenerate - returns Promise
-    window.aiGenerate = async function(prompt) {
-        console.log('[aiGenerate] Calling via framework:', prompt);
-        return await window.kuyil.call('aiGenerate', prompt);
-    };
-    
-    // Wrap writeFile - returns Promise
-    window.writeFile = async function(path, content) {
-        console.log('[writeFile] Calling via framework:', path);
-        const args = JSON.stringify({ path: path, content: content });
-        return await window.kuyil.call('writeFile', args);
-    };
-    
-    console.log('[IDE] ✅ Bridge wrappers ready');
-};
+window.kuyilReady = true; // Always ready since we use standard fetch()
 
 // Define Kuyil simple mode and initialize CodeMirror
 document.addEventListener('DOMContentLoaded', function(){
@@ -346,6 +330,40 @@ document.addEventListener('DOMContentLoaded', function(){
     }
 });
 let currentFile = 'main.kyl';
+let firstFileLoaded = false;
+
+// Default sample program shown when workspace is empty
+const DEFAULT_SAMPLE = `// Welcome to Kuyil IDE!
+// This is a sample program to get you started
+
+fn fibonacci(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+fn main() {
+    print("🚀 Kuyil Programming Language")
+    print("==============================")
+    print("")
+    print("Computing Fibonacci sequence:")
+    
+    let i = 0
+    while (i < 10) {
+        let result = fibonacci(i)
+        print("fib(" + i + ") = " + result)
+        i = i + 1
+    }
+    
+    print("")
+    print("✅ Try modifying this code!")
+    print("📚 Check the sidebar for documentation")
+    print("▶️  Click 'Run' to execute your code")
+}
+
+main()
+`;
 
 function switchTab(tabName) {
     // Update tab buttons
@@ -366,38 +384,31 @@ function toggleFolder(folderId) {
     }
 }
 
+function changeTheme(themeName) {
+    console.log('[changeTheme] Switching to:', themeName);
+    if (window.kuyilEditor) {
+        window.kuyilEditor.setOption('theme', themeName);
+        addTerminal('🎨 Theme changed to ' + themeName, '#89d185');
+    } else {
+        console.error('[changeTheme] Editor not initialized');
+        addTerminal('⚠️ Editor not ready', '#f48771');
+    }
+}
+
 function openDoc(docName) {
     console.log('[openDoc] Opening:', docName);
     addTerminal('📘 Loading ' + docName + '...');
     const dv = document.getElementById('docViewer');
     
-    if (!window.readDocumentation) {
-        console.error('[openDoc] readDocumentation not available');
-        addTerminal('❌ Documentation bridge not ready', '#f48771');
-        dv.innerHTML = '<div style="padding:20px;"><h2>📘 Documentation Not Available</h2><p>Bridge not ready</p></div>';
-        dv.style.display = 'block';
-        document.querySelector('.editor-container').style.display = 'none';
-        return;
-    }
-    
-    // readDocumentation is async (returns Promise)
-    window.readDocumentation(docName).then(function(content) {
-        console.log('[openDoc] Got content, length:', content ? content.length : 0);
-        
-        // Decode base64 if content is encoded
-        if (content && content.startsWith('BASE64:')) {
-            console.log('[openDoc] Decoding Base64 content');
-            try {
-                content = atob(content.substring(7));
-                console.log('[openDoc] Decoded length:', content.length);
-            } catch (e) {
-                console.error('[openDoc] Base64 decode error:', e);
-                addTerminal('❌ Failed to decode documentation', '#f48771');
-                return;
-            }
-        }
-        
-        if (content && content.length > 0 && !content.startsWith('# Documentation Not Found')) {
+    // Use fetch() to call @route("/api/docs/read")
+    fetch('/api/docs/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docName: docName })
+    })
+    .then(response => response.text())
+    .then(function(content) {               
+        if (content && content.length > 0) {
             dv.innerHTML = renderMarkdown(content);
             dv.style.display = 'block';
             document.querySelector('.editor-container').style.display = 'none';
@@ -466,11 +477,23 @@ async function newFile() {
         try {
             currentFile = name;
             const initialContent = '// ' + name + '\n\n';
+
+            function repl(inputString) {
+               let output = inputString.replace(/\\n/g, '\r\n');
+               output = output.replace(/\\t/g, '\t');
+               return output;
+            }
+
+            let contentToUse = repl(initialContent);
             
-            // Create the file on backend
+            // Create the file on backend via fetch()
             addTerminal('📄 Creating ' + name + '...', '#89d185');
-            const fileData = JSON.stringify({ path: name, content: initialContent });
-            const result = await window.kuyil.call('createFile', fileData);
+            const response = await fetch('/api/files/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: name, content: contentToUse })
+            });
+            const result = await response.text();
             console.log('[newFile] createFile result:', result);
             
             // Parse result to check success
@@ -516,12 +539,17 @@ async function saveFile() {
         }
         
         addTerminal('💾 Saving ' + currentFile + '...', '#89d185');
-        
+      
         // currentFile already contains the relative path (e.g., "sum_program/sum.kyl")
         // The backend will prepend workspace path
         
-        // Call writeFile backend function
-        const result = await window.writeFile(currentFile, content);
+        // Call /api/files/save via fetch()
+        const response = await fetch('/api/files/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: currentFile, content: content })
+        });
+        const result = await response.text();
         console.log('[saveFile] Result:', result);
         
         // Parse result
@@ -543,49 +571,156 @@ async function saveFile() {
 }
 
 async function runCode() {
-    if (!currentFile) {
-        addTerminal('❌ No file open to run', '#f48771');
-        return;
-    }
-    
-    addTerminal('▶️ Running ' + currentFile + '...', '#89d185');
-    
     try {
-        // Call runFile backend function
-        const result = await window.kuyil.call('runFile', currentFile);
+        // Get current code from editor
+        let code;
+        if (window.kuyilEditor) {
+            code = window.kuyilEditor.getValue();
+        } else {
+            code = document.getElementById('editor').value;
+        }
+        
+        if (!code || code.trim() === '') {
+            addTerminal('❌ No code to run', '#f48771');
+            return;
+        }
+        
+        // Clear terminal and show running message
+        const term = document.getElementById('terminal');
+        term.innerHTML = '';
+        addTerminal('▶️ Executing code...', '#89d185');
+        
+        // Call execute API
+        const response = await fetch('/api/code/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                code: code,
+                filename: currentFile || null
+            })
+        });
+        
+        const result = await response.text();
         console.log('[runCode] Result:', result);
         
-        // Parse the result
-        try {
-            const resultObj = JSON.parse(result);
-            if (resultObj.success) {
-                if (resultObj.output) {
-                    addTerminal('📤 Output:', '#89d185');
-                    // Split by newlines and display each line
-                    const lines = resultObj.output.split('\n');
-                    lines.forEach(function(line) {
-                        if (line.trim() !== '') {
-                            addTerminal(line, '#d4d4d4');
-                        }
-                    });
-                } else {
-                    addTerminal('✅ Completed (no output)', '#89d185');
-                }
+        // Parse result
+        const resultObj = JSON.parse(result);
+        
+        if (resultObj.success) {
+            const exitCode = resultObj.exitCode || 0;
+            const stdout = resultObj.stdout || '';
+            
+            // Display output
+            if (stdout && stdout.trim() !== '') {
+                addTerminal('📤 Output:', '#4ec9b0');
+                addTerminal('─'.repeat(50), '#3e3e42');
+                const lines = stdout.split('\n');
+                lines.forEach(function(line) {
+                    addTerminal(line, '#d4d4d4');
+                });
+                addTerminal('─'.repeat(50), '#3e3e42');
             } else {
-                addTerminal('❌ Error: ' + (resultObj.error || 'Unknown error'), '#f48771');
+                addTerminal('✅ Completed (no output)', '#89d185');
             }
-        } catch (e) {
-            console.error('[runCode] JSON parse error:', e);
-            // Not JSON, treat as direct output
-            addTerminal('📤 Raw Output:', '#89d185');
-            const lines = result.split('\n');
-            lines.forEach(function(line) {
-                addTerminal(line, '#d4d4d4');
-            });
+            
+            // Display exit code
+            if (exitCode === 0) {
+                addTerminal('✅ Exit Code: ' + exitCode, '#89d185');
+            } else {
+                addTerminal('❌ Exit Code: ' + exitCode, '#f48771');
+            }
+        } else {
+            addTerminal('❌ Execution failed: ' + (resultObj.error || 'Unknown error'), '#f48771');
         }
     } catch (error) {
         console.error('[runCode] Error:', error);
-        addTerminal('❌ Failed to run: ' + error.message, '#f48771');
+        addTerminal('❌ Failed to execute: ' + error.message, '#f48771');
+    }
+}
+
+// Quick action handler
+async function quickAction(actionName) {
+    console.log('[quickAction] Action:', actionName);
+    
+    // Get current code from editor
+    let currentCode = '';
+    if (window.kuyilEditor) {
+        currentCode = window.kuyilEditor.getValue();
+    }
+    
+    // Show action in messages
+    const actionLabels = {
+        'generate_code': '✨ Generate Code',
+        'explain_code': '💡 Explain Code',
+        'fix_error': '🔧 Fix Error',
+        'optimize_code': '⚡ Optimize Code',
+        'review_code': '👀 Review Code',
+        'add_comments': '📝 Add Comments'
+    };
+    
+    const actionLabel = actionLabels[actionName] || actionName;
+    addMessage('Action: ' + actionLabel, 'user');
+    
+    // Get user input if needed
+    let userPrompt = document.getElementById('aiInput').value.trim();
+    
+    // For generate action, prompt is required
+    if (actionName === 'generate_code' && !userPrompt) {
+        addMessage('❌ Please describe what code to generate', 'system');
+        return;
+    }
+    
+    // For explain, use current code
+    if (actionName === 'explain_code' && !currentCode) {
+        addMessage('❌ No code in editor to explain', 'system');
+        return;
+    }
+    
+    // Clear input
+    document.getElementById('aiInput').value = '';
+    
+    // Show thinking message
+    addMessage('🤖 Processing...', 'system');
+    addTerminal('🎯 Executing action: ' + actionLabel, '#89d185');
+    
+    try {
+        const model = document.getElementById('aiModel').value;
+        
+        // Call LLM action API
+        const response = await fetch('/api/llm/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: actionName,
+                prompt: userPrompt,
+                currentCode: currentCode,
+                model: model
+            })
+        });
+        
+        const result = await response.text();
+        console.log('[quickAction] Response:', result);
+        
+        if (result) {
+            const data = JSON.parse(result);
+            if (data.response) {
+                // Remove "thinking" message
+                const messages = document.getElementById('messages');
+                const lastMsg = messages.lastElementChild;
+                if (lastMsg && lastMsg.textContent.includes('Processing')) {
+                    messages.removeChild(lastMsg);
+                }
+                
+                addMessage(data.response, 'ai');
+                addTerminal('✅ Action completed', '#89d185');
+            } else if (data.error) {
+                addMessage('❌ Error: ' + data.error, 'system');
+            }
+        }
+    } catch (error) {
+        console.error('[quickAction] Error:', error);
+        addMessage('❌ Failed to process action: ' + error.message, 'system');
+        addTerminal('❌ Action failed', '#f48771');
     }
 }
 
@@ -595,18 +730,6 @@ function askAI() {
     
     addMessage(msg, 'user');
     document.getElementById('aiInput').value = '';
-    
-    // Wait for bridge to be ready before proceeding
-    if (!window.kuyilReady) {
-        addMessage('⏳ Waiting for Kuyil bridge...', 'system');
-        waitForKuyilBridge(function() {
-            setupBridgeWrappers(); // Set up compatibility wrappers
-            addMessage('✅ Bridge ready, processing request...', 'system');
-            processAIRequest(msg);
-        });
-        return;
-    }
-    
     processAIRequest(msg);
 }
 
@@ -615,13 +738,6 @@ async function processAIRequest(msg) {
     
     console.log('[processAIRequest] Starting with message:', msg);
     console.log('[processAIRequest] Model:', model);
-    console.log('[processAIRequest] fetchBridge type:', typeof window.fetchBridge);
-    
-    if (typeof window.fetchBridge !== 'function') {
-        addMessage('❌ AI bridge not ready (fetchBridge is ' + typeof window.fetchBridge + ')', 'ai');
-        addTerminal('❌ fetchBridge not available', '#f48771');
-        return;
-    }
     
     // Remove previous "thinking" messages
     const messagesDiv = document.getElementById('messages');
@@ -632,22 +748,24 @@ async function processAIRequest(msg) {
     
     addMessage('🤖 Thinking...', 'system');
     
-    const requestBody = JSON.stringify({
+    const requestBody = {
         model: model,
         prompt: msg,
         stream: false
-    });
+    };
     
     console.log('[processAIRequest] Request body:', requestBody);
-    console.log('[processAIRequest] Request body length:', requestBody.length);
-    
-    // Call async fetchBridge - it now returns a Promise
-    console.log('[processAIRequest] Calling fetchBridge...');
     addTerminal('📡 Sending request to Ollama...', '#89d185');
     
     try {
-        const result = await window.fetchBridge(requestBody);
-        console.log('[processAIRequest] fetchBridge returned');
+        // Use fetch() to call @route("/api/bridge/fetch")
+        const response = await fetch('/api/bridge/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+        const result = await response.text();
+        console.log('[processAIRequest] fetch returned');
         console.log('[processAIRequest] Result type:', typeof result);
         console.log('[processAIRequest] Result preview:', result ? result.substring(0, 100) : 'null');
         
@@ -720,7 +838,22 @@ async function handleAIResponse(result) {
     
     try {
         console.log(result)
-        let data = parseResponse(result);
+        
+        // First parse the Ollama JSON response
+        let ollamaResponse;
+        try {
+            ollamaResponse = JSON.parse(result);
+        } catch (e) {
+            console.error('[handleAIResponse] Failed to parse Ollama response:', e);
+            addMessage('❌ Invalid JSON from Ollama', 'system');
+            return;
+        }
+        
+        // Extract the response text from Ollama's response field
+        let responseText = ollamaResponse.response || ollamaResponse.content || result;
+        
+        // Now try to extract and parse any JSON actions from markdown
+        let data = parseResponse(responseText);
         console.log('[handleAIResponse] Parsed data:', data);
         
         if (!data) {
@@ -728,13 +861,25 @@ async function handleAIResponse(result) {
             addTerminal('❌ Parse failed', '#f48771');
             return;
         }
-
-        data = data.actions
         
-        // Check if data is an actions array
+        // Check if data is an actions array directly
         if (Array.isArray(data)) {
             addMessage('🤖 Executing ' + data.length + ' actions...', 'system');
             await executeActions(data);
+            return;
+        }
+        
+        // Check if data has an actions property
+        if (data.actions && Array.isArray(data.actions)) {
+            addMessage('🤖 Executing ' + data.actions.length + ' actions...', 'system');
+            await executeActions(data.actions);
+            return;
+        }
+        
+        // Check if data is a single action object (has 'action' field)
+        if (data.action) {
+            addMessage('🤖 Executing action: ' + data.action, 'system');
+            await executeActions([data]); // Wrap in array
             return;
         }
         
@@ -778,14 +923,22 @@ async function executeActions(actions) {
     
     for (let i = 0; i < actions.length; i++) {
         const action = actions[i];
+        
+        // Normalize field names (AI might use 'file_path' or 'path', 'file_content' or 'content')
+        if (action.file_path && !action.path) action.path = action.file_path;
+        if (action.file_content && !action.content) action.content = action.file_content;
         console.log('[executeActions] Action', i + 1, ':', action.action, action);
         
         try {
             if (action.action === 'create_folder') {
                 addTerminal('📁 Creating folder: ' + action.path, '#89d185');
-                const folderData = JSON.stringify({ path: action.path });
-                console.log('[executeActions] Calling createFolder with:', folderData);
-                const result = await window.kuyil.call('createFolder', folderData);
+                console.log('[executeActions] Creating folder:', action.path);
+                const response = await fetch('/api/folders/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: action.path })
+                });
+                const result = await response.text();
                 console.log('[executeActions] createFolder result:', result);
                 
                 // Parse result to check success
@@ -804,9 +957,22 @@ async function executeActions(actions) {
                 
             } else if (action.action === 'create_file') {
                 addTerminal('📝 Creating file: ' + action.path, '#89d185');
-                const fileData = JSON.stringify({ path: action.path, content: action.content || '' });
-                console.log('[executeActions] Calling createFile with:', fileData.substring(0, 100));
-                const result = await window.kuyil.call('createFile', fileData);
+                console.log('[executeActions] Creating file:', action.path);
+
+                function repl(inputString) {
+                    let output = inputString.replace(/\\n/g, '\r\n');
+                    output = output.replace(/\\t/g, '\t');
+                    return output;
+                }
+
+                let content = repl(action.content);
+                
+                const response = await fetch('/api/files/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: action.path, content: action.content || '' })
+                });
+                const result = await response.text();
                 console.log('[executeActions] createFile result:', result);
                 
                 // Parse result to check success
@@ -829,9 +995,20 @@ async function executeActions(actions) {
                 
             } else if (action.action === 'replace_file' || action.action === 'write_file') {
                 addTerminal('✏️ Writing file: ' + action.path, '#89d185');
-                const fileData = JSON.stringify({ path: action.path, content: action.content || '' });
-                console.log('[executeActions] Calling writeFile with:', fileData.substring(0, 100));
-                const result = await window.kuyil.call('writeFile', fileData);
+                console.log('[executeActions] Writing file:', action.path);
+                function repl(inputString) {
+                    let output = inputString.replace(/\\n/g, '\r\n');
+                    output = output.replace(/\\t/g, '\t');
+                    return output;
+                }
+
+                let contentToUse = repl(action.content || '');
+                const response = await fetch('/api/files/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: action.path, content: contentToUse || '' })
+                });
+                const result = await response.text();
                 console.log('[executeActions] writeFile result:', result);
                 addMessage('✅ Wrote file: ' + action.path + ' (' + (action.content ? action.content.length : 0) + ' chars)', 'system');
                 lastFilePath = action.path;
@@ -849,26 +1026,29 @@ async function executeActions(actions) {
         }
     }
     
-    // Open the last created file
-    if (lastFilePath && window.kuyilReadFile) {
+    // Open the last created file in editor
+    if (lastFilePath) {
         try {
             addTerminal('📖 Opening: ' + lastFilePath, '#89d185');
-            let content = await window.kuyilReadFile(lastFilePath);
+            // Wait for file to be created and file list refreshed
+            setTimeout(async function() {
+                const response = await fetch('/api/files/read', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: lastFilePath })
+                });
+                const content = await response.text();
+                openFileInEditor(lastFilePath, content);
+            }, 500);
+            const response = await fetch('/api/files/read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: lastFilePath })
+            });
+            let content = await response.text();
             console.log('[executeActions] Got content, length:', content ? content.length : 0);
             
-            // Decode base64 if content is encoded
-            if (content && content.startsWith('BASE64:')) {
-                console.log('[executeActions] Decoding Base64 content');
-                try {
-                    content = atob(content.substring(7));
-                    console.log('[executeActions] Decoded length:', content.length);
-                } catch (e) {
-                    console.error('[executeActions] Base64 decode error:', e);
-                    addTerminal('❌ Failed to decode file content', '#f48771');
-                    return;
-                }
-            }
-            
+            // Plain text response (text/plain, no JSON)
             if (content && content !== 'nil') {
                 openFileInEditor(lastFilePath, content);
                 addMessage('📄 Opened: ' + lastFilePath, 'system');
@@ -887,6 +1067,7 @@ async function executeActions(actions) {
 
 function openFileInEditor(filepath, content) {
     currentFile = filepath;
+    firstFileLoaded = true;  // Mark that we've loaded a file
     
     // Show editor, hide doc viewer
     document.querySelector('.editor-container').style.display = 'flex';
@@ -967,7 +1148,12 @@ function addFileToTree(filepath) {
         if (confirm('Delete ' + displayPath + '?')) {
             try {
                 addTerminal('🗑️ Deleting: ' + displayPath, '#f48771');
-                const result = await window.kuyil.call('deleteFile', filepath);
+                const response = await fetch('/api/files/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: filepath })
+                });
+                const result = await response.text();
                 const resultObj = JSON.parse(result);
                 if (resultObj.success) {
                     addTerminal('✅ Deleted: ' + displayPath, '#89d185');
@@ -995,40 +1181,23 @@ function addFileToTree(filepath) {
         console.log('[File Click] Clicked:', displayPath);
         console.log('[File Click] Full path:', filepath);
         
-        if (!window.kuyilReadFile) {
-            console.error('[File Click] kuyilReadFile not available');
-            console.error('[File Click] window.kuyil:', typeof window.kuyil);
-            addTerminal('❌ File reader not ready', '#f48771');
-            return;
-        }
-        
         try {
-            // Pass the relative path - backend will add workspace prefix
-            console.log('[File Click] Calling kuyilReadFile...');
+            // Use fetch() to call @route("/api/files/read")
+            console.log('[File Click] Reading file via fetch()...');
             addTerminal('📖 Opening: ' + displayPath + '...', '#89d185');
-            let content = await window.kuyilReadFile(filepath);
-            console.log('[File Click] Got content, length:', content ? content.length : 0);
-            console.log('[File Click] Content preview:', content ? content.substring(0, 50) : 'null');
-            
-            // Decode base64 if content is encoded (same as documentation)
-            if (content && content.startsWith('BASE64:')) {
-                console.log('[File Click] Decoding Base64 content');
-                try {
-                    content = atob(content.substring(7));
-                    console.log('[File Click] Decoded length:', content.length);
-                } catch (e) {
-                    console.error('[File Click] Base64 decode error:', e);
-                    addTerminal('❌ Failed to decode file content', '#f48771');
-                    return;
-                }
-            }
-            
-            if (content && !content.startsWith('// Error:')) {
+            const response = await fetch('/api/files/read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: filepath })
+            });
+            const content = await response.text();
+
+            if (content) {
                 console.log('[File Click] Opening in editor...');
                 openFileInEditor(filepath, content);
                 addTerminal('✅ Opened: ' + displayPath, '#89d185');
             } else {
-                console.error('[File Click] Error in content:', content);
+                console.error('[File Click] No content');
                 addTerminal('❌ Failed to read: ' + displayPath, '#f48771');
             }
         } catch (error) {
@@ -1093,34 +1262,9 @@ function addTerminal(text, color) {
 // Show ready status
 setTimeout(function() {
     addTerminal('📚 Documentation ready - click items in sidebar');
-    console.log('[Status Check] readDocumentation:', typeof window.readDocumentation);
-    console.log('[Status Check] fetchBridge:', typeof window.fetchBridge);
-    console.log('[Status Check] Available functions:', Object.keys(window).filter(k => k.includes('Bridge') || k.includes('kuyil') || k.includes('Docs')).join(', '));
-    if (typeof window.readDocumentation === 'function' && typeof window.fetchBridge === 'function') {
-        addTerminal('✅ All bridge functions ready', '#89d185');
-    } else if (typeof window.readDocumentation === 'function') {
-        addTerminal('⚠️ Partial bridge ready (no AI yet)', 'yellow');
-    } else {
-        addTerminal('⏳ Waiting for bridge functions...', 'yellow');
-    }
-}, 1500);
-
-// Additional delayed check to catch late bindings
-setTimeout(function() {
-    console.log('[Late Check] fetchBridge:', typeof window.fetchBridge);
-    console.log('[Late Check] readDocumentation:', typeof window.readDocumentation);
-    console.log('[Late Check] __kuyilTest:', window.__kuyilTest);
-    console.log('[Late Check] __fetchBridgeType:', window.__fetchBridgeType);
-    console.log('[Late Check] __fetchOk:', window.__fetchOk);
-    if (typeof window.fetchBridge === 'function' && typeof window.readDocumentation === 'function') {
-        console.log('[Late Check] ✓ Both bridges now available');
-        addTerminal('🔧 Late check: Bridges confirmed available', '#89d185');
-    } else {
-        console.log('[Late Check] ⚠️ Still missing bridges');
-        console.log('[Late Check] All window keys:', Object.keys(window).filter(k => !k.startsWith('webkit') && !k.startsWith('chrome')).sort().join(', '));
-        addTerminal('⚠️ Late check: Bridges still undefined!', '#f48771');
-    }
-}, 3000);
+    addTerminal('✅ Using fetch() API with @route backend', '#89d185');
+    console.log('[IDE] Using standard fetch() API routed to @route handlers');
+}, 1000);
 
 // Refresh project files from workspace
 async function refreshProjectFiles() {
@@ -1133,60 +1277,87 @@ async function refreshProjectFiles() {
     }
     
     try {
-        // Check if kuyil bridge is available
-        if (!window.kuyil || !window.kuyil.call) {
-            console.log('[refreshProjectFiles] Kuyil bridge not ready, waiting...');
-            folderProject.innerHTML = '<div style="padding: 5px; color: #dcdcaa;">⏳ Loading...</div>';
-            setTimeout(refreshProjectFiles, 500);
-            return;
-        }
+        // Use fetch() to call @route("/api/workspace/files")
+        // Note: @route defaults to GET method
+        const response = await fetch('/api/workspace/files', {
+            method: 'GET'
+        });
+        const responseText = await response.text();
+        console.log('[refreshProjectFiles] Response type:', typeof responseText);
+        console.log('[refreshProjectFiles] Response length:', responseText ? responseText.length : 0);
         
-        const response = await window.kuyil.call('listWorkspaceFiles', '{}');
-        console.log('[refreshProjectFiles] Response type:', typeof response);
-        console.log('[refreshProjectFiles] Response length:', response ? response.length : 0);
-        
-        if (!response || response === 'nil') {
+        if (!responseText || responseText === 'nil') {
             console.error('[refreshProjectFiles] Got nil or empty response');
             folderProject.innerHTML = '<div style="padding: 5px; color: #f48771;">No response from backend</div>';
+            loadDefaultSample();
             return;
         }
         
-        const data = JSON.parse(response);
+        const data = JSON.parse(responseText);
         if (data.success && data.files) {
             // Clear current files
             folderProject.innerHTML = '';
             
             if (data.files.length === 0) {
                 folderProject.innerHTML = '<div style="padding: 5px; color: #888; font-style: italic;">No files yet</div>';
+                // Load default sample if no files exist and not already loaded
+                if (!firstFileLoaded) {
+                    loadDefaultSample();
+                }
             } else {
                 // Add each file
                 data.files.forEach(file => {
                     addFileToTree(file);
                 });
                 console.log('[refreshProjectFiles] ✅ Loaded ' + data.files.length + ' files');
+                
+                // Auto-load first file if not already loaded
+                if (!firstFileLoaded && data.files.length > 0) {
+                    console.log('[refreshProjectFiles] Auto-loading first file:', data.files[0]);
+                    openFile(data.files[0]);
+                }
             }
         } else {
             console.error('[refreshProjectFiles] Error in response:', data.error || 'Unknown error');
             folderProject.innerHTML = '<div style="padding: 5px; color: #f48771;">Error: ' + (data.error || 'Unknown error') + '</div>';
+            loadDefaultSample();
         }
     } catch (error) {
         console.error('[refreshProjectFiles] Exception:', error);
         console.error('[refreshProjectFiles] Error stack:', error.stack);
         folderProject.innerHTML = '<div style="padding: 5px; color: #f48771;">Failed to load files<br><span style="font-size: 10px;">' + error.message + '</span></div>';
+        loadDefaultSample();
     }
 }
 
-// Load project files on startup - wait for bridge first!
-waitForKuyilBridge(function() {
-    console.log('[Startup] Bridge ready, setting up wrappers...');
-    setupBridgeWrappers(); // Set up compatibility wrappers
-    console.log('[Startup] Loading project files...');
+// Load default sample program
+function loadDefaultSample() {
+    console.log('[loadDefaultSample] Loading default sample program');
+    if (window.kuyilEditor) {
+        window.kuyilEditor.setValue(DEFAULT_SAMPLE);
+    } else {
+        document.getElementById('editor').value = DEFAULT_SAMPLE;
+    }
+    currentFile = null; // No file associated
+    firstFileLoaded = true;
+    document.querySelector('.editor-container').style.display = 'flex';
+    document.getElementById('docViewer').style.display = 'none';
+    addTerminal('📝 Loaded default sample program', '#dcdcaa');
+    addTerminal('💡 Create a new file to start coding!', '#89d185');
+}
+
+// Load project files after bridge is ready
+window.onBridgeReady = function() {
+    console.log('[Startup] Bridge ready callback FIRED!');
+    console.log('[Startup] About to call refreshProjectFiles...');
     setTimeout(function() {
+        console.log('[Startup] SetTimeout fired, calling refreshProjectFiles...');
         refreshProjectFiles();
-    }, 500);
-});
+    }, 100);
+};
 
 console.log('✓ Kuyil IDE Initialized');
+console.log('[Init] onBridgeReady defined:', typeof window.onBridgeReady);
 </script>
 </body>
 </html>

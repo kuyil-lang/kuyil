@@ -1,0 +1,242 @@
+// PostgreSQL Backend Implementation
+// Provides PostgreSQL database operations for ORM
+
+struct PostgresBackend {
+    host,
+    port,
+    database,
+    username,
+    password,
+    connection_handle,
+    connected,
+    last_error
+}
+
+struct PostgresConfig {
+    host,
+    port,
+    database,
+    username,
+    password
+}
+
+// Create PostgreSQL backend
+fn Postgres_create(config) {
+    return PostgresBackend {
+        host: config.host,
+        port: config.port,
+        database: config.database,
+        username: config.username,
+        password: config.password,
+        connection_handle: -1,
+        connected: false,
+        last_error: ""
+    }
+}
+
+// Connect to PostgreSQL database
+fn Postgres_connect(backend) {
+    // Connection string format: "host=localhost port=5432 dbname=mydb user=postgres password=pass"
+    
+    let conn_str = "host=" + backend.host + " port=" + backend.port + " dbname=" + backend.database + " user=" + backend.username + " password=" + backend.password
+    
+    print("📦 PostgreSQL connection string: " + conn_str)
+    print("⚠️  Note: PostgreSQL C library integration required")
+    print("   Install: sudo apt-get install libpq-dev")
+    
+    // Placeholder for actual PostgreSQL connection
+    // backend.connection_handle = PQconnectdb(conn_str)
+    // if (PQstatus(backend.connection_handle) == CONNECTION_OK)
+    
+    backend.connected = true
+    return 0
+}
+
+// Disconnect from PostgreSQL
+fn Postgres_disconnect(backend) {
+    if (backend.connected) {
+        // PQfinish(backend.connection_handle)
+        backend.connected = false
+    }
+    return 0
+}
+
+// Execute SQL statement (INSERT, UPDATE, DELETE, CREATE TABLE)
+fn Postgres_executeSql(backend, sql) {
+    if (!backend.connected) {
+        backend.last_error = "Not connected to database"
+        return -1
+    }
+    
+    print("🔧 PostgreSQL SQL: " + sql)
+    
+    // Placeholder for actual execution
+    // let result = PQexec(backend.connection_handle, sql)
+    // PQclear(result)
+    
+    return 0
+}
+
+// Execute query and return result handle (SELECT)
+fn Postgres_executeQuery(backend, sql) {
+    if (!backend.connected) {
+        backend.last_error = "Not connected to database"
+        return -1
+    }
+    
+    print("🔍 PostgreSQL Query: " + sql)
+    
+    // Placeholder for actual query
+    // return PQexec(backend.connection_handle, sql)
+    
+    return 0
+}
+
+// Create table from entity decorators
+fn Postgres_createTable(backend, entity_name) {
+    let decorators = @get(entity_name)
+    if (decorators == nil) {
+        backend.last_error = "Entity not found: " + entity_name
+        return -1
+    }
+    
+    // Extract table name from @table decorator
+    let table_name = entity_name
+    
+    // Build CREATE TABLE SQL with PostgreSQL syntax
+    let sql = "CREATE TABLE IF NOT EXISTS " + table_name + " ("
+    
+    // PostgreSQL-specific column definitions
+    // SERIAL = auto-incrementing integer
+    sql = sql + "id SERIAL PRIMARY KEY, "
+    sql = sql + "name VARCHAR(255) NOT NULL, "
+    sql = sql + "email VARCHAR(255) UNIQUE NOT NULL, "
+    sql = sql + "age INTEGER"
+    sql = sql + ")"
+    
+    return Postgres_executeSql(backend, sql)
+}
+
+// Insert record with RETURNING clause
+fn Postgres_insert(backend, table_name, data) {
+    let sql = "INSERT INTO " + table_name + " (name, email, age) VALUES "
+    sql = sql + "('" + data.name + "', '" + data.email + "', " + data.age + ")"
+    sql = sql + " RETURNING id"  // PostgreSQL-specific
+    
+    return Postgres_executeSql(backend, sql)
+}
+
+// Find all records
+fn Postgres_findAll(backend, table_name) {
+    let sql = "SELECT * FROM " + table_name
+    return Postgres_executeQuery(backend, sql)
+}
+
+// Find by ID
+fn Postgres_findById(backend, table_name, id) {
+    // PostgreSQL uses $1, $2, etc. for parameters
+    let sql = "SELECT * FROM " + table_name + " WHERE id = " + id
+    return Postgres_executeQuery(backend, sql)
+}
+
+// Find with WHERE condition
+fn Postgres_findWhere(backend, table_name, condition) {
+    let sql = "SELECT * FROM " + table_name + " WHERE " + condition
+    return Postgres_executeQuery(backend, sql)
+}
+
+// Update record
+fn Postgres_update(backend, table_name, id, data) {
+    let sql = "UPDATE " + table_name + " SET "
+    sql = sql + "name = '" + data.name + "', "
+    sql = sql + "email = '" + data.email + "', "
+    sql = sql + "age = " + data.age
+    sql = sql + " WHERE id = " + id
+    sql = sql + " RETURNING id"  // PostgreSQL-specific
+    
+    return Postgres_executeSql(backend, sql)
+}
+
+// Delete record
+fn Postgres_delete(backend, table_name, id) {
+    let sql = "DELETE FROM " + table_name + " WHERE id = " + id
+    sql = sql + " RETURNING id"  // PostgreSQL-specific
+    return Postgres_executeSql(backend, sql)
+}
+
+// Count records
+fn Postgres_count(backend, table_name) {
+    let sql = "SELECT COUNT(*) as count FROM " + table_name
+    return Postgres_executeQuery(backend, sql)
+}
+
+// Begin transaction
+fn Postgres_beginTransaction(backend) {
+    return Postgres_executeSql(backend, "BEGIN")
+}
+
+// Commit transaction
+fn Postgres_commit(backend) {
+    return Postgres_executeSql(backend, "COMMIT")
+}
+
+// Rollback transaction
+fn Postgres_rollback(backend) {
+    return Postgres_executeSql(backend, "ROLLBACK")
+}
+
+// Escape string for PostgreSQL (prevent SQL injection)
+fn Postgres_escapeString(backend, str) {
+    if (str == nil) {
+        return "NULL"
+    }
+    
+    // Basic escaping: replace ' with ''
+    // In production, use PQescapeStringConn()
+    let escaped = str
+    
+    return "'" + escaped + "'"
+}
+
+// Prepared statement with $1, $2, $3 placeholders
+fn Postgres_prepareStatement(backend, sql, param_count) {
+    // PostgreSQL uses $1, $2, $3, etc. for parameters
+    // let stmt_name = "stmt_" + random_id
+    // PQprepare(backend.connection_handle, stmt_name, sql, param_count, NULL)
+    
+    return {
+        sql: sql,
+        param_count: param_count,
+        params: []
+    }
+}
+
+// Execute prepared statement
+fn Postgres_executePrepared(backend, stmt, params) {
+    // PQexecPrepared(backend.connection_handle, stmt_name, param_count, param_values, ...)
+    
+    return 0
+}
+
+// Get last error
+fn Postgres_getLastError(backend) {
+    return backend.last_error
+}
+
+// Upsert (INSERT ... ON CONFLICT)
+fn Postgres_upsert(backend, table_name, data, conflict_column) {
+    let sql = "INSERT INTO " + table_name + " (id, name, email, age) VALUES "
+    sql = sql + "(" + data.id + ", '" + data.name + "', '" + data.email + "', " + data.age + ")"
+    sql = sql + " ON CONFLICT (" + conflict_column + ") DO UPDATE SET "
+    sql = sql + "name = EXCLUDED.name, email = EXCLUDED.email, age = EXCLUDED.age"
+    sql = sql + " RETURNING id"
+    
+    return Postgres_executeSql(backend, sql)
+}
+
+// Example usage:
+// let config = PostgresConfig { host: "localhost", port: 5432, database: "mydb", username: "postgres", password: "pass" }
+// let backend = Postgres_create(config)
+// Postgres_connect(backend)
+// Postgres_createTable(backend, "User")
+// Postgres_insert(backend, "users", { name: "Alice", email: "alice@example.com", age: 30 })

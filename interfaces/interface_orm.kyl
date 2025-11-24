@@ -1,0 +1,125 @@
+// Generic ORM Interface for Multiple Database Backends
+// Supports: SQLite, MySQL, PostgreSQL, NoSQL (MongoDB), Elasticsearch
+
+// ═══════════════════════════════════════════════════════════
+// Generic Database Connection Interface
+// ═══════════════════════════════════════════════════════════
+
+interface db_connection {
+    fn connect(config: map) -> handle
+    fn disconnect(handle: int32) -> bool
+    fn is_connected(handle: int32) -> bool
+    fn get_error(handle: int32) -> string
+    fn begin_transaction(handle: int32) -> bool
+    fn commit(handle: int32) -> bool
+    fn rollback(handle: int32) -> bool
+}
+
+// ═══════════════════════════════════════════════════════════
+// Generic Statement Interface (SQL databases)
+// ═══════════════════════════════════════════════════════════
+
+interface db_statement {
+    fn prepare(handle: int32, query: string) -> int32
+    fn bind_int(stmt: int32, index: int32, value: int32) -> bool
+    fn bind_float(stmt: int32, index: int32, value: float64) -> bool
+    fn bind_string(stmt: int32, index: int32, value: string) -> bool
+    fn bind_bool(stmt: int32, index: int32, value: bool) -> bool
+    fn bind_null(stmt: int32, index: int32) -> bool
+    fn execute(stmt: int32) -> int32
+    fn finalize(stmt: int32) -> bool
+}
+
+// ═══════════════════════════════════════════════════════════
+// Generic Result Interface
+// ═══════════════════════════════════════════════════════════
+
+interface db_result {
+    fn first_row(result: int32) -> int32
+    fn next_row(result: int32) -> int32
+    fn row_count(result: int32) -> int32
+    fn column_count(result: int32) -> int32
+    fn column_name(result: int32, index: int32) -> string
+    fn free(result: int32) -> bool
+}
+
+// ═══════════════════════════════════════════════════════════
+// Generic Row Interface
+// ═══════════════════════════════════════════════════════════
+
+interface db_row {
+    fn get_int(row: int32, index: int32) -> int32
+    fn get_float(row: int32, index: int32) -> float64
+    fn get_string(row: int32, index: int32) -> string
+    fn get_bool(row: int32, index: int32) -> bool
+    fn is_null(row: int32, index: int32) -> bool
+}
+
+// ═══════════════════════════════════════════════════════════
+// ORM Entity Operations Interface
+// ═══════════════════════════════════════════════════════════
+
+interface orm_operations {
+    fn create_table(handle: int32, entity_name: string) -> bool
+    fn drop_table(handle: int32, table_name: string) -> bool
+    fn insert(handle: int32, table_name: string, data: map) -> int32
+    fn update(handle: int32, table_name: string, id: int32, data: map) -> bool
+    fn delete(handle: int32, table_name: string, id: int32) -> bool
+    fn find_by_id(handle: int32, table_name: string, id: int32) -> map
+    fn find_all(handle: int32, table_name: string) -> array
+    fn find_where(handle: int32, table_name: string, conditions: map) -> array
+    fn count(handle: int32, table_name: string) -> int32
+}
+
+// ═══════════════════════════════════════════════════════════
+// NoSQL Document Operations (MongoDB style)
+// ═══════════════════════════════════════════════════════════
+
+interface nosql_operations {
+    fn insert_document(handle: int32, collection: string, doc: map) -> string
+    fn find_documents(handle: int32, collection: string, query: map) -> array
+    fn update_document(handle: int32, collection: string, id: string, doc: map) -> bool
+    fn delete_document(handle: int32, collection: string, id: string) -> bool
+    fn aggregate(handle: int32, collection: string, pipeline: array) -> array
+}
+
+// ═══════════════════════════════════════════════════════════
+// Elasticsearch Operations
+// ═══════════════════════════════════════════════════════════
+
+interface search_operations {
+    fn index_document(handle: int32, index: string, doc: map) -> string
+    fn search(handle: int32, index: string, query: map) -> array
+    fn get_by_id(handle: int32, index: string, id: string) -> map
+    fn delete_by_id(handle: int32, index: string, id: string) -> bool
+    fn bulk_index(handle: int32, index: string, docs: array) -> bool
+}
+
+// ═══════════════════════════════════════════════════════════
+// Generic ORM Configuration
+// ═══════════════════════════════════════════════════════════
+
+struct ORM_Config {
+    @required
+    backend,  // "sqlite", "mysql", "postgres", "mongodb", "elasticsearch"
+    
+    // SQL database configs
+    host,
+    port,
+    database,
+    username,
+    password,
+    
+    // File-based configs (SQLite)
+    file_path,
+    
+    // Connection options
+    pool_size,
+    timeout,
+    ssl_enabled,
+    
+    // ORM options
+    auto_create_tables,
+    use_migrations,
+    log_queries
+}

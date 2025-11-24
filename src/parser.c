@@ -243,6 +243,9 @@ void ast_node_free(ASTNode* node) {
         case AST_AVATAR_STMT:
             ast_node_free(node->as.avatar_stmt.call_expr);
             break;
+        case AST_DEFER_STMT:
+            ast_node_free(node->as.defer_stmt.call_expr);
+            break;
         case AST_AWAIT_EXPR:
             ast_node_free(node->as.await_expr.avatar_handle);
             break;
@@ -1502,6 +1505,23 @@ static ASTNode* return_statement(Parser* parser) {
     return return_node;
 }
 
+static ASTNode* defer_statement(Parser* parser) {
+    ASTNode* defer_node = ast_node_new(AST_DEFER_STMT);
+    set_node_location(defer_node, previous_token(parser)); // 'defer'
+    
+    // defer must be followed by a function call
+    ASTNode* call_expr = expression(parser);
+    
+    if (call_expr->type != AST_CALL) {
+        error_at(parser, previous_token(parser), "defer must be followed by a function call.");
+        ast_node_free(call_expr);
+        return defer_node; // Return empty defer node to avoid crash
+    }
+    
+    defer_node->as.defer_stmt.call_expr = call_expr;
+    return defer_node;
+}
+
 static ASTNode* avatar_statement(Parser* parser) {
     ASTNode* avatar_node = ast_node_new(AST_AVATAR_STMT);
     set_node_location(avatar_node, previous_token(parser)); // 'avatar'
@@ -1903,6 +1923,7 @@ static ASTNode* statement(Parser* parser) {
     if (parser_match(parser, TOKEN_WHILE)) return while_statement(parser);
     if (parser_match(parser, TOKEN_FOR)) return for_statement(parser);
     if (parser_match(parser, TOKEN_AVATAR)) return avatar_statement(parser);
+    if (parser_match(parser, TOKEN_DEFER)) return defer_statement(parser);
     if (parser_match(parser, TOKEN_RETURN)) return return_statement(parser);
     if (parser_match(parser, TOKEN_LEFT_BRACE)) return block_statement(parser);
     
