@@ -1025,9 +1025,6 @@ Value file_readText(int arg_count, Value* args) {
     }
     Value result = kuyil_file_read_text(arg_count, args); 
     fprintf(stderr, "[fileio_wrapper] kuyil_file_read_text returned type=%d\n", result.type);
-    if (result.type == VALUE_STRING) {
-        fprintf(stderr, "[fileio_wrapper]   STRING value='%s'\n", result.as.string ? result.as.string : "(null)");
-    }
     return result;
 }
 Value file_readCsv(int arg_count, Value* args) { 

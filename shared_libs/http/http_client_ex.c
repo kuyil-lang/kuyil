@@ -268,7 +268,7 @@ HttpClientResponse* http_client_post_ex(const char* url, const char* body, char*
         .header_names = header_names,
         .header_values = header_values,
         .header_count = header_count,
-        .timeout_ms = 30000,
+        .timeout_ms = 300000,  // 5 minutes for LLM requests
         .follow_redirects = true,
         .verify_ssl = true
     };

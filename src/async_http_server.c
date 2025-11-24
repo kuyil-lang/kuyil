@@ -20,6 +20,13 @@
 #define MAX_CONNECTIONS 100
 #define BUFFER_SIZE 8192
 #define MAX_BODY_SIZE (10 * 1024 * 1024)  // 10MB max body size
+#define MAX_STATIC_MOUNTS 10
+
+typedef struct StaticMount {
+    char* url_prefix;      // URL prefix (e.g., "/")
+    char* directory;       // File system directory (e.g., "kuyil-ide/assets")
+    bool active;
+} StaticMount;
 
 struct AsyncHttpServer {
     int port;
@@ -29,15 +36,195 @@ struct AsyncHttpServer {
     VM* vm;
     pthread_mutex_t vm_lock;
     size_t max_body_size;  // Maximum request body size (default: 10MB)
+    StaticMount static_mounts[MAX_STATIC_MOUNTS];
+    int static_mount_count;
 };
 
 // Global server instance
 static AsyncHttpServer* g_server = NULL;
 
-// Forward declarations
+// Forward declarations - must be before any functions
+static HttpResponse* http_response_create(int status_code, const char* body);
 static char* get_multipart_boundary(const char* headers);
 static MultipartFormData* parse_multipart_form_data(const char* body, const char* boundary);
 static void multipart_form_data_free(MultipartFormData* form);
+
+// Response builder with reference counting (must match kyl_response_functions.c)
+typedef struct KylResponseBuilder {
+    int status_code;
+    char* body;
+    size_t body_length;
+    char** header_names;
+    char** header_values;
+    int header_count;
+    char* content_type;
+    int ref_count;
+} KylResponseBuilder;
+
+// Reference counting functions
+static void response_builder_retain(KylResponseBuilder* builder) {
+    if (builder) {
+        builder->ref_count++;
+        printf("[ResponseBuilder] Retained, ref_count=%d\n", builder->ref_count);
+    }
+}
+
+static void response_builder_release(KylResponseBuilder* builder) {
+    if (!builder) return;
+    
+    builder->ref_count--;
+    printf("[ResponseBuilder] Released, ref_count=%d\n", builder->ref_count);
+    
+    if (builder->ref_count <= 0) {
+        printf("[ResponseBuilder] Freeing builder (ref_count=%d)\n", builder->ref_count);
+        
+        // Free all allocated memory
+        if (builder->body) free(builder->body);
+        
+        if (builder->header_names) {
+            for (int i = 0; i < builder->header_count; i++) {
+                if (builder->header_names[i]) free(builder->header_names[i]);
+                if (builder->header_values[i]) free(builder->header_values[i]);
+            }
+            free(builder->header_names);
+            free(builder->header_values);
+        }
+        
+        if (builder->content_type) free(builder->content_type);
+        
+        free(builder);
+    }
+}
+
+// Get MIME type from file extension
+static const char* get_mime_type(const char* path) {
+    const char* ext = strrchr(path, '.');
+    if (!ext) return "application/octet-stream";
+    
+    ext++; // Skip the dot
+    
+    // Common web types
+    if (strcasecmp(ext, "html") == 0 || strcasecmp(ext, "htm") == 0) return "text/html; charset=utf-8";
+    if (strcasecmp(ext, "css") == 0) return "text/css; charset=utf-8";
+    if (strcasecmp(ext, "js") == 0) return "application/javascript";
+    if (strcasecmp(ext, "json") == 0) return "application/json";
+    if (strcasecmp(ext, "xml") == 0) return "application/xml";
+    
+    // Images
+    if (strcasecmp(ext, "png") == 0) return "image/png";
+    if (strcasecmp(ext, "jpg") == 0 || strcasecmp(ext, "jpeg") == 0) return "image/jpeg";
+    if (strcasecmp(ext, "gif") == 0) return "image/gif";
+    if (strcasecmp(ext, "svg") == 0) return "image/svg+xml";
+    if (strcasecmp(ext, "ico") == 0) return "image/x-icon";
+    if (strcasecmp(ext, "webp") == 0) return "image/webp";
+    
+    // Fonts
+    if (strcasecmp(ext, "woff") == 0) return "font/woff";
+    if (strcasecmp(ext, "woff2") == 0) return "font/woff2";
+    if (strcasecmp(ext, "ttf") == 0) return "font/ttf";
+    if (strcasecmp(ext, "otf") == 0) return "font/otf";
+    
+    // Other common types
+    if (strcasecmp(ext, "pdf") == 0) return "application/pdf";
+    if (strcasecmp(ext, "txt") == 0) return "text/plain";
+    if (strcasecmp(ext, "md") == 0) return "text/markdown";
+    if (strcasecmp(ext, "zip") == 0) return "application/zip";
+    
+    return "application/octet-stream";
+}
+
+// Serve static file from disk
+static HttpResponse* serve_static_file(const char* file_path) {
+    FILE* f = fopen(file_path, "rb");
+    if (!f) {
+        return NULL;  // File not found
+    }
+    
+    // Get file size
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    // Check file size limit (10MB)
+    if (file_size > 10 * 1024 * 1024) {
+        fclose(f);
+        return http_response_create(413, "File too large");
+    }
+    
+    // Read file content
+    char* content = malloc(file_size + 1);
+    if (!content) {
+        fclose(f);
+        return http_response_create(500, "Memory allocation failed");
+    }
+    
+    size_t bytes_read = fread(content, 1, file_size, f);
+    fclose(f);
+    content[bytes_read] = '\0';
+    
+    // Create response with MIME type
+    HttpResponse* response = malloc(sizeof(HttpResponse));
+    response->status_code = 200;
+    response->body = content;
+    
+    // Add Content-Type header
+    const char* mime_type = get_mime_type(file_path);
+    response->header_count = 1;
+    response->header_keys = malloc(sizeof(char*));
+    response->header_values = malloc(sizeof(char*));
+    response->header_keys[0] = strdup("Content-Type");
+    response->header_values[0] = strdup(mime_type);
+    
+    printf("[HTTP] Served static file: %s (%ld bytes, %s)\n", file_path, file_size, mime_type);
+    
+    return response;
+}
+
+// Try to serve static file from configured mounts
+static HttpResponse* try_serve_static(AsyncHttpServer* server, const char* path) {
+    if (!path || path[0] != '/') return NULL;
+    
+    // Try each static mount in order
+    for (int i = 0; i < server->static_mount_count; i++) {
+        StaticMount* mount = &server->static_mounts[i];
+        if (!mount->active) continue;
+        
+        // Check if path starts with mount prefix
+        size_t prefix_len = strlen(mount->url_prefix);
+        if (strncmp(path, mount->url_prefix, prefix_len) == 0) {
+            // Build file path
+            const char* relative_path = path + prefix_len;
+            
+            // Remove leading slash from relative path
+            while (*relative_path == '/') relative_path++;
+            
+            // If no file specified, try index.html
+            char file_path[1024];
+            if (*relative_path == '\0') {
+                snprintf(file_path, sizeof(file_path), "%s/index.html", mount->directory);
+            } else {
+                snprintf(file_path, sizeof(file_path), "%s/%s", mount->directory, relative_path);
+            }
+            
+            // Try to serve the file
+            HttpResponse* response = serve_static_file(file_path);
+            if (response) {
+                return response;
+            }
+            
+            // If it was a directory request without trailing slash, try with /index.html
+            if (*relative_path != '\0' && path[strlen(path) - 1] != '/') {
+                snprintf(file_path, sizeof(file_path), "%s/%s/index.html", mount->directory, relative_path);
+                response = serve_static_file(file_path);
+                if (response) {
+                    return response;
+                }
+            }
+        }
+    }
+    
+    return NULL;  // No static file found
+}
 
 // Extract Content-Length from headers
 static long get_content_length(const char* headers) {
@@ -477,79 +664,97 @@ static void http_response_free(HttpResponse* res) {
     free(res);
 }
 
-// Send HTTP response to client with streaming support
+// Send HTTP response to client
 static void send_http_response(int client_fd, HttpResponse* res) {
     const char* status_text = (res->status_code == 200) ? "OK" :
-                              (res->status_code == 404) ? "Not Found" :
-                              (res->status_code == 500) ? "Internal Server Error" :
                               (res->status_code == 201) ? "Created" :
                               (res->status_code == 204) ? "No Content" :
+                              (res->status_code == 302) ? "Found" :
                               (res->status_code == 400) ? "Bad Request" :
                               (res->status_code == 401) ? "Unauthorized" :
-                              (res->status_code == 403) ? "Forbidden" : "Unknown";
+                              (res->status_code == 403) ? "Forbidden" :
+                              (res->status_code == 404) ? "Not Found" :
+                              (res->status_code == 413) ? "Payload Too Large" :
+                              (res->status_code == 500) ? "Internal Server Error" :
+                              (res->status_code == 503) ? "Service Unavailable" :
+                              (res->status_code == 504) ? "Gateway Timeout" : "Unknown";
     
     size_t body_len = res->body ? strlen(res->body) : 0;
-    bool use_chunked = body_len > BUFFER_SIZE;  // Use chunked for large bodies
+    bool use_chunked = body_len > 8192;  // Use chunked for large responses
     
-    char header[2048];
-    int header_len;
+    // Build response headers
+    char header_buffer[4096];
+    int offset = snprintf(header_buffer, sizeof(header_buffer),
+        "HTTP/1.1 %d %s\r\n",
+        res->status_code, status_text);
     
-    if (use_chunked) {
-        // Use chunked transfer encoding for large bodies
-        header_len = snprintf(header, sizeof(header),
-            "HTTP/1.1 %d %s\r\n"
-            "Transfer-Encoding: chunked\r\n"
-            "Content-Type: text/plain\r\n"
-            "Connection: close\r\n"
-            "\r\n",
-            res->status_code, status_text);
-    } else {
-        // Use Content-Length for small bodies
-        header_len = snprintf(header, sizeof(header),
-            "HTTP/1.1 %d %s\r\n"
-            "Content-Length: %zu\r\n"
-            "Content-Type: text/plain\r\n"
-            "Connection: close\r\n"
-            "\r\n",
-            res->status_code, status_text, body_len);
+    // Add custom headers from response first
+    bool has_content_type = false;
+    for (int i = 0; i < res->header_count; i++) {
+        if (strcasecmp(res->header_keys[i], "Content-Type") == 0) {
+            has_content_type = true;
+        }
+        offset += snprintf(header_buffer + offset, sizeof(header_buffer) - offset,
+            "%s: %s\r\n", res->header_keys[i], res->header_values[i]);
     }
     
+    // Add default Content-Type if not set
+    if (!has_content_type) {
+        offset += snprintf(header_buffer + offset, sizeof(header_buffer) - offset,
+            "Content-Type: application/json\r\n");
+    }
+    
+    // Add Content-Length or Transfer-Encoding
+    if (use_chunked) {
+        offset += snprintf(header_buffer + offset, sizeof(header_buffer) - offset,
+            "Transfer-Encoding: chunked\r\n");
+    } else {
+        offset += snprintf(header_buffer + offset, sizeof(header_buffer) - offset,
+            "Content-Length: %zu\r\n", body_len);
+    }
+    
+    // Add Connection: close
+    offset += snprintf(header_buffer + offset, sizeof(header_buffer) - offset,
+        "Connection: close\r\n\r\n");
+    
     // Send headers
-    ssize_t wr = write(client_fd, header, header_len);
+    ssize_t wr = write(client_fd, header_buffer, offset);
     (void)wr;
     
     // Send body
     if (body_len > 0 && res->body) {
         if (use_chunked) {
-            // Send body in chunks
-            size_t offset = 0;
-            while (offset < body_len) {
-                size_t chunk_size = (body_len - offset < BUFFER_SIZE) ? 
-                                    (body_len - offset) : BUFFER_SIZE;
+            // Send in chunks
+            const char* data = res->body;
+            size_t remaining = body_len;
+            const size_t chunk_size = 8192;
+            
+            while (remaining > 0) {
+                size_t to_send = (remaining > chunk_size) ? chunk_size : remaining;
                 
                 // Send chunk size in hex
                 char chunk_header[32];
-                int chunk_header_len = snprintf(chunk_header, sizeof(chunk_header), 
-                                                "%zx\r\n", chunk_size);
-                wr = write(client_fd, chunk_header, chunk_header_len);
+                snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", to_send);
+                wr = write(client_fd, chunk_header, strlen(chunk_header));
                 (void)wr;
                 
                 // Send chunk data
-                wr = write(client_fd, res->body + offset, chunk_size);
+                wr = write(client_fd, data, to_send);
                 (void)wr;
                 
-                // Send chunk trailer
+                // Send trailing CRLF
                 wr = write(client_fd, "\r\n", 2);
                 (void)wr;
                 
-                offset += chunk_size;
+                data += to_send;
+                remaining -= to_send;
             }
             
-            // Send final chunk (0\r\n\r\n)
+            // Send final chunk (zero-length)
             wr = write(client_fd, "0\r\n\r\n", 5);
             (void)wr;
         } else {
-            // Send entire body at once (small bodies)
+            // Send entire body at once
             wr = write(client_fd, res->body, body_len);
             (void)wr;
         }
@@ -561,6 +766,14 @@ extern RouteRegistry* get_global_registry();
 
 // Handle HTTP request with route system
 static HttpResponse* handle_request(AsyncHttpServer* server, HttpRequest* req) {
+    // Try to serve static file first (for GET requests only)
+    if (strcmp(req->method, "GET") == 0) {
+        HttpResponse* static_response = try_serve_static(server, req->path);
+        if (static_response) {
+            return static_response;
+        }
+    }
+    
     RouteRegistry* registry = get_global_registry();
     
     // Find matching route
@@ -696,9 +909,6 @@ static HttpResponse* handle_request(AsyncHttpServer* server, HttpRequest* req) {
         body_val
     );
     
-    // Create Response object
-    Value response_obj = create_response_object();
-    
     // Call handler function
     pthread_mutex_lock(&server->vm_lock);
     
@@ -741,16 +951,54 @@ static HttpResponse* handle_request(AsyncHttpServer* server, HttpRequest* req) {
             return http_res;
         }
         
-        // Prepare arguments for avatar: just the request object
-        Value* avatar_args = malloc(sizeof(Value));
+        // Create response builder and register it
+        KylResponseBuilder* response_builder = calloc(1, sizeof(KylResponseBuilder));
+        response_builder->status_code = 200;  // Default status
+        response_builder->ref_count = 1;  // Initial reference
+        
+        printf("[HTTP] Created response builder, ref_count=%d\n", response_builder->ref_count);
+        
+        // Register response builder in kyl_aio registry
+        extern int kyl_aio_register_ptr(void*);
+        int response_id = kyl_aio_register_ptr(response_builder);
+        
+        // Create response object with __id
+        // NOTE: We cannot use vm_object_create_with_field here because avatar_runtime_submit
+        // does a shallow copy (memcpy), which means both the original and the copy will have
+        // the same pointers to keys/values arrays. When avatar cleans up, it will try to free
+        // them, causing a double-free.
+        // Instead, we manually create the object with heap-allocated arrays that we control.
+        Value response_obj_with_id;
+        response_obj_with_id.type = VALUE_OBJECT;
+        response_obj_with_id.as.object.count = 1;
+        
+        // Allocate arrays that will be copied by avatar_runtime_submit
+        // We'll free these after the avatar completes
+        char** keys = malloc(sizeof(char*));
+        Value* values = malloc(sizeof(Value));
+        keys[0] = strdup("__id");
+        values[0].type = VALUE_NUMBER;
+        values[0].as.number = (double)response_id;
+        
+        response_obj_with_id.as.object.keys = keys;
+        response_obj_with_id.as.object.values = values;
+        
+        // Prepare arguments for avatar: request and response objects
+        Value* avatar_args = malloc(sizeof(Value) * 2);
         avatar_args[0] = request_obj;
+        avatar_args[1] = response_obj_with_id;
+        
+        // Retain the response builder for the avatar
+        // Now ref_count=2: one for server, one for avatar
+        response_builder_retain(response_builder);
+        printf("[HTTP] Retained builder for avatar, ref_count=%d\n", response_builder->ref_count);
         
         // Submit to avatar runtime
         AvatarHandle* handle = avatar_runtime_submit(
             server->vm->avatar_runtime,
             handler_fn.as.function.function,
             avatar_args,
-            1,  // 1 argument (request)
+            2,  // 2 arguments (request, response)
             server->vm,
             NULL,  // No completion callback
             NULL
@@ -776,7 +1024,7 @@ static HttpResponse* handle_request(AsyncHttpServer* server, HttpRequest* req) {
         Value result;
         bool call_success = false;
         int attempts = 0;
-        int max_attempts = 500;  // 5 seconds
+        int max_attempts = 30000;  // 5 minutes (300 seconds) to match HTTP client timeout
         
         while (!call_success && attempts < max_attempts) {
             // Process avatar completions
@@ -813,10 +1061,33 @@ static HttpResponse* handle_request(AsyncHttpServer* server, HttpRequest* req) {
             attempts++;
         }
         
+        // Free the response object's keys/values arrays that we allocated
+        // (avatar has its own copy from memcpy, so this is safe)
+        free(response_obj_with_id.as.object.keys[0]);  // free "__id" string
+        free(response_obj_with_id.as.object.keys);
+        free(response_obj_with_id.as.object.values);
+        
         free(avatar_args);
         
         if (!call_success) {
-            printf("[HTTP] ERROR: Avatar timeout\n");
+            printf("[HTTP] ERROR: Avatar timeout - cancelling task\n");
+            
+            // Cancel the avatar task (best-effort)
+            avatar_runtime_cancel(handle);
+            
+            // Get the response builder to release our reference
+            extern void* kyl_aio_get_ptr(int);
+            extern void kyl_aio_unregister_ptr(int);
+            
+            KylResponseBuilder* timed_out_builder = (KylResponseBuilder*)kyl_aio_get_ptr(response_id);
+            if (timed_out_builder) {
+                // Unregister from kyl_aio registry
+                kyl_aio_unregister_ptr(response_id);
+                
+                // Release our reference (avatar may still hold a reference)
+                response_builder_release(timed_out_builder);
+            }
+            
             pthread_mutex_unlock(&server->vm_lock);
             
             http_res = malloc(sizeof(HttpResponse));
@@ -830,18 +1101,73 @@ static HttpResponse* handle_request(AsyncHttpServer* server, HttpRequest* req) {
         
         printf("[HTTP] Avatar completed successfully\n");
         
-        // Handler returned a value via avatar - process it
-        printf("[HTTP] Handler returned value type: %d\n", result.type);
-        if (result.type == VALUE_STRING) {
-            printf("[HTTP] String value: '%s'\n", result.as.string ? result.as.string : "(null)");
-        } else if (result.type == VALUE_OBJECT) {
-            printf("[HTTP] Object with %d properties\n", result.as.object.count);
-        }
-        fflush(stdout);
+        // Extract response from response builder
+        extern void* kyl_aio_get_ptr(int);
+        extern void kyl_aio_unregister_ptr(int);
         
-        // Handler returns JSON string directly (like webview bridge)
+        KylResponseBuilder* built_response = (KylResponseBuilder*)kyl_aio_get_ptr(response_id);
+        
+        if (!built_response) {
+            printf("[HTTP] ERROR: Response builder not found after avatar completion\n");
+            // Release avatar's reference even though builder is gone
+            // (this shouldn't happen, but be safe)
+            pthread_mutex_unlock(&server->vm_lock);
+            
+            http_res = malloc(sizeof(HttpResponse));
+            http_res->status_code = 500;
+            http_res->body = strdup("{\"error\":\"Response builder lost\"}");
+            http_res->header_keys = NULL;
+            http_res->header_values = NULL;
+            http_res->header_count = 0;
+            return http_res;
+        }
+        
+
+        
+        printf("[HTTP] Response builder status=%d, body_length=%zu, headers=%d\n",
+               built_response->status_code, built_response->body_length, built_response->header_count);
+        
+        // Create HTTP response from builder
+        http_res = malloc(sizeof(HttpResponse));
+        http_res->status_code = built_response->status_code;
+        http_res->body = built_response->body ? strdup(built_response->body) : strdup("");
+        http_res->header_count = built_response->header_count;
+        
+        if (built_response->header_count > 0) {
+            http_res->header_keys = malloc(sizeof(char*) * built_response->header_count);
+            http_res->header_values = malloc(sizeof(char*) * built_response->header_count);
+            
+            for (int i = 0; i < built_response->header_count; i++) {
+                http_res->header_keys[i] = strdup(built_response->header_names[i]);
+                http_res->header_values[i] = strdup(built_response->header_values[i]);
+            }
+        } else {
+            http_res->header_keys = NULL;
+            http_res->header_values = NULL;
+        }
+        
+        // Clean up response builder using reference counting
+        // Unregister from kyl_aio registry first
+        kyl_aio_unregister_ptr(response_id);
+        
+        // Release avatar's reference first (avatar completed successfully)
+        printf("[HTTP] Releasing avatar's reference after completion\n");
+        response_builder_release(built_response);
+        
+        // Release server's reference (will free if ref_count reaches 0)
+        printf("[HTTP] Releasing server's reference after copying data\n");
+        response_builder_release(built_response);
+        
+        pthread_mutex_unlock(&server->vm_lock);
+        // avatar_args already freed earlier (line 1031), don't free again!
+        
+        if (params) route_params_free(params);
+        
+        return http_res;
+        
+        // OLD CODE - Handler returns JSON string directly (like webview bridge)
         // Convert result to HTTP response
-        if (result.type == VALUE_OBJECT) {
+        /*if (result.type == VALUE_OBJECT) {
             // Check if it's a Response object with status, body, headers
             int status_code = 200;
             char* body = NULL;
@@ -881,54 +1207,22 @@ static HttpResponse* handle_request(AsyncHttpServer* server, HttpRequest* req) {
                         }
                     }
                 }
-            }
-            
-            pthread_mutex_unlock(&server->vm_lock);
-            
-            http_res = malloc(sizeof(HttpResponse));
-            http_res->status_code = status_code;
-            http_res->body = body ? body : strdup("{\"status\":\"success\"}");
-            http_res->header_keys = header_keys;
-            http_res->header_values = header_values;
-            http_res->header_count = header_count;
-            return http_res;
-        } else if (result.type == VALUE_STRING && result.as.string) {
-            // Handler returned JSON string - use as response body
-            pthread_mutex_unlock(&server->vm_lock);
-            
-            http_res = malloc(sizeof(HttpResponse));
-            http_res->status_code = 200;
-            http_res->body = strdup(result.as.string);
-            http_res->header_keys = NULL;
-            http_res->header_values = NULL;
-            http_res->header_count = 0;
-            return http_res;
-        } else if (result.type == VALUE_NUMBER) {
-            // Handler returned a number
-            char num_buf[64];
-            snprintf(num_buf, sizeof(num_buf), "%g", result.as.number);
-            
-            pthread_mutex_unlock(&server->vm_lock);
-            
-            http_res = malloc(sizeof(HttpResponse));
-            http_res->status_code = 200;
-            http_res->body = strdup(num_buf);
-            http_res->header_keys = NULL;
-            http_res->header_values = NULL;
-            http_res->header_count = 0;
-            return http_res;
-        } else {
-            // Other types - return generic success
-            pthread_mutex_unlock(&server->vm_lock);
-            
-            http_res = malloc(sizeof(HttpResponse));
-            http_res->status_code = 200;
-            http_res->body = strdup("{\"status\":\"success\"}");
-            http_res->header_keys = NULL;
-            http_res->header_values = NULL;
-            http_res->header_count = 0;
-            return http_res;
-        }
+            }*/ // END OLD CODE - now using response builder
+        
+        // This code path should not be reached anymore
+        printf("[HTTP] WARNING: Unexpected code path - handler didn't use response builder\n");
+        pthread_mutex_unlock(&server->vm_lock);
+        free(avatar_args);
+        
+        http_res = malloc(sizeof(HttpResponse));
+        http_res->status_code = 500;
+        http_res->body = strdup("{\"error\":\"Handler didn't use response builder\"}");
+        http_res->header_keys = NULL;
+        http_res->header_values = NULL;
+        http_res->header_count = 0;
+        
+        if (params) route_params_free(params);
+        return http_res;
     } else {
         printf("[HTTP] Handler function not found: %s\n", route->handler_name);
         http_res = http_response_create(500, "Handler function not found");
@@ -1010,6 +1304,7 @@ AsyncHttpServer* async_http_server_create(int port) {
     server->running = false;
     server->vm = NULL;
     server->max_body_size = MAX_BODY_SIZE;  // Default: 10MB
+    server->static_mount_count = 0;  // Initialize static mounts
     pthread_mutex_init(&server->vm_lock, NULL);
     
     // Create socket
@@ -1079,6 +1374,13 @@ void async_http_server_destroy(AsyncHttpServer* server) {
     async_http_server_stop(server);
     close(server->server_fd);
     pthread_mutex_destroy(&server->vm_lock);
+    
+    // Free static mounts
+    for (int i = 0; i < server->static_mount_count; i++) {
+        free(server->static_mounts[i].url_prefix);
+        free(server->static_mounts[i].directory);
+    }
+    
     free(server);
 }
 
@@ -1182,6 +1484,54 @@ void async_http_server_set_max_body_size(AsyncHttpServer* server, size_t max_siz
 size_t async_http_server_get_max_body_size(AsyncHttpServer* server) {
     if (!server) return MAX_BODY_SIZE;
     return server->max_body_size;
+}
+
+// Built-in: http_static_add(url_prefix, directory)
+Value builtin_http_static_add(int arg_count, Value* args) {
+    if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        fprintf(stderr, "[HTTP] http_static_add requires (url_prefix:string, directory:string)\n");
+        Value err;
+        memset(&err, 0, sizeof(Value));
+        err.type = VALUE_BOOL;
+        err.as.boolean = false;
+        return err;
+    }
+    
+    if (!g_server) {
+        fprintf(stderr, "[HTTP] Server not running\n");
+        Value err;
+        memset(&err, 0, sizeof(Value));
+        err.type = VALUE_BOOL;
+        err.as.boolean = false;
+        return err;
+    }
+    
+    if (g_server->static_mount_count >= MAX_STATIC_MOUNTS) {
+        fprintf(stderr, "[HTTP] Maximum static mounts reached (%d)\n", MAX_STATIC_MOUNTS);
+        Value err;
+        memset(&err, 0, sizeof(Value));
+        err.type = VALUE_BOOL;
+        err.as.boolean = false;
+        return err;
+    }
+    
+    const char* url_prefix = args[0].as.string;
+    const char* directory = args[1].as.string;
+    
+    // Add new static mount
+    StaticMount* mount = &g_server->static_mounts[g_server->static_mount_count];
+    mount->url_prefix = strdup(url_prefix);
+    mount->directory = strdup(directory);
+    mount->active = true;
+    g_server->static_mount_count++;
+    
+    printf("[HTTP] Static mount added: %s -> %s\n", url_prefix, directory);
+    
+    Value result;
+    memset(&result, 0, sizeof(Value));
+    result.type = VALUE_BOOL;
+    result.as.boolean = true;
+    return result;
 }
 
 // Wait for server (blocks but doesn't use VM)

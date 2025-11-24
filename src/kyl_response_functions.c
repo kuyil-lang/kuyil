@@ -7,7 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 
-// Response builder structure matching HTTP library format
+// Response builder structure with reference counting
 typedef struct {
     int status_code;
     char* body;
@@ -16,7 +16,43 @@ typedef struct {
     char** header_values;
     int header_count;
     char* content_type;
+    int ref_count;  // Reference counter for safe cleanup
 } KylResponseBuilder;
+
+// Reference counting functions
+static void response_builder_retain(KylResponseBuilder* builder) {
+    if (builder) {
+        builder->ref_count++;
+        printf("[ResponseBuilder] Retained, ref_count=%d\n", builder->ref_count);
+    }
+}
+
+static void response_builder_release(KylResponseBuilder* builder) {
+    if (!builder) return;
+    
+    builder->ref_count--;
+    printf("[ResponseBuilder] Released, ref_count=%d\n", builder->ref_count);
+    
+    if (builder->ref_count <= 0) {
+        printf("[ResponseBuilder] Freeing builder (ref_count=%d)\n", builder->ref_count);
+        
+        // Free all allocated memory
+        if (builder->body) free(builder->body);
+        
+        if (builder->header_names) {
+            for (int i = 0; i < builder->header_count; i++) {
+                if (builder->header_names[i]) free(builder->header_names[i]);
+                if (builder->header_values[i]) free(builder->header_values[i]);
+            }
+            free(builder->header_names);
+            free(builder->header_values);
+        }
+        
+        if (builder->content_type) free(builder->content_type);
+        
+        free(builder);
+    }
+}
 
 // Set response status: response_setStatus(response_obj, 200)
 Value kyl_aio_response_set_status(int arg_count, Value* args) {
@@ -95,22 +131,38 @@ Value kyl_aio_response_set_body(int arg_count, Value* args) {
     }
     
     const char* body = args[1].as.string;
+    
+    // Validate pointer before strlen
+    if (!body) {
+        fprintf(stderr, "[kyl_aio_response_set_body] ERROR: NULL body pointer\n");
+        Value result;
+        memset(&result, 0, sizeof(Value));
+        result.type = VALUE_NIL;
+        return result;
+    }
+    
     size_t length = strlen(body);
+    printf("[kyl_aio_response_set_body] Body length: %zu\n", length);
     
-    printf("[kyl_aio_response_set_body] Setting body, length=%zu\n", length);
-    
-    // Free old body if it exists
+    // Free old body if it exists (safe since builder is single-use per request)
     if (res->body) {
         free(res->body);
     }
     
     // Allocate and copy new body
     res->body = malloc(length + 1);
+    if (!res->body) {
+        fprintf(stderr, "[kyl_aio_response_set_body] ERROR: malloc failed for body\n");
+        Value result;
+        memset(&result, 0, sizeof(Value));
+        result.type = VALUE_NIL;
+        return result;
+    }
     memcpy(res->body, body, length);
     res->body[length] = '\0';
     res->body_length = length;
     
-    printf("[kyl_aio_response_set_body] Body set successfully\n");
+    printf("[kyl_aio_response_set_body] Successfully copied %zu bytes\n", length);
     
     Value result;
     memset(&result, 0, sizeof(Value));

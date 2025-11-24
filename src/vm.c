@@ -1471,6 +1471,16 @@ static bool call_value(VM* vm, Value callee, int arg_count) {
             return true;
         }
         
+        // Add static file serving
+        if (strcmp(callee.as.string, "http_static_add") == 0) {
+            Value* args = vm->stack_top - arg_count - 1;
+            extern Value builtin_http_static_add(int, Value*);
+            Value result = builtin_http_static_add(arg_count, args);
+            vm->stack_top -= arg_count + 1;
+            vm_push(vm, result);
+            return true;
+        }
+        
         // Wait for HTTP server (blocks without using VM)
         if (strcmp(callee.as.string, "http_server_wait") == 0) {
             Value* args = vm->stack_top - arg_count - 1;
@@ -4152,9 +4162,11 @@ void vm_init(VM* vm) {
     Value http_start_server_val = {VALUE_STRING, {.string = strdup("http_start_server")}};
     Value http_stop_server_val = {VALUE_STRING, {.string = strdup("http_stop_server")}};
     Value http_server_wait_val = {VALUE_STRING, {.string = strdup("http_server_wait")}};
+    Value http_static_add_val = {VALUE_STRING, {.string = strdup("http_static_add")}};
     define_global(vm, "http_start_server", http_start_server_val);
     define_global(vm, "http_stop_server", http_stop_server_val);
     define_global(vm, "http_server_wait", http_server_wait_val);
+    define_global(vm, "http_static_add", http_static_add_val);
     
     // Register mutex primitives
     Value mutex_create_val = {VALUE_STRING, {.string = strdup("mutex_create")}};

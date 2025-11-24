@@ -1065,6 +1065,30 @@ async function executeActions(actions) {
     addTerminal('✅ Execution complete', '#89d185');
 }
 
+// Helper function to load a file by path (fetches content and opens in editor)
+async function openFile(filepath) {
+    try {
+        console.log('[openFile] Loading file:', filepath);
+        const response = await fetch('/api/files/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: filepath })
+        });
+        const content = await response.text();
+
+        if (content) {
+            console.log('[openFile] File loaded, opening in editor');
+            openFileInEditor(filepath, content);
+        } else {
+            console.error('[openFile] No content received');
+            addTerminal('❌ Failed to load: ' + filepath, '#f48771');
+        }
+    } catch (error) {
+        console.error('[openFile] Exception:', error);
+        addTerminal('❌ Error loading file: ' + error.message, '#f48771');
+    }
+}
+
 function openFileInEditor(filepath, content) {
     currentFile = filepath;
     firstFileLoaded = true;  // Mark that we've loaded a file
@@ -1346,7 +1370,7 @@ function loadDefaultSample() {
     addTerminal('💡 Create a new file to start coding!', '#89d185');
 }
 
-// Load project files after bridge is ready
+// Load project files after bridge is ready (webview mode)
 window.onBridgeReady = function() {
     console.log('[Startup] Bridge ready callback FIRED!');
     console.log('[Startup] About to call refreshProjectFiles...');
@@ -1355,6 +1379,21 @@ window.onBridgeReady = function() {
         refreshProjectFiles();
     }, 100);
 };
+
+// For remote HTTP mode, load files when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('[Startup] DOMContentLoaded - checking if in remote mode...');
+    // Give a moment for any webview bridge to initialize
+    setTimeout(function() {
+        // Check if we're in remote mode (webview bridge not available)
+        if (!window.kuyilBridge) {
+            console.log('[Startup] Remote mode detected - loading project files...');
+            refreshProjectFiles();
+        } else {
+            console.log('[Startup] Webview mode detected - waiting for onBridgeReady');
+        }
+    }, 200);
+});
 
 console.log('✓ Kuyil IDE Initialized');
 console.log('[Init] onBridgeReady defined:', typeof window.onBridgeReady);

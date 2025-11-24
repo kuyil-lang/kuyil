@@ -407,7 +407,6 @@ fn routeInvoker(parts) {
     let response = aio_response_get_body(response_obj)
     
     print("[Route Avatar] Response type: " + typeof(response))
-    print(response)
     
     // Handler returns JSON body as string - base64 encode it
     let responseStr = ""
@@ -655,13 +654,11 @@ function callRouteBridge(pattern, request) {
     return new Promise(function(resolve, reject) {
         var id = 'route_' + Date.now() + '_' + (routeRequestId++);
         pendingRouteRequests[id] = { resolve: resolve, reject: reject };
-        console.log('[Fetch]1')
+
         // Encode request as base64
         var requestJson = JSON.stringify(request);
-        console.log('[Fetch]2')
         var requestBase64 = textToBase64(requestJson);
         
-        console.log('[Fetch]3')
         // Call bridge: requestId|pattern|base64Request
         var bridgeArg = id + '|' + pattern + '|' + requestBase64;
         console.log('[Route Bridge] Calling:', pattern);
@@ -674,7 +671,7 @@ function callRouteBridge(pattern, request) {
                 delete pendingRouteRequests[id];
                 reject(new Error('Bridge timeout'));
             }
-        }, 10000);
+        }, 30000);
     });
 }
 
@@ -730,7 +727,7 @@ window.fetch = async function(url, options) {
     // Call through route bridge
     var routeKey = method + ' ' + path;
     var responseJson = await callRouteBridge(routeKey, request);
-    console.log('[Fetch] Bridge response:', responseJson);
+    // console.log('[Fetch] Bridge response:', responseJson);
     
     // Parse response
     var resp = JSON.parse(responseJson);

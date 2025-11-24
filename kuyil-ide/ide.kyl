@@ -9,7 +9,7 @@ import("interfaces/interface_str.kyl") as str
 import("interfaces/interface_transcoder.kyl") as json
 import("interfaces/interface_crypto.kyl") as crypto
 import("interfaces/interface_http_client_ex.kyl") as httpc
-import("interfaces/interface_http.kyl") as http
+//import("interfaces/interface_http.kyl") as http
 
 // ============================================
 // Configuration
@@ -77,6 +77,32 @@ fn jsonStringify(str) {
 // API Routes using @route decorator
 // Routes are automatically intercepted by webview fetch()
 // ============================================
+
+// Static file handler - serves files from assets directory
+@route(method="GET", path="/index.html", bridge=true)
+fn handleIndexHtml(request, response) {
+    let filePath = "kuyil-ide/assets/index.html"
+    if (file.file_exists(filePath)) {
+        let content = file.file_readText(filePath)
+        if (content != nil) {
+            aio_response_setStatus(response, 200)
+            aio_response_setHeader(response, "Content-Type", "text/html; charset=utf-8")
+            aio_response_setBody(response, content)
+            return
+        }
+    }
+    aio_response_setStatus(response, 404)
+    aio_response_setBody(response, "File not found")
+}
+
+// Root route - redirects to index.html
+@route(method="GET", path="/", bridge=true)
+fn handleRoot(request, response) {
+    response.status = 302
+    response.headers["Location"] = "/index.html"
+    response.body = ""
+    return response
+}
 
 // AI Generate - POST /api/ai/generate
 @route(method="POST", path="/api/ai/generate", bridge=true)
@@ -944,20 +970,38 @@ fn main() {
     print("  GET  /api/health")
     
     if (g_mode == "remote") {
-        print("\n🚀 Starting HTTP server on port 3000...")
+        print("\n🚀 Starting async HTTP server on port 3000...")
         print("   Remote access mode - use http://localhost:3000\n")
+        print("   Note: @route handlers are automatically registered with async I/O\n")
         
-        // Start HTTP server
-        let server = http.http_createServer("0.0.0.0", 3000)
-        if (server == nil) {
-            print("ERROR: Failed to create server")
+        // Start the async HTTP server with @route support
+        let serverStarted = http_start_server(3000)
+        
+        if (!serverStarted) {
+            print("ERROR: Failed to start async HTTP server on port 3000")
+            print("       Make sure port 3000 is not already in use")
             return
         }
         
-        print("✓ Server running on http://0.0.0.0:3000")
+        print("✓ Async HTTP server started on port 3000")
+        
+        // Configure static file serving
+        print("  Configuring static file serving...")
+        let staticResult = http_static_add("/", "kuyil-ide/assets")
+        
+        if (staticResult) {
+            print("  ✓ Static files: / -> kuyil-ide/assets")
+        } else {
+            print("  ✗ Failed to configure static file serving")
+        }
+        
+        print("\n✓ Async HTTP server running on http://0.0.0.0:3000")
+        print("  ✓ Static file serving with MIME types")
+        print("  ✓ @route handlers automatically integrated")
+        print("  Access IDE at: http://localhost:3000/index.html")
         print("  Press Ctrl+C to stop\n")
         
-        // Keep server running
+        // Keep server running - the async I/O system handles requests
         while (true) {
             sys.sleep(1000)
         }
