@@ -745,6 +745,61 @@ fn handleGetLLMConfig(request, response) {
     return
 }
 
+// Execute a single project action
+fn executeProjectAction(actionObj) {
+    let actionType = actionObj.action
+    print("[AI] Executing action: " + actionType)
+    
+    if (actionType == "create_folder") {
+        let path = resolvePath(actionObj.path)
+        sys.capture("mkdir -p " + path)
+        return `{"success":true,"message":"Created folder: ` + actionObj.path + `"}`
+        
+    } else if (actionType == "create_file") {
+        let path = resolvePath(actionObj.path)
+        let content = actionObj.content
+        if (content == nil) { content = "" }
+        
+        // Create parent dir
+        let lastSlash = str_lastIndexOf(path, "/")
+        if (lastSlash > 0) {
+            let dirPath = str_substring(path, 0, lastSlash)
+            sys.capture("mkdir -p " + dirPath)
+        }
+        
+        let success = file.file_writeText(path, content)
+        if (success) {
+            return `{"success":true,"message":"Created: ` + actionObj.path + `"}`
+        } else {
+            return `{"success":false,"error":"Failed to create: ` + actionObj.path + `"}`
+        }
+        
+    } else if (actionType == "delete_file") {
+        let path = resolvePath(actionObj.path)
+        sys.capture("rm -f " + path)
+        return `{"success":true,"message":"Deleted: ` + actionObj.path + `"}`
+        
+    } else if (actionType == "run_command") {
+        let cmd = actionObj.command
+        let cwd = g_workspace_path
+        if (actionObj.cwd != nil) {
+            cwd = resolvePath(actionObj.cwd)
+        }
+        let fullCmd = "cd " + cwd + " && " + cmd + " 2>&1"
+        let output = sys.capture(fullCmd)
+        return `{"success":true,"message":"Executed command","output":"` + output + `"}`
+        
+    } else if (actionType == "test_file") {
+        let path = resolvePath(actionObj.path)
+        let testCmd = "cd /home/vmukumar/akish/kuyil && ./kuyil " + path + " 2>&1"
+        let output = sys.capture(testCmd)
+        return `{"success":true,"message":"Tested: ` + actionObj.path + `","output":"` + output + `"}`
+        
+    } else {
+        return `{"success":false,"error":"Unknown action: ` + actionType + `"}`
+    }
+}
+
 // Process LLM Action - POST /api/llm/action
 @route(method="POST", path="/api/llm/action", bridge=true)
 fn handleLLMAction(request, response) {
@@ -757,7 +812,140 @@ fn handleLLMAction(request, response) {
     let executionOutput = body.executionOutput
     let exitCode = body.exitCode
     let model = body.model
+    let mode = body.mode
     
+    // NEW: Project mode - AI returns structured actions
+    if (mode == "project") {
+        print("[API] Project mode - AI will generate structured actions")
+        
+        if (userPrompt == nil || userPrompt == "") {
+            aio_response_setStatus(response, 400)
+            aio_response_setBody(response, `{"error":"No prompt provided"}`)
+            return
+        }
+        
+        if (model == nil || model == "") {
+            model = "qwen2.5-coder:32b"
+        }
+        
+        // Get workspace context
+        let filesCmd = "cd " + g_workspace_path + " && find . -type f -name '*.kyl' 2>/dev/null | head -10"
+        let filesList = sys.capture(filesCmd)
+        let workspaceContext = "Workspace files:\n" + filesList
+        
+        // Build AI prompt for structured output
+        let systemPrompt = `You are a Kuyil programming expert. Respond with ONLY valid JSON.
+
+KUYIL SYNTAX:
+- Variables: let x = 10
+- Functions: fn name(a, b) { return a + b }
+- Control: if/else, while, for
+- Arrays: [1,2,3], array_push(arr, val)
+- Print: print("text")
+
+` + workspaceContext + `
+
+USER REQUEST: ` + userPrompt + `
+
+RESPOND WITH JSON ONLY (no markdown, no explanations):
+{
+  "summary": "Brief description",
+  "actions": [
+    {"action": "create_folder", "path": "project_name"},
+    {"action": "create_file", "path": "project_name/main.kyl", "content": "fn main() {\\n  print(\\"Hello\\")\\n}\\n\\nmain()"},
+    {"action": "test_file", "path": "project_name/main.kyl"},
+    {"action": "run_command", "command": "../kuyil main.kyl", "cwd": "project_name"}
+  ]
+}
+
+AVAILABLE ACTIONS:
+- create_folder: {action, path}
+- create_file: {action, path, content}
+- delete_file: {action, path}
+- run_command: {action, command, cwd?}
+- test_file: {action, path}
+
+Return ONLY the JSON object.`
+
+        // Call Ollama with JSON format
+        let escapedPrompt = json.transcode_jsonStringify(systemPrompt)
+        let ollamaBody = `{"model":"` + model + `","prompt":` + escapedPrompt + `,"stream":false,"format":"json"}`
+        let ollamaUrl = "http://127.0.0.1:11434/api/generate"
+        
+        print("[API] Calling Ollama for project generation...")
+        let ollamaResponse = httpc.http_clientPostEx(ollamaUrl, ollamaBody)
+        
+        if (ollamaResponse == nil) {
+            aio_response_setStatus(response, 503)
+            aio_response_setBody(response, `{"error":"Cannot connect to Ollama"}`)
+            return
+        }
+        
+        // Parse Ollama response
+        let ollamaData = json.transcode_jsonParse(ollamaResponse)
+        let aiResponse = ollamaData.response
+        
+        if (aiResponse == nil) {
+            aio_response_setStatus(response, 500)
+            aio_response_setBody(response, `{"error":"Invalid Ollama response"}`)
+            return
+        }
+        
+        // Clean markdown if present
+        let cleanResponse = str_trim(aiResponse)
+        if (str_substring(cleanResponse, 0, 7) == "```json") {
+            let startIdx = str_indexOf(cleanResponse, "\n")
+            if (startIdx >= 0) {
+                cleanResponse = str_substring(cleanResponse, startIdx + 1, str_length(cleanResponse))
+            }
+            let endIdx = str_lastIndexOf(cleanResponse, "```")
+            if (endIdx > 0) {
+                cleanResponse = str_substring(cleanResponse, 0, endIdx)
+            }
+            cleanResponse = str_trim(cleanResponse)
+        }
+        
+        // Parse AI actions
+        let actionData = json.transcode_jsonParse(cleanResponse)
+        if (actionData == nil) {
+            aio_response_setStatus(response, 500)
+            aio_response_setBody(response, `{"error":"Failed to parse AI response","raw":"` + str_substring(aiResponse, 0, 200) + `"}`  )
+            return
+        }
+        
+        let summary = actionData.summary
+        let actions = actionData.actions
+        
+        if (actions == nil) {
+            aio_response_setStatus(response, 500)
+            aio_response_setBody(response, `{"error":"No actions in AI response"}`)
+            return
+        }
+        
+        // Execute each action
+        let numActions = array_length(actions)
+        print("[API] Executing " + str_from_int(numActions) + " actions...")
+        
+        let results = "["
+        let i = 0
+        while (i < numActions) {
+            let action = actions[i]
+            let result = executeProjectAction(action)
+            if (i > 0) { results = results + "," }
+            results = results + result
+            i = i + 1
+        }
+        results = results + "]"
+        
+        let finalResponse = `{"success":true,"summary":"` + summary + `","executed":` + str_from_int(numActions) + `,"results":` + results + `}`
+        
+        aio_response_setStatus(response, 200)
+        aio_response_setBody(response, finalResponse)
+        print("[API] Project actions completed")
+        return
+    }
+    
+    // LEGACY: Original quick action mode
     if (action == nil || action == "") {
         aio_response_setStatus(response, 400)
         aio_response_setBody(response, `{"error":"No action specified"}`)

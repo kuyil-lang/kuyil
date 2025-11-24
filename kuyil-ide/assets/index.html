@@ -128,10 +128,52 @@ select option { background: #ffffff; color: #000000; }
 <div class="sidebar">
 <div class="sidebar-tabs">
 <div class="sidebar-tab active" onclick="switchTab('docs')" id="tab-docs">📚</div>
+<div class="sidebar-tab" onclick="switchTab('ai')" id="tab-ai">🤖</div>
 <div class="sidebar-tab" onclick="switchTab('extensions')" id="tab-extensions">🧩</div>
 <div class="sidebar-tab" onclick="switchTab('settings')" id="tab-settings">⚙️</div>
 </div>
 <div class="sidebar-content">
+<!-- AI Assistant Tab -->
+<div id="content-ai" class="sidebar-section" style="display: none;">
+<h3>🤖 AI Project Assistant</h3>
+<div style="margin-bottom: 12px; padding: 10px; background: #2d2d30; border-radius: 4px; font-size: 12px; color: #d4d4d4;">
+AI-powered project creation and management. Describe what you want to build, and the AI will create files, folders, and code for you.
+</div>
+
+<div style="margin-bottom: 12px;">
+<label style="display: block; margin-bottom: 4px; font-size: 13px; color: #ccc;">Your Request:</label>
+<textarea id="aiPromptInput" placeholder="Example: Create a program to calculate factorial of a number" style="width: 100%; height: 100px; padding: 8px; background: #1e1e1e; color: #d4d4d4; border: 1px solid #3e3e42; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 13px; resize: vertical;"></textarea>
+</div>
+
+<div style="margin-bottom: 12px;">
+<label style="display: block; margin-bottom: 4px; font-size: 13px; color: #ccc;">Model:</label>
+<select id="aiModelSelect" style="width: 100%; padding: 6px; background: #1e1e1e; color: #d4d4d4; border: 1px solid #3e3e42; border-radius: 4px; font-size: 13px;">
+<option value="qwen2.5-coder:32b">qwen2.5-coder:32b</option>
+<option value="qwen2.5-coder:14b">qwen2.5-coder:14b</option>
+<option value="qwen2.5-coder:7b">qwen2.5-coder:7b</option>
+<option value="codellama:13b">codellama:13b</option>
+<option value="codellama:7b">codellama:7b</option>
+</select>
+</div>
+
+<button onclick="executeAIPrompt()" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">
+✨ Generate Project
+</button>
+
+<div id="aiStatusArea" style="margin-top: 12px; padding: 8px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; min-height: 100px; max-height: 300px; overflow-y: auto; font-size: 12px; font-family: 'Consolas', monospace; display: none;">
+<!-- Status messages will appear here -->
+</div>
+
+<div style="margin-top: 16px; padding: 10px; background: #2d2d30; border-radius: 4px; font-size: 11px; color: #888;">
+<strong>💡 Tips:</strong><br>
+• "Create a web server with routes"<br>
+• "Build a factorial calculator"<br>
+• "Make a file system utility"<br>
+• "Create a REST API with JSON"<br>
+• "Fix the bug in factorial.kyl"
+</div>
+</div>
+
 <!-- Documentation Tab -->
 <div id="content-docs" class="sidebar-section">
 <h3>📁 Project Files
@@ -1289,6 +1331,85 @@ setTimeout(function() {
     addTerminal('✅ Using fetch() API with @route backend', '#89d185');
     console.log('[IDE] Using standard fetch() API routed to @route handlers');
 }, 1000);
+
+// AI Project Assistant - Execute user prompt
+async function executeAIPrompt() {
+    const promptInput = document.getElementById('aiPromptInput');
+    const modelSelect = document.getElementById('aiModelSelect');
+    const statusArea = document.getElementById('aiStatusArea');
+    
+    const prompt = promptInput.value.trim();
+    if (!prompt) {
+        alert('Please enter a request for the AI');
+        return;
+    }
+    
+    const model = modelSelect.value;
+    
+    // Show status area
+    statusArea.style.display = 'block';
+    statusArea.innerHTML = '<div style="color: #4ec9b0;">🤖 AI is planning...</div>';
+    
+    addTerminal('🤖 AI Assistant: Generating project structure...', '#667eea');
+    
+    try {
+        console.log('[AI] Sending prompt to LLM:', prompt);
+        
+        const response = await fetch('/api/llm/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mode: 'project',  // NEW: Use project mode for structured actions
+                prompt: prompt,
+                model: model
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log('[AI] Success:', result);
+            
+            // Display summary
+            statusArea.innerHTML = '<div style="color: #89d185; font-weight: bold;">✅ ' + (result.summary || 'Completed') + '</div>\n';
+            statusArea.innerHTML += '<div style="color: #dcdcaa; margin-top: 8px;">Executed ' + result.executed + ' actions</div>\n';
+            
+            // Display each action result
+            if (result.results && result.results.length > 0) {
+                result.results.forEach((r, idx) => {
+                    if (r.success) {
+                        statusArea.innerHTML += '<div style="color: #89d185; margin-top: 4px;">✓ ' + r.message + '</div>';
+                        if (r.output && r.output.trim()) {
+                            const shortOutput = r.output.substring(0, 150);
+                            statusArea.innerHTML += '<div style="color: #888; margin-left: 16px; font-size: 10px; font-family: monospace;">' + 
+                                shortOutput.replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
+                                (r.output.length > 150 ? '...' : '') + '</div>';
+                        }
+                    } else {
+                        statusArea.innerHTML += '<div style="color: #f48771; margin-top: 4px;">✗ ' + (r.error || 'Failed') + '</div>';
+                    }
+                });
+            }
+            
+            addTerminal('✅ AI Project: ' + (result.summary || 'Completed'), '#89d185');
+            
+            // Refresh file list
+            setTimeout(() => refreshProjectFiles(), 500);
+            
+        } else {
+            console.error('[AI] Error:', result);
+            statusArea.innerHTML = '<div style="color: #f48771;">❌ Error: ' + (result.error || 'Unknown error') + '</div>';
+            if (result.raw_response) {
+                statusArea.innerHTML += '<div style="color: #888; margin-top: 8px; font-size: 10px;">Raw response: ' + result.raw_response.substring(0, 200) + '...</div>';
+            }
+            addTerminal('❌ AI Assistant failed: ' + (result.error || 'Unknown error'), '#f48771');
+        }
+    } catch (error) {
+        console.error('[AI] Exception:', error);
+        statusArea.innerHTML = '<div style="color: #f48771;">❌ Error: ' + error.message + '</div>';
+        addTerminal('❌ AI Assistant error: ' + error.message, '#f48771');
+    }
+}
 
 // Refresh project files from workspace
 async function refreshProjectFiles() {
