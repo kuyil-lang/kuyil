@@ -6,6 +6,7 @@
 #include "request_response.h"
 #include "vm_call_shared.h"
 #include "avatar_runtime.h"
+#include "thread_pool.h"
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -38,10 +39,17 @@ struct AsyncHttpServer {
     size_t max_body_size;  // Maximum request body size (default: 10MB)
     StaticMount static_mounts[MAX_STATIC_MOUNTS];
     int static_mount_count;
+    ThreadPool* io_pool;  // Thread pool for async I/O (file reads, body reads)
 };
 
 // Global server instance
 static AsyncHttpServer* g_server = NULL;
+
+// Context for async client handling
+typedef struct {
+    AsyncHttpServer* server;
+    int client_fd;
+} ClientContext;
 
 // Forward declarations - must be before any functions
 static HttpResponse* http_response_create(int status_code, const char* body);
@@ -1235,9 +1243,14 @@ static HttpResponse* handle_request(AsyncHttpServer* server, HttpRequest* req) {
     return http_res;
 }
 
-// Handle client connection
-static void handle_client(AsyncHttpServer* server, int client_fd) {
-    printf("[HTTP] handle_client called, fd=%d\n", client_fd);
+// Handle client connection (runs in thread pool)
+static void* handle_client_async(void* user_data) {
+    ClientContext* ctx = (ClientContext*)user_data;
+    AsyncHttpServer* server = ctx->server;
+    int client_fd = ctx->client_fd;
+    free(ctx);  // Free context immediately
+    
+    printf("[HTTP] handle_client_async called, fd=%d\n", client_fd);
     fflush(stdout);
     
     char buffer[BUFFER_SIZE];
@@ -1248,7 +1261,7 @@ static void handle_client(AsyncHttpServer* server, int client_fd) {
     
     if (bytes_read <= 0) {
         close(client_fd);
-        return;
+        return NULL;
     }
     
     buffer[bytes_read] = '\0';
@@ -1258,7 +1271,7 @@ static void handle_client(AsyncHttpServer* server, int client_fd) {
     fflush(stdout);
     if (!req) {
         close(client_fd);
-        return;
+        return NULL;
     }
     
     HttpResponse* res = handle_request(server, req);
@@ -1271,6 +1284,7 @@ static void handle_client(AsyncHttpServer* server, int client_fd) {
     
     http_request_free(req);
     close(client_fd);
+    return NULL;  // Thread pool expects void* return
 }
 
 // Server thread function
@@ -1289,7 +1303,24 @@ static void* server_thread(void* arg) {
             break;
         }
         
-        handle_client(server, client_fd);
+        // Submit to thread pool for async handling
+        if (server->io_pool) {
+            ClientContext* ctx = malloc(sizeof(ClientContext));
+            ctx->server = server;
+            ctx->client_fd = client_fd;
+            
+            if (!thread_pool_submit(server->io_pool, handle_client_async, ctx, NULL, NULL)) {
+                fprintf(stderr, "[HTTP] Failed to submit client to thread pool, handling synchronously\n");
+                free(ctx);
+                // Fallback: handle synchronously on accept thread (blocking)
+                ClientContext sync_ctx = {server, client_fd};
+                handle_client_async(&sync_ctx);
+            }
+        } else {
+            // No thread pool, handle synchronously (blocking)
+            ClientContext ctx = {server, client_fd};
+            handle_client_async(&ctx);
+        }
     }
     
     return NULL;
@@ -1306,6 +1337,12 @@ AsyncHttpServer* async_http_server_create(int port) {
     server->max_body_size = MAX_BODY_SIZE;  // Default: 10MB
     server->static_mount_count = 0;  // Initialize static mounts
     pthread_mutex_init(&server->vm_lock, NULL);
+    
+    // Create thread pool for async I/O (4 worker threads for file/body reads)
+    server->io_pool = thread_pool_create(4);
+    if (!server->io_pool) {
+        fprintf(stderr, "[HTTP] Warning: Failed to create I/O thread pool, will use synchronous I/O\n");
+    }
     
     // Create socket
     server->server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -1374,6 +1411,11 @@ void async_http_server_destroy(AsyncHttpServer* server) {
     async_http_server_stop(server);
     close(server->server_fd);
     pthread_mutex_destroy(&server->vm_lock);
+    
+    // Destroy I/O thread pool
+    if (server->io_pool) {
+        thread_pool_destroy(server->io_pool);
+    }
     
     // Free static mounts
     for (int i = 0; i < server->static_mount_count; i++) {

@@ -7,6 +7,9 @@
 body { font-family: 'Segoe UI', sans-serif; background: #1e1e1e; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
 .header { background: #2d2d30; padding: 10px 16px; border-bottom: 1px solid #3e3e42; display: flex; justify-content: space-between; align-items: center; }
 .header h1 { font-size: 18px; color: #fff; }
+.header-center { display: flex; align-items: center; gap: 12px; }
+.workspace-info { font-size: 12px; color: #888; }
+.workspace-path { color: #4ec9b0; font-family: monospace; }
 .header-actions { display: flex; gap: 8px; }
 .btn { background: #0e639c; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; }
 .btn:hover { background: #1177bb; }
@@ -39,7 +42,22 @@ body { font-family: 'Segoe UI', sans-serif; background: #1e1e1e; color: #d4d4d4;
 /* CodeMirror specific styles to constrain size */
 .CodeMirror { height: 100% !important; width: 100% !important; }
 .doc-viewer { display: none; flex: 1; overflow-y: auto; padding: 20px; background: #1e1e1e; color: #d4d4d4; line-height: 1.6; }
+.markdown-preview { display: none; flex: 1; overflow-y: auto; padding: 30px; background: #1e1e1e; color: #d4d4d4; line-height: 1.7; max-width: 900px; margin: 0 auto; }
+.markdown-toggle { position: absolute; top: 10px; right: 10px; z-index: 100; }
 .doc-viewer h1 { color: #4ec9b0; margin: 20px 0 12px; font-size: 28px; border-bottom: 2px solid #3e3e42; padding-bottom: 8px; }
+.markdown-preview h1 { color: #4ec9b0; margin: 24px 0 16px; font-size: 32px; border-bottom: 2px solid #3e3e42; padding-bottom: 10px; }
+.markdown-preview h2 { color: #4ec9b0; margin: 20px 0 12px; font-size: 26px; border-bottom: 1px solid #3e3e42; padding-bottom: 8px; }
+.markdown-preview h3 { color: #9cdcfe; margin: 16px 0 10px; font-size: 20px; }
+.markdown-preview p { margin: 12px 0; }
+.markdown-preview pre { background: #2d2d30; padding: 16px; border-radius: 6px; overflow-x: auto; border: 1px solid #3e3e42; margin: 12px 0; }
+.markdown-preview code { background: #2d2d30; color: #ce9178; padding: 3px 6px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 14px; }
+.markdown-preview pre code { background: transparent; padding: 0; color: #d4d4d4; }
+.markdown-preview ul, .markdown-preview ol { padding-left: 30px; margin: 10px 0; }
+.markdown-preview li { margin: 6px 0; }
+.markdown-preview blockquote { border-left: 4px solid #4ec9b0; padding-left: 16px; margin: 12px 0; color: #888; font-style: italic; }
+.markdown-preview table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.markdown-preview th, .markdown-preview td { border: 1px solid #3e3e42; padding: 8px 12px; text-align: left; }
+.markdown-preview th { background: #2d2d30; font-weight: bold; }
 .doc-viewer h2 { color: #4ec9b0; margin: 16px 0 10px; font-size: 22px; border-bottom: 1px solid #3e3e42; padding-bottom: 6px; }
 .doc-viewer h3 { color: #9cdcfe; margin: 14px 0 8px; font-size: 18px; }
 .doc-viewer code { background: #2d2d30; color: #ce9178; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 13px; }
@@ -52,6 +70,24 @@ body { font-family: 'Segoe UI', sans-serif; background: #1e1e1e; color: #d4d4d4;
 .doc-viewer p { margin: 8px 0; }
 .terminal { height: 150px; background: #1e1e1e; border-top: 1px solid #3e3e42; padding: 12px; overflow-y: auto; font-family: Consolas, monospace; font-size: 13px; }
 .terminal-line { margin-bottom: 4px; }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 1000; justify-content: center; align-items: center; }
+.modal { background: #2d2d30; border: 1px solid #3e3e42; border-radius: 8px; width: 500px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); }
+.modal-header { padding: 16px; border-bottom: 1px solid #3e3e42; display: flex; justify-content: space-between; align-items: center; }
+.modal-header h2 { font-size: 18px; color: #fff; margin: 0; }
+.modal-close { background: none; border: none; color: #888; font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px; }
+.modal-close:hover { color: #fff; }
+.modal-body { flex: 1; overflow-y: auto; padding: 16px; }
+.workspace-list { list-style: none; padding: 0; margin: 0; }
+.workspace-item { padding: 12px 16px; margin: 6px 0; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
+.workspace-item:hover { background: #37373d; border-color: #0e639c; }
+.workspace-item.current { background: #0e639c; border-color: #1177bb; }
+.workspace-item.current .workspace-name { font-weight: bold; }
+.workspace-icon { font-size: 20px; }
+.workspace-details { flex: 1; }
+.workspace-name { font-size: 14px; color: #4ec9b0; font-family: monospace; }
+.workspace-path { font-size: 11px; color: #888; margin-top: 2px; }
+.modal-footer { padding: 16px; border-top: 1px solid #3e3e42; display: flex; gap: 8px; justify-content: flex-end; }
+.workspace-actions { display: flex; gap: 8px; margin-top: 12px; }
 .ai-panel { width: 350px; background: #252526; border-left: 1px solid #3e3e42; display: flex; flex-direction: column; }
 .ai-header { padding: 12px; background: #2d2d30; border-bottom: 1px solid #3e3e42; font-size: 14px; font-weight: bold; }
 .ai-settings { background: #2d2d30; padding: 12px; border-bottom: 1px solid #3e3e42; }
@@ -73,6 +109,9 @@ select option { background: #ffffff; color: #000000; }
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/mode/simple.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/markdown/markdown.min.js"></script>
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style id="kuyilTheme">
 /* Kuyil Dark Theme */
 .cm-s-kuyilDark { background:#1e1e1e; color:#d4d4d4; }
@@ -117,6 +156,13 @@ select option { background: #ffffff; color: #000000; }
 <body>
 <div class="header">
 <h1>🚀 Kuyil AI IDE</h1>
+<div class="header-center">
+<div class="workspace-info">
+<span>📁 Workspace:</span>
+<span class="workspace-path" id="workspacePath">Loading...</span>
+</div>
+<button class="btn" onclick="switchWorkspace()" style="font-size: 11px; padding: 4px 10px;">Switch</button>
+</div>
 <div class="header-actions">
 <button class="btn" onclick="newFile()">📄 New</button>
 <button class="btn" onclick="saveFile()">💾 Save</button>
@@ -295,15 +341,38 @@ AI-powered project creation and management. Describe what you want to build, and
 
 <div class="main">
 <div class="editor-container">
+<button class="btn markdown-toggle" id="markdownToggle" onclick="toggleMarkdownPreview()" style="display: none;">👁️ Preview</button>
 <textarea id="editor" class="editor" spellcheck="false">// Kuyil Programming Language
 print("Welcome to Kuyil IDE!")
 
 // Try the documentation in the sidebar!
 </textarea>
 </div>
+<div id="markdownPreview" class="markdown-preview"></div>
 <div class="doc-viewer" id="docViewer"></div>
 <div class="terminal" id="terminal">
 <div class="terminal-line" style="color: #89d185">✓ Kuyil IDE Ready</div>
+</div>
+</div>
+
+<!-- Workspace Selector Modal -->
+<div class="modal-overlay" id="workspaceModal">
+<div class="modal">
+<div class="modal-header">
+<h2>📁 Select Workspace</h2>
+<button class="modal-close" onclick="closeWorkspaceModal()">&times;</button>
+</div>
+<div class="modal-body">
+<ul class="workspace-list" id="workspaceList">
+<li style="padding: 20px; text-align: center; color: #888;">Loading workspaces...</li>
+</ul>
+<div class="workspace-actions">
+<button class="btn" onclick="createNewWorkspace()" style="width: 100%;">➕ Create New Workspace</button>
+</div>
+</div>
+<div class="modal-footer">
+<button class="btn" onclick="closeWorkspaceModal()">Cancel</button>
+</div>
 </div>
 </div>
 
@@ -1135,15 +1204,34 @@ function openFileInEditor(filepath, content) {
     currentFile = filepath;
     firstFileLoaded = true;  // Mark that we've loaded a file
     
-    // Show editor, hide doc viewer
-    document.querySelector('.editor-container').style.display = 'flex';
-    document.getElementById('docViewer').style.display = 'none';
+    const isMarkdown = filepath.endsWith('.md');
+    const editorContainer = document.querySelector('.editor-container');
+    const docViewer = document.getElementById('docViewer');
+    const markdownPreview = document.getElementById('markdownPreview');
+    const markdownToggle = document.getElementById('markdownToggle');
+    
+    // Show/hide appropriate views
+    editorContainer.style.display = 'flex';
+    docViewer.style.display = 'none';
+    markdownPreview.style.display = 'none';
+    markdownToggle.style.display = isMarkdown ? 'block' : 'none';
     
     // Set content in CodeMirror
     if (window.kuyilEditor) {
         window.kuyilEditor.setValue(content);
+        // Switch to markdown mode if .md file
+        if (isMarkdown) {
+            window.kuyilEditor.setOption('mode', 'markdown');
+        } else {
+            window.kuyilEditor.setOption('mode', 'kuyil');
+        }
     } else {
         document.getElementById('editor').value = content;
+    }
+    
+    // Auto-show preview for markdown files
+    if (isMarkdown) {
+        setTimeout(() => toggleMarkdownPreview(true), 100);
     }
     
     // Highlight the active file in the sidebar
@@ -1200,7 +1288,8 @@ function addFileToTree(filepath) {
     
     // Create file content wrapper
     const fileContent = document.createElement('span');
-    fileContent.innerHTML = '<span class="icon">📄</span> ' + displayPath;
+    const icon = filepath.endsWith('.md') ? '📝' : '📄';
+    fileContent.innerHTML = '<span class="icon">' + icon + '</span> ' + displayPath;
     fileContent.style.flex = '1';
     fileContent.style.cursor = 'pointer';
     
@@ -1412,6 +1501,156 @@ async function executeAIPrompt() {
 }
 
 // Refresh project files from workspace
+function toggleMarkdownPreview(forceShow) {
+    const editorContainer = document.querySelector('.editor-container');
+    const markdownPreview = document.getElementById('markdownPreview');
+    const toggleBtn = document.getElementById('markdownToggle');
+    
+    const isShowing = forceShow === true || markdownPreview.style.display === 'none';
+    
+    if (isShowing) {
+        // Show preview
+        editorContainer.style.display = 'none';
+        markdownPreview.style.display = 'block';
+        toggleBtn.innerHTML = '✏️ Edit';
+        toggleBtn.style.position = 'fixed';
+        toggleBtn.style.top = '70px';
+        toggleBtn.style.right = '20px';
+        
+        // Render markdown
+        const content = window.kuyilEditor ? window.kuyilEditor.getValue() : document.getElementById('editor').value;
+        markdownPreview.innerHTML = marked.parse(content);
+    } else {
+        // Show editor
+        editorContainer.style.display = 'flex';
+        markdownPreview.style.display = 'none';
+        toggleBtn.innerHTML = '👁️ Preview';
+        toggleBtn.style.position = 'absolute';
+    }
+}
+
+async function switchWorkspace() {
+    try {
+        // Show modal
+        document.getElementById('workspaceModal').style.display = 'flex';
+        
+        // Load workspace list
+        const response = await fetch('/api/workspace/list');
+        const data = await response.json();
+        
+        if (data.success) {
+            const list = document.getElementById('workspaceList');
+            list.innerHTML = '';
+            
+            if (data.workspaces.length === 0) {
+                list.innerHTML = '<li style="padding: 20px; text-align: center; color: #888;">No workspaces found. Create a new one below.</li>';
+            } else {
+                data.workspaces.forEach(ws => {
+                    const li = document.createElement('li');
+                    li.className = 'workspace-item' + (ws.current ? ' current' : '');
+                    li.innerHTML = `
+                        <span class="workspace-icon">📁</span>
+                        <div class="workspace-details">
+                            <div class="workspace-name">${ws.name}</div>
+                            <div class="workspace-path">${ws.path}</div>
+                        </div>
+                        ${ws.current ? '<span style="color: #89d185;">✓ Current</span>' : ''}
+                    `;
+                    
+                    if (!ws.current) {
+                        li.onclick = async () => {
+                            await selectWorkspace(ws.path);
+                        };
+                    }
+                    
+                    list.appendChild(li);
+                });
+            }
+        } else {
+            const list = document.getElementById('workspaceList');
+            list.innerHTML = '<li style="padding: 20px; text-align: center; color: #f48771;">Error loading workspaces</li>';
+        }
+    } catch (error) {
+        console.error('[switchWorkspace] Error:', error);
+        addTerminal('❌ Error loading workspaces: ' + error.message, '#f48771');
+    }
+}
+
+async function selectWorkspace(path) {
+    try {
+        const response = await fetch('/api/workspace/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: path })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            addTerminal('✅ Switched to: ' + result.workspace, '#89d185');
+            document.getElementById('workspacePath').textContent = result.workspace;
+            closeWorkspaceModal();
+            // Refresh file list
+            await refreshProjectFiles();
+        } else {
+            addTerminal('❌ Failed to switch workspace: ' + result.error, '#f48771');
+        }
+    } catch (error) {
+        console.error('[selectWorkspace] Error:', error);
+        addTerminal('❌ Error switching workspace: ' + error.message, '#f48771');
+    }
+}
+
+function closeWorkspaceModal() {
+    document.getElementById('workspaceModal').style.display = 'none';
+}
+
+async function createNewWorkspace() {
+    const name = prompt('Enter new workspace name (e.g., my-project):');
+    if (!name) return;
+    
+    // Sanitize name
+    const sanitized = name.replace(/[^a-zA-Z0-9_-]/g, '-');
+    
+    try {
+        const infoResponse = await fetch('/api/workspace/info');
+        const info = await infoResponse.json();
+        const homeDir = info.home || '/home/user';
+        
+        const newPath = homeDir + '/kuyil-' + sanitized + '/';
+        
+        const response = await fetch('/api/workspace/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: newPath })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            addTerminal('✅ Created and switched to: ' + result.workspace, '#89d185');
+            document.getElementById('workspacePath').textContent = result.workspace;
+            closeWorkspaceModal();
+            await refreshProjectFiles();
+        } else {
+            addTerminal('❌ Failed to create workspace: ' + result.error, '#f48771');
+        }
+    } catch (error) {
+        console.error('[createNewWorkspace] Error:', error);
+        addTerminal('❌ Error creating workspace: ' + error.message, '#f48771');
+    }
+}
+
+async function loadWorkspaceInfo() {
+    try {
+        const response = await fetch('/api/workspace/info');
+        const info = await response.json();
+        if (info.success) {
+            document.getElementById('workspacePath').textContent = info.workspace;
+        }
+    } catch (error) {
+        console.error('[loadWorkspaceInfo] Error:', error);
+    }
+}
+
 async function refreshProjectFiles() {
     console.log('[refreshProjectFiles] Loading workspace files...');
     const folderProject = document.getElementById('folder-project');
@@ -1495,6 +1734,7 @@ function loadDefaultSample() {
 window.onBridgeReady = function() {
     console.log('[Startup] Bridge ready callback FIRED!');
     console.log('[Startup] About to call refreshProjectFiles...');
+    loadWorkspaceInfo();
     setTimeout(function() {
         console.log('[Startup] SetTimeout fired, calling refreshProjectFiles...');
         refreshProjectFiles();
@@ -1504,6 +1744,8 @@ window.onBridgeReady = function() {
 // For remote HTTP mode, load files when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     console.log('[Startup] DOMContentLoaded - checking if in remote mode...');
+    // Load workspace info immediately
+    loadWorkspaceInfo();
     // Give a moment for any webview bridge to initialize
     setTimeout(function() {
         // Check if we're in remote mode (webview bridge not available)

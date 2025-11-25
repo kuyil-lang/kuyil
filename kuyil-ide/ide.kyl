@@ -18,6 +18,23 @@ import("interfaces/interface_http_client_ex.kyl") as httpc
 let g_workspace_path = "kuyil-ide/workspace/"
 let g_mode = "ide"  // "ide" for webview, "remote" for HTTP server
 
+// Initialize workspace from environment or default
+fn initWorkspace() {
+    let homeDir = sys.capture("echo -n $HOME")
+    let wsEnv = sys.capture("echo -n $KUYIL_WORKSPACE")
+    
+    if (wsEnv != nil && wsEnv != "") {
+        g_workspace_path = wsEnv
+    } else {
+        // Use $HOME/kuyil-workspace-default as default
+        g_workspace_path = homeDir + "/kuyil-workspace-default/"
+    }
+    
+    // Ensure workspace exists
+    sys.capture("mkdir -p " + g_workspace_path)
+    print("[Workspace] Using: " + g_workspace_path)
+}
+
 // ============================================
 // Helper Functions
 // ============================================
@@ -489,7 +506,7 @@ fn handleReadDocs(request, response) {
     
     print("[API] Reading doc: " + docName)
     
-    let docPath = "/home/vmukumar/akish/kuyil/docs/" + docName
+    let docPath = "docs/" + docName
     let content = file.file_readText(docPath)
     if (content != nil) {
         print("[API] Doc found, length: " + str_length(content))
@@ -511,7 +528,7 @@ fn handleListDocs(request, response) {
     print("[API] /api/docs/list")
     
     // Scan actual docs directory
-    let docsPath = "/home/vmukumar/akish/kuyil/docs/"
+    let docsPath = "docs/"
     let cmdResult = sys.capture("ls -1 " + docsPath + "*.md 2>/dev/null | xargs -n1 basename")
     
     if (cmdResult == nil || cmdResult == "") {
@@ -560,14 +577,123 @@ fn handleHealth(request, response) {
     return
 }
 
+// Get Workspace Info - GET /api/workspace/info
+@route(method="GET", path="/api/workspace/info", bridge=true)
+fn handleWorkspaceInfo(request, response) {
+    print("[API] /api/workspace/info")
+    let homeDir = sys.capture("echo -n $HOME")
+    let result = `{"success":true,"workspace":"` + g_workspace_path + `","home":"` + homeDir + `"}`
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, result)
+    return
+}
+
+// List Workspaces - GET /api/workspace/list
+@route(method="GET", path="/api/workspace/list", bridge=true)
+fn handleWorkspaceList(request, response) {
+    print("[API] /api/workspace/list")
+    let homeDir = sys.capture("echo -n $HOME")
+    
+    // Find all kuyil-* directories in home
+    let findCmd = "find " + homeDir + " -maxdepth 1 -type d -name 'kuyil-*' 2>/dev/null | sort"
+    let result = sys.capture(findCmd)
+    
+    if (result == nil || result == "") {
+        aio_response_setStatus(response, 200)
+        aio_response_setBody(response, `{"success":true,"workspaces":[]}`)
+        return
+    }
+    
+    // Split by newlines
+    let lines = str_split(result, "\n")
+    let numLines = array_length(lines)
+    
+    // Build JSON array
+    let jsonArray = "["
+    let added = 0
+    let i = 0
+    
+    while (i < numLines && i < 50) {
+        let line = lines[i]
+        
+        if (line != nil && line != "") {
+            let trimmed = str_trim(line)
+            if (trimmed != "") {
+                // Ensure path ends with /
+                let wsPath = trimmed
+                let lastChar = str_substring(wsPath, str_length(wsPath) - 1, str_length(wsPath))
+                if (lastChar != "/") {
+                    wsPath = wsPath + "/"
+                }
+                
+                // Extract workspace name from path
+                let lastSlash = str_lastIndexOf(trimmed, "/")
+                let wsName = str_substring(trimmed, lastSlash + 1, str_length(trimmed))
+                
+                // Check if this is the current workspace
+                let isCurrent = "false"
+                if (wsPath == g_workspace_path) {
+                    isCurrent = "true"
+                }
+                
+                if (added > 0) {
+                    jsonArray = jsonArray + ","
+                }
+                jsonArray = jsonArray + `{"name":"` + wsName + `","path":"` + wsPath + `","current":` + isCurrent + `}`
+                added = added + 1
+            }
+        }
+        i = i + 1
+    }
+    
+    jsonArray = jsonArray + "]"
+    
+    let finalResult = `{"success":true,"workspaces":` + jsonArray + `}`
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, finalResult)
+    return
+}
+
+// Switch Workspace - POST /api/workspace/switch
+@route(method="POST", path="/api/workspace/switch", bridge=true)
+fn handleWorkspaceSwitch(request, response) {
+    print("[API] /api/workspace/switch")
+    let body = parseBody(request.body)
+    
+    if (body == nil || body.path == nil) {
+        aio_response_setStatus(response, 400)
+        aio_response_setBody(response, `{"success":false,"error":"Missing path"}`)
+        return
+    }
+    
+    let newPath = body.path
+    
+    // Ensure path ends with /
+    let lastChar = str_substring(newPath, str_length(newPath) - 1, str_length(newPath))
+    if (lastChar != "/") {
+        newPath = newPath + "/"
+    }
+    
+    // Create workspace if it doesn't exist
+    sys.capture("mkdir -p " + newPath)
+    
+    // Update global workspace path
+    g_workspace_path = newPath
+    
+    print("[API] Switched to workspace: " + g_workspace_path)
+    aio_response_setStatus(response, 200)
+    aio_response_setBody(response, `{"success":true,"workspace":"` + g_workspace_path + `"}`)
+    return
+}
+
 // List Workspace Files - POST /api/workspace/files
 @route(method="GET", path="/api/workspace/files", bridge=true)
 fn handleListWorkspaceFiles(request, response) {
     print("[API] /api/workspace/files")
     print("[API] Workspace path: " + g_workspace_path)
     
-    // Use find command to list all .kyl files recursively
-    let findCmd = "find " + g_workspace_path + " -type f -name '*.kyl' 2>/dev/null"
+    // Use find command to list all .kyl and .md files recursively
+    let findCmd = "find " + g_workspace_path + " -type f \\( -name '*.kyl' -o -name '*.md' \\) 2>/dev/null"
     print("[API] Command: " + findCmd)
     let result = sys.capture(findCmd)
     
@@ -791,7 +917,7 @@ fn executeProjectAction(actionObj) {
         
     } else if (actionType == "test_file") {
         let path = resolvePath(actionObj.path)
-        let testCmd = "cd /home/vmukumar/akish/kuyil && ./kuyil " + path + " 2>&1"
+        let testCmd = "./kuyil " + path + " 2>&1"
         let output = sys.capture(testCmd)
         return `{"success":true,"message":"Tested: ` + actionObj.path + `","output":"` + output + `"}`
         
@@ -1042,7 +1168,7 @@ fn handleExecuteCode(request, response) {
     
     // Execute with full capture of stdout, stderr, and exit code
     print("[API] Executing: ./kuyil " + tempFile)
-    let execCmd = "cd /home/vmukumar/akish/kuyil && ./kuyil " + tempFile + " 2>&1; echo \"__EXIT_CODE__:$?\""
+    let execCmd = "./kuyil " + tempFile + " 2>&1; echo \"__EXIT_CODE__:$?\""
     let output = sys.capture(execCmd)
     
     // Parse output and exit code
@@ -1126,6 +1252,9 @@ fn main() {
     print("║            Kuyil AI IDE - Unified Mode              ║")
     print("╚══════════════════════════════════════════════════════╝\n")
     
+    // Initialize workspace (uses $HOME/kuyil-workspace-default or $KUYIL_WORKSPACE)
+    initWorkspace()
+    
     // Check environment variable for mode (set KUYIL_IDE_MODE=remote for HTTP server)
     let mode_env = sys.capture("echo -n $KUYIL_IDE_MODE")
     if (mode_env != nil && mode_env != "") {
@@ -1133,11 +1262,6 @@ fn main() {
     }
     
     print("Mode: " + g_mode)
-    
-    // Create workspace directory if it doesn't exist
-    let mkdirCmd = "mkdir -p " + g_workspace_path
-    sys.capture(mkdirCmd)
-    print("✓ Workspace: " + g_workspace_path)
     
     print("✓ @route handlers registered:")
     print("  POST /api/ai/generate")

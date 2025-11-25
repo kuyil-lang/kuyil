@@ -27,6 +27,9 @@ interface str from "libs/libkylstr.so" {
   @alias("indexOf")
   int32 str_indexOf(haystack: string, needle: string)
   
+  @alias("lastIndexOf")
+  int32 str_lastIndexOf(haystack: string, needle: string)
+  
   @alias("replace")
   string str_replace(input: string, from: string, to: string)
   

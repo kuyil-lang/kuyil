@@ -18,6 +18,7 @@ const char* kyl_interface_signature_text =
     "str endsWith(input: string, suffix: string) -> bool\n"
     "str contains(haystack: string, needle: string) -> bool\n"
     "str indexOf(haystack: string, needle: string) -> int32\n"
+    "str lastIndexOf(haystack: string, needle: string) -> int32\n"
     "str replace(input: string, from: string, to: string) -> string\n"
     "str split(input: string, delimiter: string) -> array\n"
     "str toNumber(input: string) -> float64\n"
@@ -227,6 +228,41 @@ Value kyl_str_indexOf(int arg_count, Value* args) {
     Value result;
     result.type = VALUE_NUMBER;
     result.as.number = (pos != NULL) ? (double)(pos - haystack) : -1.0;
+    return result;
+}
+
+// String lastIndexOf function - returns last index of needle in haystack, or -1 if not found
+Value kyl_str_lastIndexOf(int arg_count, Value* args) {
+    if (arg_count != 2 || args[0].type != VALUE_STRING || args[1].type != VALUE_STRING) {
+        Value result;
+        result.type = VALUE_NUMBER;
+        result.as.number = -1;
+        return result;
+    }
+    
+    const char* haystack = args[0].as.string;
+    const char* needle = args[1].as.string;
+    size_t needle_len = strlen(needle);
+    
+    if (needle_len == 0) {
+        Value result;
+        result.type = VALUE_NUMBER;
+        result.as.number = (double)strlen(haystack);
+        return result;
+    }
+    
+    const char* last_pos = NULL;
+    const char* current = haystack;
+    
+    // Find all occurrences and keep track of the last one
+    while ((current = strstr(current, needle)) != NULL) {
+        last_pos = current;
+        current++;
+    }
+    
+    Value result;
+    result.type = VALUE_NUMBER;
+    result.as.number = (last_pos != NULL) ? (double)(last_pos - haystack) : -1.0;
     return result;
 }
 
